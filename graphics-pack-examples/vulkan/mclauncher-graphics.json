@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "architecture": "arm64-v8a",
+  "id": "vulkan",
+  "name": "Native Vulkan",
+  "version": "replace-me",
+  "kind": "renderer",
+  "renderer": "VULKAN",
+  "pojavRenderer": "vulkan",
+  "preload": [
+    "vulkan"
+  ],
+  "environment": {
+    "MCLAUNCHER_GRAPHICS_API": "vulkan"
+  },
+  "license": "See upstream package"
+}

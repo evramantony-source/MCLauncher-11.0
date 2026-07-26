@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "architecture": "arm64-v8a",
+  "id": "ng-gl4es",
+  "name": "NG-GL4ES",
+  "version": "replace-me",
+  "kind": "renderer",
+  "renderer": "NG_GL4ES",
+  "pojavRenderer": "opengles2",
+  "preload": [
+    "ng_gl4es",
+    "gl4es"
+  ],
+  "environment": {
+    "LIBGL_ES": "3",
+    "LIBGL_MIPMAP": "3"
+  },
+  "license": "MIT"
+}

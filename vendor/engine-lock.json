@@ -1,0 +1,33 @@
+{
+  "engine": {
+    "name": "MCLauncher Android launch engine",
+    "sourceProject": "MojoLauncher/MojoLauncher",
+    "repository": "https://github.com/MojoLauncher/MojoLauncher.git",
+    "commit": "84873f3c388206ffe029721512335697345c0bb0",
+    "license": "LGPL-3.0"
+  },
+  "runtimes": {
+    "repository": "https://github.com/MojoLauncher/android-openjdk-build-multiarch",
+    "sources": {
+      "8": {
+        "kind": "zip",
+        "url": "https://github.com/MojoLauncher/android-openjdk-build-multiarch/releases/download/rolling/jre8-pojav.zip"
+      },
+      "17": {
+        "kind": "split",
+        "baseUrl": "https://mojolauncher.github.io/jre-download/components/jre-new"
+      },
+      "21": {
+        "kind": "split",
+        "baseUrl": "https://mojolauncher.github.io/jre-download/components/jre-21"
+      },
+      "25": {
+        "kind": "split",
+        "baseUrl": "https://mojolauncher.github.io/jre-download/components/jre-25"
+      }
+    }
+  },
+  "patchedLibraries": {
+    "manifest": "app_pojavlauncher/src/main/assets/substitutions.json"
+  }
+}

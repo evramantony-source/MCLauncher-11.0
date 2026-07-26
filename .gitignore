@@ -1,0 +1,12 @@
+.gradle/
+.idea/
+local.properties
+**/build/
+*.iml
+.externalNativeBuild/
+.cxx/
+.DS_Store
+__pycache__/
+*.pyc
+.engine-cache/
+.vendor-build/

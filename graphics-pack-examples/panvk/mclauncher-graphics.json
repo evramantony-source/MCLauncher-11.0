@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "architecture": "arm64-v8a",
+  "id": "panvk",
+  "name": "PanVK",
+  "version": "replace-me",
+  "kind": "driver",
+  "driver": "PANVK",
+  "preload": [
+    "vulkan_panfrost",
+    "panvk",
+    "vulkan"
+  ],
+  "environment": {
+    "MCLAUNCHER_VULKAN_DRIVER": "panvk"
+  },
+  "sourceProject": "https://gitlab.freedesktop.org/mesa/mesa",
+  "license": "MIT"
+}

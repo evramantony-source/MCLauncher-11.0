@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "architecture": "arm64-v8a",
+  "id": "my-renderer-plugin",
+  "name": "My renderer plugin",
+  "version": "replace-me",
+  "kind": "renderer",
+  "renderer": "CUSTOM",
+  "pojavRenderer": "replace-with-plugin-token",
+  "preload": [
+    "replace-with-library-name-token"
+  ],
+  "environment": {},
+  "license": "See renderer package"
+}

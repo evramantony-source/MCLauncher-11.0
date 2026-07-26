@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "architecture": "arm64-v8a",
+  "id": "zink",
+  "name": "Zink",
+  "version": "replace-me",
+  "kind": "renderer",
+  "renderer": "ZINK",
+  "pojavRenderer": "opengles2",
+  "preload": [
+    "vulkan",
+    "mesa",
+    "zink"
+  ],
+  "environment": {
+    "MESA_LOADER_DRIVER_OVERRIDE": "zink",
+    "GALLIUM_DRIVER": "zink",
+    "MESA_GL_VERSION_OVERRIDE": "4.6"
+  },
+  "sourceProject": "https://gitlab.freedesktop.org/mesa/mesa",
+  "license": "MIT"
+}

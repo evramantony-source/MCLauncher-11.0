@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "architecture": "arm64-v8a",
+  "id": "openltw",
+  "name": "OpenLTW / LTW",
+  "version": "replace-me",
+  "kind": "renderer",
+  "renderer": "OPEN_LTW",
+  "pojavRenderer": "opengles2",
+  "preload": [
+    "openltw",
+    "ltw",
+    "tinywrapper"
+  ],
+  "environment": {
+    "LIBGL_ES": "3"
+  },
+  "license": "See upstream package"
+}

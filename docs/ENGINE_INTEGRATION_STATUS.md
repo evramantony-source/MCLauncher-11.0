@@ -1,0 +1,24 @@
+# Engine integration status — 11.0 Alpha 01
+
+## Build-time path
+
+1. Read the exact engine source commit from `vendor/engine-lock.json`.
+2. Build the Android native engine and GLFW from source.
+3. Extract the selected ABI's launch, AWT, audio, renderer and dependency libraries.
+4. Download Java 8/17/21/25 and patched LWJGL artifacts.
+5. Verify Java 17/21/25 archive signatures with the certificate from the pinned engine source.
+6. Preserve Cacio/Caciocavallo support-JAR structure and third-party notices.
+7. Fail if an engine ELF, default renderer, runtime archive, LWJGL classifier, signature record or required notice is missing.
+8. Compile one ABI-specific APK and verify its embedded payload before uploading it.
+
+## Device path
+
+1. Copy the APK's payload to private application storage.
+2. Extract universal and ABI layers for Java 8, 17, 21 and 25.
+3. Resolve the Minecraft version's exact LWJGL coordinates through the Android substitution mapping.
+4. Extract the matching ABI classifier natives.
+5. Configure GL4ES/OpenLTW or an installed graphics pack before GLFW initialization.
+6. Attach the Android Surface and launch through `JLI_Launch`, with `JNI_CreateJavaVM` fallback.
+7. Forward touch, keyboard, mouse, controller and gyroscope input.
+
+There is no installed-app dependency on another launcher. CI and physical-device validation are still release gates.

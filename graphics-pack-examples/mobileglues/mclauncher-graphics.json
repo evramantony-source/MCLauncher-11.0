@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "architecture": "arm64-v8a",
+  "id": "mobileglues",
+  "name": "MobileGlues",
+  "version": "replace-me",
+  "kind": "renderer",
+  "renderer": "MOBILE_GLUES",
+  "pojavRenderer": "opengles2",
+  "preload": [
+    "mobileglues",
+    "libmg"
+  ],
+  "environment": {
+    "LIBGL_ES": "3"
+  },
+  "sourceProject": "https://github.com/MobileGL-Dev/MobileGlues",
+  "license": "LGPL-2.1"
+}

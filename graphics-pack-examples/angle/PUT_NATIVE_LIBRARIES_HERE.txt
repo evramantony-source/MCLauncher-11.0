@@ -1,0 +1,1 @@
+Place the legally obtained arm64-v8a .so files and any ICD JSON/config files in this folder, then ZIP the folder contents.

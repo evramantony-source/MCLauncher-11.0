@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "architecture": "arm64-v8a",
+  "id": "angle",
+  "name": "ANGLE",
+  "version": "replace-me",
+  "kind": "driver",
+  "driver": "ANGLE",
+  "preload": [
+    "vulkan",
+    "angle",
+    "egl",
+    "glesv2"
+  ],
+  "environment": {
+    "MCLAUNCHER_GLES_DRIVER": "angle",
+    "ANGLE_DEFAULT_PLATFORM": "vulkan"
+  },
+  "sourceProject": "https://github.com/google/angle",
+  "license": "BSD-3-Clause"
+}

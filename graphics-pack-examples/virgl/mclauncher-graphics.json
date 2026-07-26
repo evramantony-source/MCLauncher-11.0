@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "architecture": "arm64-v8a",
+  "id": "virgl",
+  "name": "VirGL",
+  "version": "replace-me",
+  "kind": "renderer",
+  "renderer": "VIRGL",
+  "pojavRenderer": "opengles3_virgl",
+  "preload": [
+    "virgl",
+    "virpipe",
+    "mesa"
+  ],
+  "environment": {
+    "GALLIUM_DRIVER": "virpipe",
+    "MESA_GL_VERSION_OVERRIDE": "4.3",
+    "VTEST_SOCKET_NAME": "${cache}/.virgl_test"
+  },
+  "license": "MIT"
+}
