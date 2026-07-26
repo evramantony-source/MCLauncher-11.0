@@ -81,7 +81,6 @@ jobs:
       - name: Install Android toolchains
         shell: bash
         run: |
-          yes | sdkmanager --licenses >/dev/null
           sdkmanager \
             "platforms;android-35" \
             "platforms;android-36" \
