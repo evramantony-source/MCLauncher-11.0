@@ -741,7 +741,10 @@ Java_com_mclauncher_app_engine_NativeLaunchBridge_nativeStart(
     }
 
     JavaVMInitArgs vmArgs{};
-    vmArgs.version = JNI_VERSION_1_8;
+    // Android's public JNI headers expose the 1.6 invocation ABI. Newer Java
+    // runtimes remain compatible with it, while JNI_VERSION_1_8 is not defined
+    // by every supported NDK.
+    vmArgs.version = JNI_VERSION_1_6;
     vmArgs.nOptions = static_cast<jint>(options.size());
     vmArgs.options = options.data();
     vmArgs.ignoreUnrecognized = JNI_TRUE;
@@ -839,9 +842,9 @@ Java_com_mclauncher_app_engine_NativeLaunchBridge_nativeStop(JNIEnv* env, jobjec
 
     JNIEnv* minecraftEnv = nullptr;
     bool attached = false;
-    const jint getEnvResult = vm->GetEnv(reinterpret_cast<void**>(&minecraftEnv), JNI_VERSION_1_8);
+    const jint getEnvResult = vm->GetEnv(reinterpret_cast<void**>(&minecraftEnv), JNI_VERSION_1_6);
     if (getEnvResult == JNI_EDETACHED) {
-        if (vm->AttachCurrentThread(reinterpret_cast<void**>(&minecraftEnv), nullptr) == JNI_OK) attached = true;
+        if (vm->AttachCurrentThread(&minecraftEnv, nullptr) == JNI_OK) attached = true;
     }
     if (minecraftEnv != nullptr) {
         jclass systemClass = minecraftEnv->FindClass("java/lang/System");

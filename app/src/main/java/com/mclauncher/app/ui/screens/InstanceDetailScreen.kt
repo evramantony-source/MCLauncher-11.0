@@ -19,6 +19,7 @@ import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material3.Button
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
@@ -46,6 +47,7 @@ import java.io.File
 
 private enum class InstanceSection { OVERVIEW, CONTENT, SCREENSHOTS }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun InstanceDetailScreen(
     instanceId: String,
