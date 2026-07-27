@@ -136,10 +136,10 @@ class GameActivity : ComponentActivity() {
                     if (externalInputDetected && hideTouchControlsWithExternalInput) controlsVisible = false
                 }
 
-                fun appendLog(text: String) {
+                fun appendLog(text: String, persist: Boolean = true) {
                     text.lineSequence().filter(String::isNotBlank).forEach { line ->
                         logs += line
-                        runCatching { sessionLog.appendText(line + "\n") }
+                        if (persist) runCatching { sessionLog.appendText(line + "\n") }
                     }
                     while (logs.size > 300) logs.removeAt(0)
                 }
@@ -170,7 +170,9 @@ class GameActivity : ComponentActivity() {
                     }
                 }
 
-                LaunchedEffect(running, surface) {
+                // A SurfaceView may report surfaceChanged several times during startup.
+                // The launch belongs to the Play attempt, not to each Surface instance.
+                LaunchedEffect(running) {
                     val target = surface ?: return@LaunchedEffect
                     if (!running || !NativeLaunchBridge.isAvailable) return@LaunchedEffect
                     val result = runCatching {
@@ -196,7 +198,9 @@ class GameActivity : ComponentActivity() {
                     while (running && NativeLaunchBridge.isAvailable) {
                         val batch = withContext(Dispatchers.IO) { NativeLaunchBridge.nativeDrainLogs() }
                         if (!batch.isNullOrBlank()) {
-                            appendLog(batch)
+                            // Native lines are written directly to the session file so they
+                            // survive a hard process crash. Draining only updates the overlay.
+                            appendLog(batch, persist = false)
                             if (
                                 batch.contains("Invoking ") ||
                                 batch.contains("LWJGL", ignoreCase = true) ||
@@ -212,7 +216,7 @@ class GameActivity : ComponentActivity() {
                     val finalBatch = if (NativeLaunchBridge.isAvailable) {
                         withContext(Dispatchers.IO) { NativeLaunchBridge.nativeDrainLogs() }
                     } else null
-                    if (!finalBatch.isNullOrBlank()) appendLog(finalBatch)
+                    if (!finalBatch.isNullOrBlank()) appendLog(finalBatch, persist = false)
                 }
 
                 LaunchedEffect(running, launchOverlayVisible) {

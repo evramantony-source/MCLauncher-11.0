@@ -41,6 +41,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.mclauncher.app.BuildConfig
 import com.mclauncher.app.ui.LauncherUiState
 import com.mclauncher.app.ui.components.LauncherCard
 import com.mclauncher.app.ui.components.PageHeader
@@ -125,7 +126,9 @@ fun AccountsScreen(
                         Column(modifier = Modifier.weight(1f)) {
                             Text("Microsoft account", style = MaterialTheme.typography.titleMedium)
                             Text(
-                                if (state.snapshot.settings.microsoftClientId.isBlank()) {
+                                if (BuildConfig.PUBLIC_ALPHA_SIGNER) {
+                                    "Disabled in publicly signed alpha builds. Use an offline account for device testing."
+                                } else if (state.snapshot.settings.microsoftClientId.isBlank()) {
                                     "Add your Microsoft application client ID in Settings first."
                                 } else {
                                     "Uses Microsoft's device-code flow and stores the resulting session encrypted on this device."
@@ -136,7 +139,9 @@ fun AccountsScreen(
                         }
                         Button(
                             onClick = onMicrosoftLogin,
-                            enabled = state.snapshot.settings.microsoftClientId.isNotBlank() && state.microsoftStatus == null
+                            enabled = !BuildConfig.PUBLIC_ALPHA_SIGNER &&
+                                state.snapshot.settings.microsoftClientId.isNotBlank() &&
+                                state.microsoftStatus == null
                         ) { Text("Sign in") }
                     }
                     state.microsoftDeviceCode?.let { code ->

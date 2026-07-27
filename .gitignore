@@ -10,3 +10,4 @@ __pycache__/
 *.pyc
 .engine-cache/
 .vendor-build/
+.ci-signing/

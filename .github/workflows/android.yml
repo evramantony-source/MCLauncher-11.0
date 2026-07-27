@@ -131,6 +131,16 @@ jobs:
         with:
           gradle-version: "8.10.2"
 
+      - name: Restore stable alpha debug signer
+        shell: bash
+        run: |
+          mkdir -p .ci-signing
+          base64 --decode signing/mclauncher-alpha-debug.jks.b64 > .ci-signing/mclauncher-alpha-debug.jks
+          keytool -list \
+            -keystore .ci-signing/mclauncher-alpha-debug.jks \
+            -storepass mclauncher-alpha \
+            -alias mclauncher-alpha
+
       - name: Build standalone MCLauncher APK
         shell: bash
         run: gradle --no-daemon :app:assembleDebug -PmclauncherAbi="$TARGET_ABI"

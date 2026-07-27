@@ -2,6 +2,8 @@
 """Fast source-level checks that run before the Android build."""
 from __future__ import annotations
 
+import base64
+import hashlib
 import json
 import re
 import sys
@@ -54,6 +56,17 @@ for path in ROOT.rglob("*.xml"):
     except Exception as exc:  # noqa: BLE001
         errors.append(f"Invalid XML {path.relative_to(ROOT)}: {exc}")
 
+alpha_signer = ROOT / "signing/mclauncher-alpha-debug.jks.b64"
+try:
+    alpha_signer_bytes = base64.b64decode(
+        "".join(alpha_signer.read_text(encoding="ascii").split()),
+        validate=True,
+    )
+    if hashlib.sha256(alpha_signer_bytes).hexdigest() != "b97d99ee1cb0f58fce04a2267aa4185f405ea8f30d646116483657e20ee34a93":
+        errors.append("Stable alpha signing key digest changed")
+except Exception as exc:  # noqa: BLE001
+    errors.append(f"Stable alpha signing key is invalid: {exc}")
+
 lock = json.loads(text("vendor/engine-lock.json") or "{}")
 engine_commit = lock.get("engine", {}).get("commit", "")
 if not re.fullmatch(r"[0-9a-f]{40}", engine_commit):
@@ -79,6 +92,7 @@ require_contains(
     'assembleDebug -PmclauncherAbi=',
     'MCLauncher-11.0-alpha01-',
     "pull_request:",
+    "mclauncher-alpha-debug.jks.b64",
 )
 if engine_commit and engine_commit not in text("vendor/engine-lock.json"):
     errors.append("Engine commit was not retained in the lock file")
@@ -98,14 +112,27 @@ require_contains(
     'POJAV_RENDERER',
 )
 require_contains(
+    "app/build.gradle.kts",
+    'buildConfigField("boolean", "PUBLIC_ALPHA_SIGNER", "true")',
+    'signingConfigs.getByName("alphaDebug")',
+)
+require_contains(
+    "app/src/main/java/com/mclauncher/app/ui/screens/AccountsScreen.kt",
+    "BuildConfig.PUBLIC_ALPHA_SIGNER",
+)
+require_contains(
     "app/src/main/java/com/mclauncher/app/engine/NativeEngineCoordinator.kt",
     "isUnsupportedProcessHookLibrary",
+    "isConflictingAwtStubLibrary",
     "MCLAUNCHER_SESSION_LOG",
 )
-require_before(
+require_absent(
+    "app/src/main/java/com/mclauncher/app/GameActivity.kt",
+    "LaunchedEffect(running, surface)",
+)
+require_absent(
     "app/src/main/java/com/mclauncher/app/engine/NativeEngineCoordinator.kt",
-    'name.contains("awt_headless"',
-    'name.contains("awt_xawt"',
+    "libraryPathIndex",
 )
 require_contains(
     "scripts/vendor_engine.py",

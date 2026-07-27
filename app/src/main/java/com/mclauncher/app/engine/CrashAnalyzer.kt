@@ -8,14 +8,20 @@ object CrashAnalyzer {
     fun analyze(file: File?): CrashDiagnosis? {
         if (file == null || !file.isFile) return null
         val text = runCatching { file.readText().takeLast(500_000) }.getOrNull()?.lowercase() ?: return null
+        val lines = text.lineSequence().toList()
+        val hasVulkanFailure = lines.any { line ->
+            "vulkan" in line && listOf("failed", "error", "fatal", "unsupported").any(line::contains)
+        }
         return when {
+            "a minecraft launch is already running in this process" in text ->
+                CrashDiagnosis("Duplicate launch blocked", "Minecraft startup was requested twice. Update MCLauncher before retrying.")
             "outofmemoryerror" in text || "could not reserve enough space" in text ->
                 CrashDiagnosis("Not enough memory", "Lower allocated RAM, close other apps, or use a lighter modpack.")
             "unsatisfiedlinkerror" in text || "no lwjgl" in text || "could not load library" in text ->
                 CrashDiagnosis("Native library problem", "Reinstall the matching engine pack and renderer for your device ABI.")
             "glfw error" in text || "opengl" in text && "not supported" in text ->
                 CrashDiagnosis("Renderer incompatibility", "Try MobileGlues, ANGLE, Zink, GL4ES or another installed renderer/driver combination.")
-            "vulkan" in text && ("failed" in text || "error" in text) ->
+            hasVulkanFailure ->
                 CrashDiagnosis("Vulkan driver problem", "Try the system driver, a compatible Turnip/PanVK pack, or an OpenGL ES renderer.")
             "unsupportedclassversionerror" in text || "class file version" in text ->
                 CrashDiagnosis("Wrong Java version", "Select the Java version required by this Minecraft or mod-loader version.")

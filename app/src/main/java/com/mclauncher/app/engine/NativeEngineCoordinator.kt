@@ -151,9 +151,7 @@ class NativeEngineCoordinator(
         putSystemProperty(jvmArguments, "glfwstub.initEgl", "false")
         jvmArguments.removeAll { it.startsWith("-XX:ActiveProcessorCount=") }
         jvmArguments += "-XX:ActiveProcessorCount=${Runtime.getRuntime().availableProcessors()}"
-        val libraryPathIndex = jvmArguments.indexOfFirst { it.startsWith("-Djava.library.path=") }
-        if (libraryPathIndex < 0) jvmArguments += "-Djava.library.path=$nativePath"
-        else jvmArguments[libraryPathIndex] = "-Djava.library.path=$nativePath"
+        putSystemProperty(jvmArguments, "java.library.path", nativePath)
 
         val preload = buildPreloadList(
             javaHome = javaHome,
@@ -282,6 +280,9 @@ class NativeEngineCoordinator(
             // would make the Android VM own them before the Minecraft VM exists.
             .filterNot { it.name.startsWith("liblwjgl", ignoreCase = true) }
             .filterNot { isUnsupportedProcessHookLibrary(it.name) }
+            // These tiny engine stubs have the same SONAME as the real OpenJDK libraries.
+            // Loading them first makes libfontmanager resolve against the wrong library.
+            .filterNot { isConflictingAwtStubLibrary(it.name) }
             .filterNot { isRendererOrDriverLibrary(it.name) }
             .toList()
         val graphicsLibraries = graphics.searchDirectories.asSequence()
@@ -318,6 +319,10 @@ class NativeEngineCoordinator(
             lower.contains("shadowhook") ||
             lower.contains("exithook")
     }
+
+    private fun isConflictingAwtStubLibrary(name: String): Boolean =
+        name.equals("libawt_headless.so", ignoreCase = true) ||
+            name.equals("libawt_xawt.so", ignoreCase = true)
 
     private fun preloadPriority(name: String): Int = when {
         name.contains("c++_shared", ignoreCase = true) -> 0
@@ -377,8 +382,10 @@ class NativeEngineCoordinator(
 
     private fun putSystemProperty(arguments: MutableList<String>, key: String, value: String) {
         val prefix = "-D$key="
-        val index = arguments.indexOfFirst { it.startsWith(prefix) }
-        if (index >= 0) arguments[index] = prefix + value else arguments += prefix + value
+        // Version metadata can contain the same property more than once. The JVM uses
+        // the last value, so replacing only the first entry silently leaves stale values.
+        arguments.removeAll { it.startsWith(prefix) }
+        arguments += prefix + value
     }
 
     private fun findFile(root: File, name: String): File? =

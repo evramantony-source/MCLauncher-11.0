@@ -7,6 +7,7 @@ plugins {
 
 val supportedAbis = setOf("arm64-v8a", "armeabi-v7a", "x86_64")
 val targetAbi = providers.gradleProperty("mclauncherAbi").orElse("arm64-v8a").get()
+val alphaKeystore = rootProject.file(".ci-signing/mclauncher-alpha-debug.jks")
 require(targetAbi in supportedAbis) {
     "Unsupported mclauncherAbi=$targetAbi. Supported values: ${supportedAbis.joinToString()}"
 }
@@ -22,6 +23,7 @@ android {
         targetSdk = 35
         versionCode = 11
         versionName = "11.0.0-alpha01"
+        buildConfigField("boolean", "PUBLIC_ALPHA_SIGNER", "true")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -35,7 +37,19 @@ android {
         }
     }
 
+    signingConfigs {
+        create("alphaDebug") {
+            storeFile = alphaKeystore
+            storePassword = "mclauncher-alpha"
+            keyAlias = "mclauncher-alpha"
+            keyPassword = "mclauncher-alpha"
+        }
+    }
+
     buildTypes {
+        debug {
+            signingConfig = signingConfigs.getByName("alphaDebug")
+        }
         release {
             isMinifyEnabled = false
             proguardFiles(

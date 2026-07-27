@@ -5,6 +5,7 @@ import android.net.Uri
 import android.os.Build
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.mclauncher.app.BuildConfig
 import com.mclauncher.app.MCLauncherApplication
 import com.mclauncher.app.auth.MicrosoftAuthManager
 import com.mclauncher.app.auth.MicrosoftDeviceCode
@@ -258,6 +259,10 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun beginMicrosoftLogin() {
+        if (BuildConfig.PUBLIC_ALPHA_SIGNER) {
+            _state.update { it.copy(message = "Microsoft sign-in is disabled in publicly signed alpha builds") }
+            return
+        }
         val clientId = _state.value.snapshot.settings.microsoftClientId.trim()
         viewModelScope.launch {
             _state.update { it.copy(microsoftStatus = "Requesting Microsoft code") }
@@ -577,6 +582,11 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
             if (!instance.installed) return@launch _state.update { it.copy(message = "Finish installing this instance first") }
             val account = _state.value.selectedAccount
                 ?: return@launch _state.update { it.copy(message = "Add or select an account before playing") }
+            if (BuildConfig.PUBLIC_ALPHA_SIGNER && account.type == AccountType.MICROSOFT) {
+                return@launch _state.update {
+                    it.copy(message = "Select an offline account for this publicly signed alpha build")
+                }
+            }
 
             val architecture = Build.SUPPORTED_ABIS.firstOrNull() ?: "arm64-v8a"
             val engine = runCatching { _state.value.engineEnvironment ?: enginePackManager.inspect() }.getOrElse { error ->

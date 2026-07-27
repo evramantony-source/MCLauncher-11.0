@@ -4,6 +4,10 @@ MCLauncher is an independent Android launcher for Minecraft: Java Edition. It ha
 
 ## Current alpha scope
 
+> **Alpha signing:** CI test APKs use a stable, public debug key so device-test
+> builds can update in place. Microsoft sign-in is deliberately disabled in
+> these APKs. A private release key is required before enabling real accounts.
+
 - Mojang release and snapshot discovery with verified client, library and asset downloads.
 - Separate instances, screenshots, logs and crash diagnosis.
 - Offline accounts and Microsoft device-code authentication.
