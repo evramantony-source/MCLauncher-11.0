@@ -26,6 +26,7 @@
             android:name=".GameActivity"
             android:configChanges="keyboard|keyboardHidden|navigation|orientation|screenLayout|screenSize|smallestScreenSize|uiMode"
             android:exported="false"
+            android:launchMode="singleTask"
             android:process=":minecraft"
             android:resizeableActivity="false"
             android:screenOrientation="sensorLandscape" />

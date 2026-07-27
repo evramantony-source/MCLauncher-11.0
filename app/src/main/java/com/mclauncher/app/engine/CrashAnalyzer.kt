@@ -14,7 +14,7 @@ object CrashAnalyzer {
         }
         return when {
             "a minecraft launch is already running in this process" in text ->
-                CrashDiagnosis("Duplicate launch blocked", "Minecraft startup was requested twice. Update MCLauncher before retrying.")
+                CrashDiagnosis("Duplicate launch blocked", "Two game screens requested startup together. Close the game screen before retrying.")
             "outofmemoryerror" in text || "could not reserve enough space" in text ->
                 CrashDiagnosis("Not enough memory", "Lower allocated RAM, close other apps, or use a lighter modpack.")
             "unsatisfiedlinkerror" in text || "no lwjgl" in text || "could not load library" in text ->

@@ -48,6 +48,7 @@ fun MCLauncherApp(launcherViewModel: LauncherViewModel = viewModel()) {
                     is LauncherEvent.OpenGame -> {
                         context.startActivity(
                             Intent(context, GameActivity::class.java)
+                                .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
                                 .putExtra(GameActivity.EXTRA_PLAN_PATH, event.launchPlan.absolutePath)
                         )
                         if (event.closeLauncher) (context as? Activity)?.finish()

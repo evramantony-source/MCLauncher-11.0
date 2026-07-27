@@ -135,6 +135,15 @@ require_absent(
     "libraryPathIndex",
 )
 require_contains(
+    "app/src/main/AndroidManifest.xml",
+    'android:launchMode="singleTask"',
+)
+require_contains(
+    "app/src/main/java/com/mclauncher/app/ui/LauncherViewModel.kt",
+    "lastPlayRequestAt",
+    "Minecraft is already being prepared",
+)
+require_contains(
     "scripts/vendor_engine.py",
     "verify_runtime_signatures",
     "parse_signature_bundle",

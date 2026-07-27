@@ -3,6 +3,7 @@ package com.mclauncher.app.ui
 import android.app.Application
 import android.net.Uri
 import android.os.Build
+import android.os.SystemClock
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.mclauncher.app.BuildConfig
@@ -112,6 +113,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
 
     private val eventChannel = Channel<LauncherEvent>(Channel.BUFFERED)
     val events = eventChannel.receiveAsFlow()
+    private var lastPlayRequestAt = 0L
 
     init {
         viewModelScope.launch {
@@ -575,6 +577,12 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun play(instanceId: String) {
+        val now = SystemClock.elapsedRealtime()
+        if (now - lastPlayRequestAt < 2_500L) {
+            _state.update { it.copy(message = "Minecraft is already being prepared") }
+            return
+        }
+        lastPlayRequestAt = now
         viewModelScope.launch {
             val snapshot = _state.value.snapshot
             val instance = snapshot.instances.firstOrNull { it.id == instanceId }
