@@ -175,10 +175,18 @@ class GameActivity : ComponentActivity() {
                 LaunchedEffect(running) {
                     val target = surface ?: return@LaunchedEffect
                     if (!running || !NativeLaunchBridge.isAvailable) return@LaunchedEffect
-                    val result = runCatching {
-                        withContext(Dispatchers.IO) {
-                            coordinator.launch(File(planPath), target, sessionLog)
+                    if (!NativeLaunchBridge.tryClaimLaunch()) {
+                        appendLog("Ignored duplicate UI launch request", persist = false)
+                        return@LaunchedEffect
+                    }
+                    val result = try {
+                        runCatching {
+                            withContext(Dispatchers.IO) {
+                                coordinator.launch(File(planPath), target, sessionLog)
+                            }
                         }
+                    } finally {
+                        NativeLaunchBridge.releaseLaunch()
                     }
                     result.onSuccess { exitCode ->
                         status = if (exitCode == 0) "Minecraft closed" else "Minecraft exited with code $exitCode"

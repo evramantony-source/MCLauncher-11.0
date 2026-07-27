@@ -1,8 +1,11 @@
 package com.mclauncher.app.engine
 
 import android.view.Surface
+import java.util.concurrent.atomic.AtomicBoolean
 
 object NativeLaunchBridge {
+    private val kotlinLaunchRunning = AtomicBoolean(false)
+
     private val loadResult: Result<Unit> = runCatching {
         System.loadLibrary("mclauncher")
     }
@@ -12,6 +15,12 @@ object NativeLaunchBridge {
 
     val unavailableReason: String
         get() = loadResult.exceptionOrNull()?.message ?: "Native engine is not bundled"
+
+    fun tryClaimLaunch(): Boolean = kotlinLaunchRunning.compareAndSet(false, true)
+
+    fun releaseLaunch() {
+        kotlinLaunchRunning.set(false)
+    }
 
     external fun nativeStart(
         javaHome: String,

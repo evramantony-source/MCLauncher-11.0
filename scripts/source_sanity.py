@@ -144,6 +144,16 @@ require_contains(
     "Minecraft is already being prepared",
 )
 require_contains(
+    "app/src/main/java/com/mclauncher/app/engine/NativeLaunchBridge.kt",
+    "kotlinLaunchRunning",
+    "tryClaimLaunch",
+    "releaseLaunch",
+)
+require_contains(
+    "app/src/main/java/com/mclauncher/app/GameActivity.kt",
+    "Ignored duplicate UI launch request",
+)
+require_contains(
     "scripts/vendor_engine.py",
     "verify_runtime_signatures",
     "parse_signature_bundle",
