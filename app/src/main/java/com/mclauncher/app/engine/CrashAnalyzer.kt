@@ -15,6 +15,8 @@ object CrashAnalyzer {
         return when {
             "a minecraft launch is already running in this process" in text ->
                 CrashDiagnosis("Duplicate launch blocked", "Two game screens requested startup together. Close the game screen before retrying.")
+            "can't load library" in text && "libawt_xawt.so" in text ->
+                CrashDiagnosis("AWT compatibility missing", "Update MCLauncher so it can repair the Java runtime's Android AWT overlay.")
             "permission denied" in text && "trying to exec" in text && "/bin/java" in text ->
                 CrashDiagnosis("Old JVM launcher blocked", "This build tried to execute Java from Android app storage. Update MCLauncher to the in-process JVM build.")
             "outofmemoryerror" in text || "could not reserve enough space" in text ->

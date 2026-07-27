@@ -10,6 +10,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import java.io.File
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 
 class NativeEngineCoordinator(
     private val context: Context,
@@ -37,6 +39,10 @@ class NativeEngineCoordinator(
                 "Bundled Android launch engine is incomplete for ${plan.runtime.architecture}: $required is missing"
             }
         }
+        val awtCompatibilityLibrary = prepareRuntimeAwtCompatibility(javaHome, engineNatives)
+        sessionLog?.appendText(
+            "Prepared AWT compatibility library ${awtCompatibilityLibrary.absolutePath}\n"
+        )
         val cacheDirectory = File(plan.workingDirectory, ".mclauncher-cache").apply { mkdirs() }
         val graphics = GraphicsRegistry(layout, plan.runtime.architecture, json)
             .resolve(plan.renderer, plan.graphicsDriver, cacheDirectory)
@@ -184,6 +190,7 @@ class NativeEngineCoordinator(
             "Java ${tool.javaVersion.major} runtime is not installed for $architecture"
         }
         val engineNatives = layout.engineNativeDirectory(architecture)
+        prepareRuntimeAwtCompatibility(javaHome, engineNatives)
         val runtimeLibraries = listOfNotNull(
             findFile(javaHome, "libjvm.so")?.parentFile,
             findFile(javaHome, "libjava.so")?.parentFile,
@@ -325,6 +332,57 @@ class NativeEngineCoordinator(
     private fun isConflictingAwtStubLibrary(name: String): Boolean =
         name.equals("libawt_headless.so", ignoreCase = true) ||
             name.equals("libawt_xawt.so", ignoreCase = true)
+
+    /**
+     * OpenJDK's AWT bootstrap loads this compatibility library from the runtime
+     * directory by absolute path. Keep the real runtime libawt_headless.so in
+     * place and overlay only MojoLauncher's tiny libawt_xawt.so stub, matching
+     * the pinned engine's MultiRTUtils.postPrepare behavior.
+     */
+    private fun prepareRuntimeAwtCompatibility(javaHome: File, engineNatives: File): File {
+        val source = File(engineNatives, "libawt_xawt.so")
+        require(source.isFile) {
+            "Bundled Android launch engine is incomplete: libawt_xawt.so is missing"
+        }
+        val runtimeLibraryDirectory = findFile(javaHome, "libawt.so")?.parentFile
+            ?: error("Java runtime is incomplete: libawt.so is missing")
+        val target = File(runtimeLibraryDirectory, source.name)
+        if (
+            target.isFile &&
+            target.length() == source.length() &&
+            target.readBytes().contentEquals(source.readBytes())
+        ) {
+            return target
+        }
+
+        val temporary = File(
+            runtimeLibraryDirectory,
+            ".${source.name}.${System.nanoTime()}.tmp"
+        )
+        try {
+            source.copyTo(temporary, overwrite = true)
+            runCatching {
+                Files.move(
+                    temporary.toPath(),
+                    target.toPath(),
+                    StandardCopyOption.ATOMIC_MOVE,
+                    StandardCopyOption.REPLACE_EXISTING
+                )
+            }.getOrElse {
+                Files.move(
+                    temporary.toPath(),
+                    target.toPath(),
+                    StandardCopyOption.REPLACE_EXISTING
+                )
+            }
+        } finally {
+            temporary.delete()
+        }
+        require(target.isFile && target.length() == source.length()) {
+            "Could not prepare ${target.absolutePath}"
+        }
+        return target
+    }
 
     private fun preloadPriority(name: String): Int = when {
         name.contains("c++_shared", ignoreCase = true) -> 0

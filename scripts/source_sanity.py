@@ -125,6 +125,10 @@ require_contains(
     "isUnsupportedProcessHookLibrary",
     "isConflictingAwtStubLibrary",
     "MCLAUNCHER_SESSION_LOG",
+    "prepareRuntimeAwtCompatibility",
+    "StandardCopyOption.ATOMIC_MOVE",
+    'File(engineNatives, "libawt_xawt.so")',
+    'findFile(javaHome, "libawt.so")',
 )
 require_absent(
     "app/src/main/java/com/mclauncher/app/GameActivity.kt",
