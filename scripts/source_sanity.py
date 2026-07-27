@@ -97,10 +97,10 @@ require_contains(
     'libpojavexec.so',
     'POJAV_RENDERER',
 )
-require_before(
+require_contains(
     "app/src/main/java/com/mclauncher/app/engine/NativeEngineCoordinator.kt",
-    'name.contains("shadowhook"',
-    'name.contains("bytehook"',
+    "isUnsupportedProcessHookLibrary",
+    "MCLAUNCHER_SESSION_LOG",
 )
 require_before(
     "app/src/main/java/com/mclauncher/app/engine/NativeEngineCoordinator.kt",

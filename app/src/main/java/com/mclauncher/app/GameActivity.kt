@@ -175,7 +175,7 @@ class GameActivity : ComponentActivity() {
                     if (!running || !NativeLaunchBridge.isAvailable) return@LaunchedEffect
                     val result = runCatching {
                         withContext(Dispatchers.IO) {
-                            coordinator.launch(File(planPath), target)
+                            coordinator.launch(File(planPath), target, sessionLog)
                         }
                     }
                     result.onSuccess { exitCode ->

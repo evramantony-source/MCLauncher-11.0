@@ -15,7 +15,11 @@ class NativeEngineCoordinator(
     private val context: Context,
     private val json: Json = Json { ignoreUnknownKeys = true }
 ) {
-    suspend fun launch(planFile: File, surface: Surface): Int = withContext(Dispatchers.IO) {
+    suspend fun launch(
+        planFile: File,
+        surface: Surface,
+        sessionLog: File? = null
+    ): Int = withContext(Dispatchers.IO) {
         require(NativeLaunchBridge.isAvailable) { NativeLaunchBridge.unavailableReason }
         require(planFile.isFile) { "Launch plan does not exist: ${planFile.absolutePath}" }
 
@@ -69,6 +73,7 @@ class NativeEngineCoordinator(
         environment["MCLAUNCHER_ENGINE_NATIVES"] = engineNatives.absolutePath
         environment["MCLAUNCHER_RENDERER"] = graphics.renderer.id
         environment["MCLAUNCHER_GRAPHICS_DRIVER"] = graphics.driver.id
+        sessionLog?.let { environment["MCLAUNCHER_SESSION_LOG"] = it.absolutePath }
         environment.putIfAbsent("FORCE_VSYNC", "false")
         environment.putIfAbsent("LIBGL_NOERROR", "1")
         environment.putIfAbsent("LIBGL_NOINTOVLHACK", "1")
@@ -212,6 +217,7 @@ class NativeEngineCoordinator(
             engineNatives.walkTopDown()
                 .filter { it.isFile && it.extension.equals("so", true) }
                 .filterNot { it.name.startsWith("liblwjgl", ignoreCase = true) }
+                .filterNot { isUnsupportedProcessHookLibrary(it.name) }
                 .filterNot { isRendererOrDriverLibrary(it.name) }
                 .sortedWith(compareBy<File> { preloadPriority(it.name) }.thenBy(File::getName))
                 .forEach(preload::add)
@@ -275,6 +281,7 @@ class NativeEngineCoordinator(
             // LWJGL invokes JNI_OnLoad itself when Java loads these libraries. Early dlopen
             // would make the Android VM own them before the Minecraft VM exists.
             .filterNot { it.name.startsWith("liblwjgl", ignoreCase = true) }
+            .filterNot { isUnsupportedProcessHookLibrary(it.name) }
             .filterNot { isRendererOrDriverLibrary(it.name) }
             .toList()
         val graphicsLibraries = graphics.searchDirectories.asSequence()
@@ -300,13 +307,20 @@ class NativeEngineCoordinator(
         ).any(lower::contains)
     }
 
+    /**
+     * The pinned engine's CMake build does not include its exit-hook module.
+     * ByteHook and ShadowHook arrive as unrelated APK dependencies and can abort
+     * when initialized manually from MCLauncher's extracted-library namespace.
+     */
+    private fun isUnsupportedProcessHookLibrary(name: String): Boolean {
+        val lower = name.lowercase()
+        return lower.contains("bytehook") ||
+            lower.contains("shadowhook") ||
+            lower.contains("exithook")
+    }
+
     private fun preloadPriority(name: String): Int = when {
         name.contains("c++_shared", ignoreCase = true) -> 0
-        // libbytehook.so has a DT_NEEDED entry for libshadowhook.so. Android's
-        // isolated class-loader namespace will not resolve it unless ShadowHook
-        // is already part of the namespace's global group.
-        name.contains("shadowhook", ignoreCase = true) -> 1
-        name.contains("bytehook", ignoreCase = true) -> 2
         name.contains("tinywrapper", ignoreCase = true) -> 2
         name.contains("linkerhook", ignoreCase = true) -> 3
         name.contains("awt_headless", ignoreCase = true) -> 3

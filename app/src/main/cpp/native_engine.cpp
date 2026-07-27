@@ -3,6 +3,7 @@
 #include <android/native_window.h>
 #include <android/native_window_jni.h>
 #include <dlfcn.h>
+#include <fcntl.h>
 #include <unistd.h>
 
 #include <algorithm>
@@ -11,6 +12,7 @@
 #include <cctype>
 #include <cstdio>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <deque>
 #include <filesystem>
@@ -108,6 +110,15 @@ void pushInput(InputEvent event) {
 
 void pushLog(const std::string& message) {
     __android_log_print(ANDROID_LOG_INFO, TAG, "%s", message.c_str());
+    if (const char* path = std::getenv("MCLAUNCHER_SESSION_LOG"); path != nullptr && path[0] != '\0') {
+        const int descriptor = open(path, O_WRONLY | O_APPEND | O_CLOEXEC);
+        if (descriptor >= 0) {
+            const std::string line = "NATIVE: " + message + "\n";
+            const ssize_t ignored = write(descriptor, line.data(), line.size());
+            (void) ignored;
+            close(descriptor);
+        }
+    }
     std::lock_guard<std::mutex> lock(gLogMutex);
     gLogLines.push_back(message);
     while (gLogLines.size() > 600) gLogLines.pop_front();
@@ -115,6 +126,15 @@ void pushLog(const std::string& message) {
 
 void pushError(const std::string& message) {
     __android_log_print(ANDROID_LOG_ERROR, TAG, "%s", message.c_str());
+    if (const char* path = std::getenv("MCLAUNCHER_SESSION_LOG"); path != nullptr && path[0] != '\0') {
+        const int descriptor = open(path, O_WRONLY | O_APPEND | O_CLOEXEC);
+        if (descriptor >= 0) {
+            const std::string line = "NATIVE ERROR: " + message + "\n";
+            const ssize_t ignored = write(descriptor, line.data(), line.size());
+            (void) ignored;
+            close(descriptor);
+        }
+    }
     std::lock_guard<std::mutex> lock(gLogMutex);
     gLogLines.push_back("ERROR: " + message);
     while (gLogLines.size() > 600) gLogLines.pop_front();
@@ -152,6 +172,7 @@ void* loadAbsolute(const std::string& path, bool required) {
         if (required) pushError("Required native library is missing: " + path);
         return nullptr;
     }
+    pushLog("Loading " + path);
     dlerror();
     void* handle = dlopen(path.c_str(), RTLD_NOW | RTLD_GLOBAL);
     if (handle == nullptr) {
@@ -162,6 +183,16 @@ void* loadAbsolute(const std::string& path, bool required) {
         pushLog("Loaded " + path);
     }
     return handle;
+}
+
+bool unsupportedProcessHookLibrary(const std::string& filename) {
+    std::string lower = filename;
+    std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char ch) {
+        return static_cast<char>(std::tolower(ch));
+    });
+    return lower.find("bytehook") != std::string::npos ||
+           lower.find("shadowhook") != std::string::npos ||
+           lower.find("exithook") != std::string::npos;
 }
 
 void initializeMojoGlfw(JNIEnv* env, const std::string& path, void* handle) {
@@ -613,6 +644,7 @@ Java_com_mclauncher_app_engine_NativeLaunchBridge_nativeStart(
         if (!environmentKeys[i].empty()) setenv(environmentKeys[i].c_str(), environmentValues[i].c_str(), 1);
     }
     setenv("JAVA_HOME", javaHome.c_str(), 1);
+    pushLog("Native startup environment configured");
 
     if (chdir(workingDirectory.c_str()) != 0) {
         pushError("Could not change working directory to " + workingDirectory + ": " + std::strerror(errno));
@@ -626,6 +658,10 @@ Java_com_mclauncher_app_engine_NativeLaunchBridge_nativeStart(
         const std::string filename = fs::path(library).filename().string();
         if (filename == "libglfw.so") {
             deferredGlfw.push_back(library);
+            continue;
+        }
+        if (unsupportedProcessHookLibrary(filename)) {
+            pushLog("Skipping unrelated process-hook library " + filename);
             continue;
         }
         // Renderer/driver libraries are opened by the configured engine after its
