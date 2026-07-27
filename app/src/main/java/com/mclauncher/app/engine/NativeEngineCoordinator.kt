@@ -302,19 +302,26 @@ class NativeEngineCoordinator(
 
     private fun preloadPriority(name: String): Int = when {
         name.contains("c++_shared", ignoreCase = true) -> 0
-        name.contains("bytehook", ignoreCase = true) -> 1
-        name.contains("tinywrapper", ignoreCase = true) -> 1
-        name.contains("pojav", ignoreCase = true) || name.contains("exit_hook", ignoreCase = true) -> 2
-        name.contains("freetype", ignoreCase = true) -> 3
-        name.contains("openal", ignoreCase = true) -> 3
-        name.contains("vulkan", ignoreCase = true) -> 3
-        name.contains("angle", ignoreCase = true) -> 4
-        name.contains("mesa", ignoreCase = true) || name.contains("zink", ignoreCase = true) -> 4
-        name.contains("mobileglues", ignoreCase = true) || name.contains("ltw", ignoreCase = true) -> 5
-        name.contains("gl4es", ignoreCase = true) || name.contains("virgl", ignoreCase = true) -> 5
-        name.contains("glfw", ignoreCase = true) -> 6
-        name.contains("lwjgl", ignoreCase = true) -> 7
-        else -> 8
+        // libbytehook.so has a DT_NEEDED entry for libshadowhook.so. Android's
+        // isolated class-loader namespace will not resolve it unless ShadowHook
+        // is already part of the namespace's global group.
+        name.contains("shadowhook", ignoreCase = true) -> 1
+        name.contains("bytehook", ignoreCase = true) -> 2
+        name.contains("tinywrapper", ignoreCase = true) -> 2
+        name.contains("linkerhook", ignoreCase = true) -> 3
+        name.contains("awt_headless", ignoreCase = true) -> 3
+        name.contains("awt_xawt", ignoreCase = true) -> 4
+        name.contains("pojav", ignoreCase = true) || name.contains("exit_hook", ignoreCase = true) -> 4
+        name.contains("freetype", ignoreCase = true) -> 5
+        name.contains("openal", ignoreCase = true) -> 5
+        name.contains("vulkan", ignoreCase = true) -> 5
+        name.contains("angle", ignoreCase = true) -> 6
+        name.contains("mesa", ignoreCase = true) || name.contains("zink", ignoreCase = true) -> 6
+        name.contains("mobileglues", ignoreCase = true) || name.contains("ltw", ignoreCase = true) -> 7
+        name.contains("gl4es", ignoreCase = true) || name.contains("virgl", ignoreCase = true) -> 7
+        name.contains("glfw", ignoreCase = true) -> 8
+        name.contains("lwjgl", ignoreCase = true) -> 9
+        else -> 10
     }
 
 

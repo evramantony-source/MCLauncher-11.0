@@ -34,6 +34,14 @@ def require_absent(relative: str, *needles: str) -> None:
             errors.append(f"{relative}: obsolete text remains: {needle!r}")
 
 
+def require_before(relative: str, first: str, second: str) -> None:
+    content = text(relative)
+    first_index = content.find(first)
+    second_index = content.find(second)
+    if first_index < 0 or second_index < 0 or first_index >= second_index:
+        errors.append(f"{relative}: expected {first!r} before {second!r}")
+
+
 # Structured files must parse.
 for path in ROOT.rglob("*.json"):
     try:
@@ -88,6 +96,16 @@ require_contains(
     'addJavaDesktopModuleAccess',
     'libpojavexec.so',
     'POJAV_RENDERER',
+)
+require_before(
+    "app/src/main/java/com/mclauncher/app/engine/NativeEngineCoordinator.kt",
+    'name.contains("shadowhook"',
+    'name.contains("bytehook"',
+)
+require_before(
+    "app/src/main/java/com/mclauncher/app/engine/NativeEngineCoordinator.kt",
+    'name.contains("awt_headless"',
+    'name.contains("awt_xawt"',
 )
 require_contains(
     "scripts/vendor_engine.py",

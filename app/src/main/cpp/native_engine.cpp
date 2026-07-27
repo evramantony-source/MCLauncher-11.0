@@ -621,6 +621,7 @@ Java_com_mclauncher_app_engine_NativeLaunchBridge_nativeStart(
     }
 
     std::vector<std::string> deferredGlfw;
+    std::vector<std::string> retryPreloads;
     for (const auto& library : preloadLibraries) {
         const std::string filename = fs::path(library).filename().string();
         if (filename == "libglfw.so") {
@@ -634,6 +635,17 @@ Java_com_mclauncher_app_engine_NativeLaunchBridge_nativeStart(
             library.find("/drivers/") != std::string::npos) {
             continue;
         }
+        void* handle = loadAbsolute(library, false);
+        if (handle == nullptr) {
+            // A third-party payload may gain a new DT_NEEDED relationship that
+            // the Kotlin ordering table does not know about yet. Retry once
+            // after the rest of the namespace has been populated.
+            retryPreloads.push_back(library);
+        } else {
+            initializeUpstreamAndroidJni(env, library, handle);
+        }
+    }
+    for (const auto& library : retryPreloads) {
         void* handle = loadAbsolute(library, false);
         initializeUpstreamAndroidJni(env, library, handle);
     }
