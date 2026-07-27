@@ -118,5 +118,7 @@ dependencies {
     implementation("androidx.security:security-crypto:1.1.0")
     implementation("org.tukaani:xz:1.10")
 
+    testImplementation(kotlin("test"))
+
     debugImplementation("androidx.compose.ui:ui-tooling")
 }

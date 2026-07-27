@@ -4,7 +4,7 @@ Beta 04 separates the Minecraft renderer from the optional Android graphics-driv
 
 ## Bundled path
 
-The CI build must package at least one validated GL4ES-compatible renderer for every supported ABI. Automatic mode prefers an available bundled renderer and System driver. The native bridge configures the renderer before loading GLFW and deliberately avoids preloading unselected backends, preventing GL4ES/Mesa/ANGLE symbol collisions.
+The CI build packages a hash-pinned MobileGlues release for every supported ABI, plus the compatible GL4ES/OpenLTW fallback produced by the pinned engine source. Automatic mode prefers MobileGlues and the System driver. The native bridge configures the renderer before loading GLFW and deliberately avoids preloading unselected backends, preventing GL4ES/Mesa/ANGLE symbol collisions.
 
 Additional renderer entries remain available only when a compatible `mclauncher-graphics.json` pack is present:
 
@@ -17,7 +17,7 @@ Additional renderer entries remain available only when a compatible `mclauncher-
 - Native Vulkan
 - Krypton or custom backends
 
-An unavailable backend is marked **not installed** and cannot be selected successfully by the launch resolver.
+An unavailable explicit backend is marked **not installed**. If an older saved setting points to a missing pack, the launch resolver safely falls back to the first installed backend instead of blocking Minecraft startup.
 
 ## Driver layers
 

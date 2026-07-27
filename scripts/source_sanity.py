@@ -12,6 +12,10 @@ from xml.etree import ElementTree
 
 ROOT = Path(__file__).resolve().parents[1]
 errors: list[str] = []
+TEXT_SUFFIXES = {
+    ".cpp", ".gradle", ".java", ".json", ".kts", ".kt", ".md",
+    ".pro", ".properties", ".py", ".txt", ".xml", ".yml",
+}
 
 
 def text(relative: str) -> str:
@@ -44,6 +48,25 @@ def require_before(relative: str, first: str, second: str) -> None:
         errors.append(f"{relative}: expected {first!r} before {second!r}")
 
 
+# Every repository-owned source/config/document file must be valid UTF-8 and
+# free of embedded NUL bytes. Generated artifacts and signing material are
+# validated separately or by the final-APK verifier.
+for path in ROOT.rglob("*"):
+    if not path.is_file() or any(
+        part in {".git", ".ci-signing", "__pycache__", "artifacts", "signing"}
+        for part in path.relative_to(ROOT).parts
+    ):
+        continue
+    if path.suffix.lower() not in TEXT_SUFFIXES and path.name != ".gitignore":
+        continue
+    try:
+        content = path.read_bytes()
+        content.decode("utf-8")
+        if b"\x00" in content:
+            errors.append(f"Embedded NUL byte in {path.relative_to(ROOT)}")
+    except UnicodeDecodeError as exc:
+        errors.append(f"Invalid UTF-8 in {path.relative_to(ROOT)}: {exc}")
+
 # Structured files must parse.
 for path in ROOT.rglob("*.json"):
     try:
@@ -55,6 +78,31 @@ for path in ROOT.rglob("*.xml"):
         ElementTree.parse(path)
     except Exception as exc:  # noqa: BLE001
         errors.append(f"Invalid XML {path.relative_to(ROOT)}: {exc}")
+
+renderer_enums = {
+    "MOBILE_GLUES", "ANGLE", "OPEN_LTW", "NG_GL4ES", "GL4ES",
+    "ZINK", "VIRGL", "VULKAN", "KRYPTON", "CUSTOM",
+}
+driver_enums = {"SYSTEM", "ANGLE", "TURNIP", "PANVK", "SWIFTSHADER"}
+for manifest_path in (ROOT / "graphics-pack-examples").glob("*/mclauncher-graphics.json"):
+    document = json.loads(manifest_path.read_text(encoding="utf-8"))
+    label = manifest_path.relative_to(ROOT)
+    if document.get("schemaVersion") != 1:
+        errors.append(f"{label}: schemaVersion must be 1")
+    if document.get("kind") not in {"renderer", "driver"}:
+        errors.append(f"{label}: kind must be renderer or driver")
+    if not re.fullmatch(r"[a-z0-9][a-z0-9._-]*", str(document.get("id", ""))):
+        errors.append(f"{label}: id is not safe")
+    architecture = document.get("architecture")
+    if architecture not in {"arm64-v8a", "armeabi-v7a", "x86_64"}:
+        errors.append(f"{label}: unsupported architecture {architecture!r}")
+    if document.get("kind") == "renderer":
+        if document.get("renderer") not in renderer_enums:
+            errors.append(f"{label}: invalid renderer enum")
+        if not str(document.get("pojavRenderer", "")).strip():
+            errors.append(f"{label}: renderer token is missing")
+    if document.get("kind") == "driver" and document.get("driver") not in driver_enums:
+        errors.append(f"{label}: invalid driver enum")
 
 alpha_signer = ROOT / "signing/mclauncher-alpha-debug.jks.b64"
 try:
@@ -75,6 +123,19 @@ for major in (8, 17, 21, 25):
     source = lock.get("runtimes", {}).get("sources", {}).get(str(major))
     if not source:
         errors.append(f"vendor/engine-lock.json: Java {major} source is missing")
+mobileglues = lock.get("renderers", {}).get("mobileGlues", {})
+jna = lock.get("nativeCompatibility", {}).get("jna", {})
+for label, document, digest_keys in (
+    ("MobileGlues", mobileglues, ("releaseSha256", "licenseSha256")),
+    ("JNA", jna, ("aarSha256", "licenseSha256")),
+):
+    if not document:
+        errors.append(f"vendor/engine-lock.json: {label} source is missing")
+    for key in digest_keys:
+        if not re.fullmatch(r"[0-9a-f]{64}", str(document.get(key, ""))):
+            errors.append(f"vendor/engine-lock.json: {label} {key} must be SHA-256")
+if not re.fullmatch(r"[0-9a-f]{40}", str(mobileglues.get("sourceCommit", ""))):
+    errors.append("vendor/engine-lock.json: MobileGlues source commit must be a full SHA")
 
 require_contains(
     "app/build.gradle.kts",
@@ -129,10 +190,15 @@ require_contains(
     "resolveLwjglOpenGlLibrary",
     '"org.lwjgl.opengl.libname"',
     '"jna.boot.library.path"',
+    "selectJnaNativeDirectory",
     "lwjglExtractDirectory",
     "StandardCopyOption.ATOMIC_MOVE",
     'File(engineNatives, "libawt_xawt.so")',
     'findFile(javaHome, "libawt.so")',
+)
+require_absent(
+    "app/src/main/java/com/mclauncher/app/engine/NativeEngineCoordinator.kt",
+    '"glfwstub.initEgl"',
 )
 require_absent(
     "app/src/main/java/com/mclauncher/app/GameActivity.kt",
@@ -167,6 +233,9 @@ require_contains(
     "verify_runtime_signatures",
     "parse_signature_bundle",
     "mojo-runtime-signing-cert.pem",
+    "vendor_mobileglues",
+    "vendor_jna_dispatch",
+    "bundle_version",
 )
 require_contains(
     "app/src/main/java/com/mclauncher/app/ui/game/TouchControls.kt",
@@ -193,6 +262,8 @@ require_contains(
     'JNI_CreateJavaVM',
     'Java_net_kdt_pojavlaunch_utils_jre_JavaRunner_nativeLoadJVM',
     'Java_net_kdt_pojavlaunch_utils_jre_JavaRunner_nativeSetupExit',
+    'libmobileglues.so',
+    'getenv("LIBGL_ES")',
 )
 require_absent(
     "app/src/main/cpp/native_engine.cpp",
@@ -203,6 +274,19 @@ require_contains(
     "app/src/main/java/net/kdt/pojavlaunch/ExitActivity.java",
     'showExitMessage(Context context, int code, boolean isSignal)',
     'Process.killProcess(Process.myPid())',
+)
+require_absent(
+    "app/src/main/java/com/mclauncher/app/ui/LauncherViewModel.kt",
+    "The bundled ${snapshot.settings.renderer.displayName} renderer is missing",
+)
+require_contains(
+    "app/src/main/java/com/mclauncher/app/engine/CrashAnalyzer.kt",
+    '"OpenGL renderer too old"',
+    '"invalid session"',
+)
+require_absent(
+    "app/src/main/java/com/mclauncher/app/engine/CrashAnalyzer.kt",
+    '"authentication" in text',
 )
 require_contains(
     "vendor/patches/mojo-single-destroy.patch",

@@ -29,5 +29,29 @@
   },
   "patchedLibraries": {
     "manifest": "app_pojavlauncher/src/main/assets/substitutions.json"
+  },
+  "renderers": {
+    "mobileGlues": {
+      "version": "1.3.5",
+      "releaseUrl": "https://github.com/MobileGL-Dev/MobileGlues-release/releases/download/V1.3.5/MobileGlues_1.3.5.apk",
+      "releaseSha256": "228d44d812be7793a9cff42de4251ae8bab338a15e851572c08c9265818c41ba",
+      "sourceRepository": "https://github.com/MobileGL-Dev/MobileGlues",
+      "sourceCommit": "3d609968117ab2791150c608d2e7bb582352dd9f",
+      "license": "LGPL-2.1",
+      "licenseUrl": "https://raw.githubusercontent.com/MobileGL-Dev/MobileGlues/3d609968117ab2791150c608d2e7bb582352dd9f/LICENSE",
+      "licenseSha256": "35a20d16c9f153b1603bb46228d58344450606bbe7ce4f181bbf0a45aadc2ae7"
+    }
+  },
+  "nativeCompatibility": {
+    "jna": {
+      "version": "5.17.0",
+      "aarUrl": "https://repo.maven.apache.org/maven2/net/java/dev/jna/jna/5.17.0/jna-5.17.0.aar",
+      "aarSha256": "4dbeffffa665d97ad5aa7eee297531d3c841a86716ab7f774fd6956422b3cf38",
+      "sourceRepository": "https://github.com/java-native-access/jna",
+      "sourceRef": "5.17.0",
+      "license": "Apache-2.0 OR LGPL-2.1-or-later",
+      "licenseUrl": "https://raw.githubusercontent.com/java-native-access/jna/5.17.0/LICENSE",
+      "licenseSha256": "07c938b23950ab7d47a24ef35f9f5da3a05ae164278dc959ad6994135ed59ff1"
+    }
   }
 }

@@ -5,7 +5,7 @@
 1. Read the exact engine source commit from `vendor/engine-lock.json`.
 2. Build the Android native engine and GLFW from source.
 3. Extract the selected ABI's launch, AWT, audio, renderer and dependency libraries.
-4. Download Java 8/17/21/25 and patched LWJGL artifacts.
+4. Download the pinned MobileGlues/JNA payloads, Java 8/17/21/25 and patched LWJGL artifacts.
 5. Verify Java 17/21/25 archive signatures with the certificate from the pinned engine source.
 6. Preserve Cacio/Caciocavallo support-JAR structure and third-party notices.
 7. Fail if an engine ELF, default renderer, runtime archive, LWJGL classifier, signature record or required notice is missing.
@@ -17,10 +17,10 @@
 2. Extract universal and ABI layers for Java 8, 17, 21 and 25.
 3. Resolve the Minecraft version's exact LWJGL coordinates through the Android substitution mapping.
 4. Extract the matching ABI classifier natives.
-5. Configure GL4ES/OpenLTW or an installed graphics pack before GLFW initialization.
+5. Prefer MobileGlues, or configure the selected compatible graphics pack, before GLFW initialization.
 6. Overlay MojoLauncher's `libawt_xawt.so` stub into the selected runtime while preserving OpenJDK's real `libawt_headless.so`.
 7. Disable Android native heap pointer tagging for the compatibility process because the embedded OpenJDK/desktop-native stack contains code that truncates top-byte tags before deallocation.
-8. Attach the Android Surface and launch in-process through the pinned MojoLauncher `JNI_CreateJavaVM` engine, including its Android linker, native-library and exit/abort hooks.
+8. Attach the Android Surface and launch in-process through the pinned MojoLauncher `JNI_CreateJavaVM` engine and its Android linker/native-library compatibility bridge.
 9. Forward touch, keyboard, mouse, controller and gyroscope input.
 
 There is no installed-app dependency on another launcher. CI and physical-device validation are still release gates.

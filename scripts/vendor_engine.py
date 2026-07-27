@@ -51,6 +51,16 @@ def payload_file_index(root: Path) -> dict[str, str]:
     }
 
 
+def bundle_version(lock: dict) -> str:
+    lock_digest = hashlib.sha256(
+        json.dumps(lock, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()[:12]
+    return (
+        f"mojo-{lock['engine']['commit'][:12]}-"
+        f"lock-{lock_digest}-mclauncher-11.0-alpha01"
+    )
+
+
 def download(
     url: str,
     destination: Path,
@@ -224,8 +234,7 @@ def write_graphics_packs(output: Path, copied: dict[str, list[str]]) -> list[dic
     # LD_LIBRARY_PATH. Each pack copies only the selected renderer entry library.
     presets = (
         ("openltw", "OPEN_LTW", "opengles3_ltw", ("libltw",)),
-        ("gl4es", "GL4ES", "opengles2", ("libgl4es",)),
-        ("zink", "ZINK", "vulkan_zink", ("libegl_mesa", "libosmesa", "zink")),
+        ("gl4es", "GL4ES", "opengles3", ("libgl4es",)),
     )
     records: list[dict] = []
     for abi, names in copied.items():
@@ -249,7 +258,7 @@ def write_graphics_packs(output: Path, copied: dict[str, list[str]]) -> list[dic
                 "driver": None,
                 "pojavRenderer": pojav_renderer,
                 "preload": selected,
-                "environment": {},
+                "environment": {"LIBGL_ES": "3"},
                 "files": selected,
                 "sourceName": "MCLauncher bundled engine",
                 "sourceProject": "MojoLauncher/MojoLauncher",
@@ -264,6 +273,145 @@ def write_graphics_packs(output: Path, copied: dict[str, list[str]]) -> list[dic
         if not any(record["abi"] == abi and record["id"] in {"gl4es", "openltw"} for record in records):
             raise RuntimeError(f"No usable default GL4ES/OpenLTW renderer was produced for {abi}")
     return records
+
+
+def extract_archive_member(archive: zipfile.ZipFile, member: str, target: Path) -> None:
+    try:
+        info = archive.getinfo(member)
+    except KeyError as exc:
+        raise RuntimeError(f"Pinned archive is missing {member}") from exc
+    target.parent.mkdir(parents=True, exist_ok=True)
+    with archive.open(info) as source, target.open("wb") as destination:
+        shutil.copyfileobj(source, destination)
+
+
+def vendor_mobileglues(
+    source: dict,
+    output: Path,
+    cache: Path,
+    abis: Iterable[str],
+) -> tuple[list[dict], str]:
+    version = str(source["version"])
+    release = cache / f"renderers/MobileGlues_{version}.apk"
+    download(
+        source["releaseUrl"],
+        release,
+        expected_sha256=source["releaseSha256"],
+    )
+    records: list[dict] = []
+    with zipfile.ZipFile(release) as archive:
+        for abi in abis:
+            pack = output / abi / "renderers/mobileglues"
+            files = ("libmobileglues.so", "libmobileglues_info_getter.so")
+            for filename in files:
+                extract_archive_member(
+                    archive,
+                    f"lib/{abi}/{filename}",
+                    pack / filename,
+                )
+            manifest = {
+                "schemaVersion": 1,
+                "id": "bundled-mobileglues",
+                "name": "Bundled MobileGlues",
+                "version": version,
+                "kind": "renderer",
+                "architecture": abi,
+                "renderer": "MOBILE_GLUES",
+                "driver": None,
+                "pojavRenderer": "mobileglues",
+                "preload": ["libmobileglues.so"],
+                "environment": {
+                    "LIBGL_ES": "3",
+                    "MG_DIR_PATH": "${cache}/mobileglues",
+                },
+                "files": list(files),
+                "sourceName": "MobileGlues official release",
+                "sourceProject": source["sourceRepository"],
+                "license": source["license"],
+                "importedAtEpochMs": 0,
+            }
+            (pack / "mclauncher-graphics.json").write_text(
+                json.dumps(manifest, indent=2) + "\n",
+                encoding="utf-8",
+            )
+            records.append(
+                {
+                    "abi": abi,
+                    "id": "mobileglues",
+                    "version": version,
+                    "files": list(files),
+                    "sourceSha256": sha256(release),
+                    "sourceCommit": source["sourceCommit"],
+                }
+            )
+
+    license_target = output / "common/licenses/MobileGlues-LGPL-2.1.txt"
+    license_cache = cache / "licenses/MobileGlues-LGPL-2.1.txt"
+    download(
+        source["licenseUrl"],
+        license_cache,
+        expected_sha256=source["licenseSha256"],
+    )
+    license_target.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(license_cache, license_target)
+    return records, str(license_target.relative_to(output))
+
+
+def vendor_jna_dispatch(
+    source: dict,
+    output: Path,
+    cache: Path,
+    abis: Iterable[str],
+    native_libraries: dict[str, list[str]],
+) -> tuple[dict, str]:
+    version = str(source["version"])
+    aar = cache / f"native-compatibility/jna-{version}.aar"
+    download(source["aarUrl"], aar, expected_sha256=source["aarSha256"])
+    records: dict[str, dict[str, str]] = {}
+    with zipfile.ZipFile(aar) as archive:
+        for abi in abis:
+            native_root = output / abi / "natives"
+            legacy = native_root / "libjnidispatch.so"
+            if not legacy.is_file():
+                raise RuntimeError(
+                    f"Pinned engine build lacks its JNA 6 Android native for {abi}"
+                )
+            jna6 = native_root / "jna-6/libjnidispatch.so"
+            jna6.parent.mkdir(parents=True, exist_ok=True)
+            legacy.replace(jna6)
+
+            jna7 = native_root / "jna-7/libjnidispatch.so"
+            extract_archive_member(
+                archive,
+                f"jni/{abi}/libjnidispatch.so",
+                jna7,
+            )
+            names = native_libraries[abi]
+            names.remove("libjnidispatch.so")
+            names.extend(
+                ("jna-6/libjnidispatch.so", "jna-7/libjnidispatch.so")
+            )
+            native_libraries[abi] = sorted(set(names))
+            records[abi] = {
+                "jna6Sha256": sha256(jna6),
+                "jna7Sha256": sha256(jna7),
+            }
+
+    license_target = output / "common/licenses/JNA-LICENSE.txt"
+    license_cache = cache / "licenses/JNA-LICENSE.txt"
+    download(
+        source["licenseUrl"],
+        license_cache,
+        expected_sha256=source["licenseSha256"],
+    )
+    license_target.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(license_cache, license_target)
+    return {
+        "version": version,
+        "source": source["aarUrl"],
+        "sourceSha256": sha256(aar),
+        "libraries": records,
+    }, str(license_target.relative_to(output))
 
 
 def classifier_matches_abi(classifier: str, abi: str) -> bool:
@@ -605,6 +753,20 @@ def main() -> int:
 
     natives = copy_apk_native_libraries(args.mojo_apk, output, abis)
     renderers = write_graphics_packs(output, natives)
+    mobileglues, mobileglues_license = vendor_mobileglues(
+        lock["renderers"]["mobileGlues"],
+        output,
+        args.cache,
+        abis,
+    )
+    renderers = mobileglues + renderers
+    jna_dispatch, jna_license = vendor_jna_dispatch(
+        lock["nativeCompatibility"]["jna"],
+        output,
+        args.cache,
+        abis,
+        natives,
+    )
     patched, patched_natives = vendor_patched_libraries(args.mojo_root, output, args.cache, abis)
     support = vendor_support_jars(args.mojo_apk, output)
     runtime_certificate = (
@@ -621,8 +783,9 @@ def main() -> int:
     trust_directory.mkdir(parents=True, exist_ok=True)
     shutil.copy2(runtime_certificate, trust_directory / "mojo-runtime-signing-cert.pem")
     licenses = vendor_licenses(args.mojo_root, output)
+    licenses.extend((mobileglues_license, jna_license))
 
-    version = f"mojo-{lock['engine']['commit'][:12]}-mclauncher-11.0-alpha01"
+    version = bundle_version(lock)
     (output / "bundle-version.txt").write_text(version + "\n", encoding="utf-8")
     manifest = {
         "schemaVersion": 2,
@@ -633,6 +796,7 @@ def main() -> int:
         "rendererPacks": renderers,
         "patchedLibraries": patched,
         "patchedNativeLibraries": patched_natives,
+        "jnaDispatch": jna_dispatch,
         "supportJars": support,
         "runtimes": runtimes,
         "licenses": licenses,

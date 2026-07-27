@@ -50,7 +50,7 @@ jobs:
           openssl version
           python3 scripts/source_sanity.py
           python3 -m unittest discover -s scripts -p 'test_*.py'
-          gradle --no-daemon :core-model:test :core-minecraft:test
+          gradle --no-daemon :core-model:test :core-minecraft:test :app:testDebugUnitTest
 
   build:
     name: Build ${{ inputs.abi || 'arm64-v8a' }} standalone APK

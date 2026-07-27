@@ -465,19 +465,38 @@ bool configureMojoRenderer(JNIEnv* env, const std::vector<std::string>& preloadL
     const int height = std::max(1, mclauncher_window_height());
     configureDisplay(env, nullptr, width, height, 60);
 
-    const std::string renderer = getenv("POJAV_RENDERER") ? getenv("POJAV_RENDERER") : "opengles2";
+    std::string renderer = getenv("POJAV_RENDERER") ? getenv("POJAV_RENDERER") : "opengles3";
+    std::transform(renderer.begin(), renderer.end(), renderer.begin(), [](unsigned char ch) {
+        return static_cast<char>(std::tolower(ch));
+    });
     std::string rendererLibrary;
     bool useLoaderBypass = false;
     bool useGles = true;
     int glesVersion = 3;
+    if (const char* configuredGles = getenv("LIBGL_ES")) {
+        char* end = nullptr;
+        const long parsed = std::strtol(configuredGles, &end, 10);
+        if (end != configuredGles && *end == '\0') {
+            glesVersion = parsed >= 3 ? 3 : 2;
+        }
+    }
     if (renderer == "vulkan") {
         const bool configured = configureRenderer(env, nullptr, nullptr, JNI_FALSE, JNI_FALSE, 3) == JNI_TRUE;
         if (configured) pushLog("Configured native Vulkan surface mode");
         else pushError("Native Vulkan renderer configuration failed");
         return configured;
     }
-    if (renderer.find("ltw") != std::string::npos) {
+    if (renderer.find("mobileglues") != std::string::npos) {
+        rendererLibrary = findPreloadByTokens(preloadLibraries, {"libmobileglues.so"});
+    } else if (renderer.find("ltw") != std::string::npos) {
         rendererLibrary = findPreloadByTokens(preloadLibraries, {"libltw"});
+    } else if (renderer.find("ng-gl4es") != std::string::npos ||
+               renderer.find("ng_gl4es") != std::string::npos ||
+               renderer.find("nggl4es") != std::string::npos) {
+        rendererLibrary = findPreloadByTokens(
+            preloadLibraries, {"ng-gl4es", "ng_gl4es", "nggl4es"});
+    } else if (renderer.find("krypton") != std::string::npos) {
+        rendererLibrary = findPreloadByTokens(preloadLibraries, {"krypton"});
     } else if (renderer.find("zink") != std::string::npos || renderer.find("freedreno") != std::string::npos) {
         rendererLibrary = findPreloadByTokens(preloadLibraries, {"libegl_mesa", "libosmesa", "mesa"});
         useLoaderBypass = true;
@@ -489,9 +508,11 @@ bool configureMojoRenderer(JNIEnv* env, const std::vector<std::string>& preloadL
     } else if (renderer.find("virgl") != std::string::npos) {
         pushError("VirGL is not supported by the bundled dnbootstrap GLFW engine; install a compatible custom engine to use it");
         return false;
-    } else {
+    } else if (renderer.find("opengles") != std::string::npos ||
+               renderer.find("gl4es") != std::string::npos) {
         rendererLibrary = findPreloadByTokens(preloadLibraries, {"libgl4es"});
-        glesVersion = renderer.find("opengles2") != std::string::npos ? 2 : 3;
+    } else {
+        rendererLibrary = findPreloadByTokens(preloadLibraries, {renderer});
     }
     if (rendererLibrary.empty()) {
         pushError("No renderer library matched POJAV_RENDERER=" + renderer);
@@ -503,7 +524,10 @@ bool configureMojoRenderer(JNIEnv* env, const std::vector<std::string>& preloadL
                                               useGles ? JNI_TRUE : JNI_FALSE,
                                               glesVersion) == JNI_TRUE;
     env->DeleteLocalRef(rendererPath);
-    if (configured) pushLog("Configured bundled renderer " + rendererLibrary);
+    if (configured) {
+        pushLog("Configured bundled renderer " + rendererLibrary +
+                " with GLES " + std::to_string(glesVersion));
+    }
     else pushError("Bundled renderer configuration failed for " + rendererLibrary);
     return configured;
 }

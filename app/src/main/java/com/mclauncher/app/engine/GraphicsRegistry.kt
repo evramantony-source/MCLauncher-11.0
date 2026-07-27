@@ -37,13 +37,12 @@ class GraphicsRegistry(
     private val rendererPresets = listOf(
         RendererPreset(
             renderer = Renderer.MOBILE_GLUES,
-            pojavRenderer = "opengles2",
-            tokens = listOf("mobileglues", "libmg", "mgbridge"),
-            preloadTokens = listOf("mobileglues", "libmg", "angle", "egl", "gles"),
+            pojavRenderer = "mobileglues",
+            tokens = listOf("libmobileglues.so"),
+            preloadTokens = listOf("libmobileglues.so"),
             environment = mapOf(
                 "LIBGL_ES" to "3",
-                "MOBILEGLUES_LOG_DIR" to "${'$'}{cache}/mobileglues",
-                "MG_DIR" to "${'$'}{cache}/mobileglues"
+                "MG_DIR_PATH" to "${'$'}{cache}/mobileglues"
             )
         ),
         RendererPreset(
@@ -58,7 +57,7 @@ class GraphicsRegistry(
         ),
         RendererPreset(
             renderer = Renderer.OPEN_LTW,
-            pojavRenderer = "opengles2",
+            pojavRenderer = "opengles3_ltw",
             tokens = listOf("openltw", "ltw", "tinywrapper"),
             preloadTokens = listOf("openltw", "ltw", "tinywrapper", "egl", "gles"),
             environment = mapOf(
@@ -68,8 +67,8 @@ class GraphicsRegistry(
         ),
         RendererPreset(
             renderer = Renderer.NG_GL4ES,
-            pojavRenderer = "opengles2",
-            tokens = listOf("ng_gl4es", "ng-gl4es", "nggl4es", "libgl4es"),
+            pojavRenderer = "ng-gl4es",
+            tokens = listOf("ng_gl4es", "ng-gl4es", "nggl4es"),
             preloadTokens = listOf("ng_gl4es", "ng-gl4es", "nggl4es", "gl4es"),
             environment = mapOf(
                 "LIBGL_ES" to "3",
@@ -80,11 +79,11 @@ class GraphicsRegistry(
         ),
         RendererPreset(
             renderer = Renderer.GL4ES,
-            pojavRenderer = "opengles2",
+            pojavRenderer = "opengles3",
             tokens = listOf("gl4es"),
             preloadTokens = listOf("gl4es", "egl", "gles"),
             environment = mapOf(
-                "LIBGL_ES" to "2",
+                "LIBGL_ES" to "3",
                 "LIBGL_MIPMAP" to "3",
                 "LIBGL_NORMALIZE" to "1",
                 "LIBGL_NOERROR" to "1"
@@ -92,7 +91,7 @@ class GraphicsRegistry(
         ),
         RendererPreset(
             renderer = Renderer.ZINK,
-            pojavRenderer = "opengles2",
+            pojavRenderer = "vulkan_zink",
             tokens = listOf("zink", "mesa", "gallium"),
             preloadTokens = listOf("vulkan", "mesa", "zink", "gallium"),
             environment = mapOf(
@@ -123,7 +122,7 @@ class GraphicsRegistry(
         ),
         RendererPreset(
             renderer = Renderer.KRYPTON,
-            pojavRenderer = "opengles2",
+            pojavRenderer = "krypton",
             tokens = listOf("krypton"),
             preloadTokens = listOf("krypton", "egl", "gles"),
             environment = emptyMap()
@@ -205,7 +204,10 @@ class GraphicsRegistry(
     }
 
     fun resolve(requestedRenderer: Renderer, requestedDriver: GraphicsDriver, cacheDirectory: File): ResolvedGraphicsStack {
-        val renderer = if (requestedRenderer == Renderer.AUTO) chooseAutomaticRenderer() else requestedRenderer
+        val renderer = requestedRenderer
+            .takeUnless { it == Renderer.AUTO }
+            ?.takeIf { rendererLibraries(it, preset(it)).isNotEmpty() }
+            ?: chooseAutomaticRenderer()
         val rendererPreset = preset(renderer)
         val rendererDirectory = rendererDirectory(renderer)
             ?: error("${renderer.displayName} is selected, but its native pack is not installed for $architecture")
@@ -220,7 +222,13 @@ class GraphicsRegistry(
             }
         }
 
-        val driver = if (requestedDriver == GraphicsDriver.AUTO) chooseAutomaticDriver(renderer) else requestedDriver
+        val driver = requestedDriver
+            .takeUnless { it == GraphicsDriver.AUTO }
+            ?.takeIf {
+                it == GraphicsDriver.SYSTEM ||
+                    driverLibraries(it, driverPreset(it)).isNotEmpty()
+            }
+            ?: chooseAutomaticDriver(renderer)
         val driverPreset = driverPreset(driver)
         val driverDirectory = if (driver == GraphicsDriver.SYSTEM) null else driverDirectory(driver)
         if (driver != GraphicsDriver.SYSTEM) {
@@ -237,10 +245,19 @@ class GraphicsRegistry(
         driverManifest?.environment?.let(environment::putAll)
         val expandedEnvironment = environment.mapValues { (_, value) -> value.replace("${'$'}{cache}", cacheDirectory.absolutePath) }
 
+        val pojavRenderer = when (renderer) {
+            // Older example manifests used a generic opengles2 token for these
+            // backends, which makes the native bridge select GL4ES by mistake.
+            Renderer.MOBILE_GLUES -> "mobileglues"
+            Renderer.NG_GL4ES -> "ng-gl4es"
+            Renderer.KRYPTON -> "krypton"
+            else -> rendererManifest?.pojavRenderer ?: rendererPreset.pojavRenderer
+        }
+
         return ResolvedGraphicsStack(
             renderer = renderer,
             driver = driver,
-            pojavRenderer = rendererManifest?.pojavRenderer ?: rendererPreset.pojavRenderer,
+            pojavRenderer = pojavRenderer,
             searchDirectories = listOfNotNull(rendererDirectory, driverDirectory),
             preloadTokens = (rendererPreset.preloadTokens + driverPreset.preloadTokens +
                 rendererManifest.orEmptyPreload() + driverManifest.orEmptyPreload()).distinct(),

@@ -6,7 +6,7 @@
   "version": "replace-me",
   "kind": "renderer",
   "renderer": "OPEN_LTW",
-  "pojavRenderer": "opengles2",
+  "pojavRenderer": "opengles3_ltw",
   "preload": [
     "openltw",
     "ltw",

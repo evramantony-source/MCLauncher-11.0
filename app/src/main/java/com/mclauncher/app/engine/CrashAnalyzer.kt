@@ -7,7 +7,12 @@ data class CrashDiagnosis(val title: String, val advice: String)
 object CrashAnalyzer {
     fun analyze(file: File?): CrashDiagnosis? {
         if (file == null || !file.isFile) return null
-        val text = runCatching { file.readText().takeLast(500_000) }.getOrNull()?.lowercase() ?: return null
+        val text = runCatching { file.readText().takeLast(500_000) }.getOrNull() ?: return null
+        return analyzeText(text)
+    }
+
+    internal fun analyzeText(content: String): CrashDiagnosis? {
+        val text = content.lowercase()
         val lines = text.lineSequence().toList()
         val hasVulkanFailure = lines.any { line ->
             "vulkan" in line && listOf("failed", "error", "fatal", "unsupported").any(line::contains)
@@ -23,6 +28,17 @@ object CrashAnalyzer {
                 CrashDiagnosis("Old JVM launcher blocked", "This build tried to execute Java from Android app storage. Update MCLauncher to the in-process JVM build.")
             "outofmemoryerror" in text || "could not reserve enough space" in text ->
                 CrashDiagnosis("Not enough memory", "Lower allocated RAM, close other apps, or use a lighter modpack.")
+            "no context is current or a function that is not available" in text ||
+                "nglgensamplers" in text ->
+                CrashDiagnosis(
+                    "OpenGL renderer too old",
+                    "Use the bundled MobileGlues renderer; this Minecraft version needs modern OpenGL functions."
+                )
+            "incompatible jna native library" in text ->
+                CrashDiagnosis(
+                    "JNA native mismatch",
+                    "Update MCLauncher so it can select the Android JNA native matching this Minecraft version."
+                )
             "unsatisfiedlinkerror" in text || "no lwjgl" in text || "could not load library" in text ->
                 CrashDiagnosis("Native library problem", "Reinstall the matching engine pack and renderer for your device ABI.")
             "glfw error" in text || "opengl" in text && "not supported" in text ->
@@ -33,7 +49,11 @@ object CrashAnalyzer {
                 CrashDiagnosis("Wrong Java version", "Select the Java version required by this Minecraft or mod-loader version.")
             "mixin apply failed" in text || "mod resolution encountered" in text || "incompatible mod set" in text ->
                 CrashDiagnosis("Mod conflict", "Disable the most recently installed mod and verify loader/game-version compatibility.")
-            "authentication" in text || "invalid token" in text ->
+            "invalid token" in text ||
+                "invalid session" in text ||
+                "session expired" in text ||
+                "expired access token" in text ||
+                ("http 401" in text && ("authlib" in text || "minecraftservices" in text)) ->
                 CrashDiagnosis("Account session expired", "Select the account again or repeat Microsoft sign-in.")
             "exception" in text || "fatal" in text ->
                 CrashDiagnosis("Minecraft crashed", "Share this log for detailed diagnosis; the final exception is shown below.")

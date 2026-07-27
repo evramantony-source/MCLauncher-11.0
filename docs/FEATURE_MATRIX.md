@@ -12,8 +12,9 @@
 | Java 17/21/25 archive authenticity | RSA signature verification in CI |
 | Patched LWJGL/GLFW | Coordinate-mapped CI packaging required |
 | Android JVM/Surface engine | Source build in CI; device proof required |
-| Default GL4ES/OpenLTW graphics path | Enforced by payload verifier |
-| Optional renderer/driver packs | Manifest-driven; unavailable choices disabled |
+| MobileGlues default and GL4ES/OpenLTW fallback | Hash-pinned; exports and payload enforced by verifier |
+| Android JNA compatibility | Version-selected JNA 6/7 dispatch libraries |
+| Optional renderer/driver packs | Manifest-driven; missing saved choices fall back safely |
 | Touch, keyboard, mouse, controller and gyro | Source implemented; device proof required |
 | FPS limit and performance settings | Source implemented |
 | Logs/crash diagnosis/screenshots | Source implemented |

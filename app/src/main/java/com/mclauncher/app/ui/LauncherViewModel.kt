@@ -605,12 +605,6 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                 return@launch _state.update { it.copy(message = "Bundled Java ${instance.javaVersion.major} is missing for $architecture. Rebuild or repair the bundled engine.") }
             }
             if (!engine.enginePack.installed) return@launch _state.update { it.copy(message = "The APK is missing its bundled Android LWJGL engine") }
-            if (snapshot.settings.renderer != com.mclauncher.model.Renderer.AUTO &&
-                engine.renderers.firstOrNull { it.renderer == snapshot.settings.renderer }?.installed != true
-            ) return@launch _state.update { it.copy(message = "The bundled ${snapshot.settings.renderer.displayName} renderer is missing") }
-            if (snapshot.settings.graphicsDriver !in listOf(com.mclauncher.model.GraphicsDriver.AUTO, com.mclauncher.model.GraphicsDriver.SYSTEM) &&
-                engine.drivers.firstOrNull { it.driver == snapshot.settings.graphicsDriver }?.installed != true
-            ) return@launch _state.update { it.copy(message = "The bundled ${snapshot.settings.graphicsDriver.displayName} driver is missing") }
             if (!engine.nativeBridgeAvailable) return@launch _state.update { it.copy(message = "The built-in native launch engine is unavailable") }
 
             _state.update { it.copy(message = "Preparing launch plan") }

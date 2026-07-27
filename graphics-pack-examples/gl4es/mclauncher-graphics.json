@@ -6,12 +6,12 @@
   "version": "replace-me",
   "kind": "renderer",
   "renderer": "GL4ES",
-  "pojavRenderer": "opengles2",
+  "pojavRenderer": "opengles3",
   "preload": [
     "gl4es"
   ],
   "environment": {
-    "LIBGL_ES": "2",
+    "LIBGL_ES": "3",
     "LIBGL_MIPMAP": "3"
   },
   "license": "MIT"

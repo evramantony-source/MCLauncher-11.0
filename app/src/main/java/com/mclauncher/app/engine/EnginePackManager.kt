@@ -388,19 +388,19 @@ class EnginePackManager(
         val searchable = files.joinToString(" ") { (it.name + " " + it.invariantSeparatorsPath).lowercase() }
         return when {
             listOf("mobileglues", "libmg", "mgbridge").any(searchable::contains) ->
-                GraphicsIdentity("mobileglues", "MobileGlues", GraphicsPackKind.RENDERER, Renderer.MOBILE_GLUES, null, "opengles2")
+                GraphicsIdentity("mobileglues", "MobileGlues", GraphicsPackKind.RENDERER, Renderer.MOBILE_GLUES, null, "mobileglues")
             "krypton" in searchable ->
-                GraphicsIdentity("krypton", "Krypton Wrapper", GraphicsPackKind.RENDERER, Renderer.KRYPTON, null, "opengles2")
+                GraphicsIdentity("krypton", "Krypton Wrapper", GraphicsPackKind.RENDERER, Renderer.KRYPTON, null, "krypton")
             listOf("openltw", "tinywrapper", "ltw").any(searchable::contains) ->
-                GraphicsIdentity("openltw", "OpenLTW / LTW", GraphicsPackKind.RENDERER, Renderer.OPEN_LTW, null, "opengles2")
+                GraphicsIdentity("openltw", "OpenLTW / LTW", GraphicsPackKind.RENDERER, Renderer.OPEN_LTW, null, "opengles3_ltw")
             listOf("ng-gl4es", "ng_gl4es", "nggl4es").any(searchable::contains) ->
-                GraphicsIdentity("ng-gl4es", "NG-GL4ES", GraphicsPackKind.RENDERER, Renderer.NG_GL4ES, null, "opengles2")
+                GraphicsIdentity("ng-gl4es", "NG-GL4ES", GraphicsPackKind.RENDERER, Renderer.NG_GL4ES, null, "ng-gl4es")
             "gl4es" in searchable ->
-                GraphicsIdentity("gl4es", "GL4ES", GraphicsPackKind.RENDERER, Renderer.GL4ES, null, "opengles2")
+                GraphicsIdentity("gl4es", "GL4ES", GraphicsPackKind.RENDERER, Renderer.GL4ES, null, "opengles3")
             "virgl" in searchable || "virpipe" in searchable ->
                 GraphicsIdentity("virgl", "VirGL", GraphicsPackKind.RENDERER, Renderer.VIRGL, null, "opengles3_virgl")
             "zink" in searchable || ("mesa" in searchable && "vulkan" in searchable) ->
-                GraphicsIdentity("zink", "Zink", GraphicsPackKind.RENDERER, Renderer.ZINK, null, "opengles2")
+                GraphicsIdentity("zink", "Zink", GraphicsPackKind.RENDERER, Renderer.ZINK, null, "vulkan_zink")
             "turnip" in searchable || "freedreno" in searchable ->
                 GraphicsIdentity("turnip", "Turnip", GraphicsPackKind.DRIVER, null, GraphicsDriver.TURNIP, null)
             "panvk" in searchable || "panfrost" in searchable ->

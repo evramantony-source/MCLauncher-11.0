@@ -46,6 +46,11 @@ class NativeEngineCoordinator(
         val cacheDirectory = File(plan.workingDirectory, ".mclauncher-cache").apply { mkdirs() }
         val graphics = GraphicsRegistry(layout, plan.runtime.architecture, json)
             .resolve(plan.renderer, plan.graphicsDriver, cacheDirectory)
+        sessionLog?.appendText(
+            "Resolved graphics renderer=${graphics.renderer.id} " +
+                "(requested=${plan.renderer.id}), driver=${graphics.driver.id} " +
+                "(requested=${plan.graphicsDriver.id})\n"
+        )
 
         val environment = LinkedHashMap(plan.environment)
         val appNativeDirectory = context.applicationInfo.nativeLibraryDir
@@ -87,6 +92,11 @@ class NativeEngineCoordinator(
         environment.putIfAbsent("force_glsl_extensions_warn", "true")
         environment.putIfAbsent("allow_glsl_extension_directive_midshader", "true")
         environment.putAll(graphics.environment)
+        environment["MG_DIR_PATH"]?.let { path ->
+            require(File(path).apply { mkdirs() }.isDirectory) {
+                "Could not prepare MobileGlues data directory: $path"
+            }
+        }
         configureDriverPaths(graphics, environment)
 
         val jvmArguments = stripClasspathPair(plan.jvmArguments)
@@ -141,7 +151,12 @@ class NativeEngineCoordinator(
         }
         putSystemProperty(jvmArguments, "java.io.tmpdir", tempDirectory.absolutePath)
         putSystemProperty(jvmArguments, "jna.tmpdir", tempDirectory.absolutePath)
-        putSystemProperty(jvmArguments, "jna.boot.library.path", engineNatives.absolutePath)
+        selectJnaNativeDirectory(plan.classpath, engineNatives)?.let { jnaDirectory ->
+            putSystemProperty(jvmArguments, "jna.boot.library.path", jnaDirectory.absolutePath)
+            sessionLog?.appendText(
+                "Prepared JNA native compatibility directory ${jnaDirectory.absolutePath}\n"
+            )
+        }
         putSystemProperty(jvmArguments, "org.lwjgl.system.SharedLibraryExtractPath", lwjglExtractDirectory.absolutePath)
         putSystemProperty(jvmArguments, "org.lwjgl.system.allocator", "system")
         putSystemProperty(jvmArguments, "mclauncher.renderer", graphics.renderer.id)
@@ -169,7 +184,6 @@ class NativeEngineCoordinator(
         putSystemProperty(jvmArguments, "org.lwjgl.spvc.libname", "spirv-cross-c-shared")
         putSystemProperty(jvmArguments, "glfwstub.windowWidth", plan.windowWidth.toString())
         putSystemProperty(jvmArguments, "glfwstub.windowHeight", plan.windowHeight.toString())
-        putSystemProperty(jvmArguments, "glfwstub.initEgl", "false")
         jvmArguments.removeAll { it.startsWith("-XX:ActiveProcessorCount=") }
         jvmArguments += "-XX:ActiveProcessorCount=${Runtime.getRuntime().availableProcessors()}"
         putSystemProperty(jvmArguments, "java.library.path", nativePath)
@@ -238,6 +252,7 @@ class NativeEngineCoordinator(
             engineNatives.walkTopDown()
                 .filter { it.isFile && it.extension.equals("so", true) }
                 .filterNot { it.name.startsWith("liblwjgl", ignoreCase = true) }
+                .filterNot { it.name.equals("libjnidispatch.so", ignoreCase = true) }
                 .filterNot { isUnsupportedProcessHookLibrary(it.name) }
                 .filterNot { isRendererOrDriverLibrary(it.name) }
                 .sortedWith(compareBy<File> { preloadPriority(it.name) }.thenBy(File::getName))
@@ -303,6 +318,7 @@ class NativeEngineCoordinator(
             // LWJGL invokes JNI_OnLoad itself when Java loads these libraries. Early dlopen
             // would make the Android VM own them before the Minecraft VM exists.
             .filterNot { it.name.startsWith("liblwjgl", ignoreCase = true) }
+            .filterNot { it.name.equals("libjnidispatch.so", ignoreCase = true) }
             .filterNot { isUnsupportedProcessHookLibrary(it.name) }
             // These tiny engine stubs have the same SONAME as the real OpenJDK libraries.
             // Loading them first makes libfontmanager resolve against the wrong library.
@@ -329,15 +345,22 @@ class NativeEngineCoordinator(
      * pass the same renderer selected by the Mojo renderspec bridge explicitly.
      */
     private fun resolveLwjglOpenGlLibrary(graphics: ResolvedGraphicsStack): File? {
-        val renderer = graphics.pojavRenderer.lowercase()
-        if (renderer == "vulkan") return null
-
-        val tokens = when {
-            renderer.contains("ltw") -> listOf("libltw")
-            renderer.contains("zink") || renderer.contains("freedreno") ->
+        val tokens = when (graphics.renderer) {
+            com.mclauncher.model.Renderer.VULKAN -> return null
+            com.mclauncher.model.Renderer.MOBILE_GLUES -> listOf("libmobileglues.so")
+            com.mclauncher.model.Renderer.OPEN_LTW -> listOf("libltw")
+            com.mclauncher.model.Renderer.NG_GL4ES ->
+                listOf("ng_gl4es", "ng-gl4es", "nggl4es")
+            com.mclauncher.model.Renderer.GL4ES -> listOf("libgl4es")
+            com.mclauncher.model.Renderer.ANGLE -> listOf("libegl_angle", "libegl")
+            com.mclauncher.model.Renderer.ZINK ->
                 listOf("libegl_mesa", "libosmesa", "mesa")
-            renderer.contains("angle") -> listOf("libegl_angle", "libegl")
-            else -> listOf("libgl4es")
+            com.mclauncher.model.Renderer.KRYPTON -> listOf("krypton")
+            com.mclauncher.model.Renderer.VIRGL -> listOf("virgl", "virpipe")
+            com.mclauncher.model.Renderer.CUSTOM ->
+                listOf(graphics.pojavRenderer.lowercase())
+            com.mclauncher.model.Renderer.AUTO ->
+                error("Automatic renderer was not resolved")
         }
         val libraries = graphics.searchDirectories.asSequence()
             .filter(File::isDirectory)
@@ -359,6 +382,17 @@ class NativeEngineCoordinator(
             "osmesa", "gallium", "virgl", "virpipe", "turnip", "freedreno",
             "panvk", "panfrost", "swiftshader", "vulkan_freedreno", "vulkan_panfrost"
         ).any(lower::contains)
+    }
+
+    /**
+     * JNA 5.14+ uses native ABI 7.0 while older Minecraft libraries commonly
+     * use ABI 6.1. Android cannot use the desktop native embedded in jna.jar,
+     * so the bundled engine carries one verified Android build for each ABI.
+     */
+    private fun selectJnaNativeDirectory(classpath: List<String>, engineNatives: File): File? {
+        val directoryName = jnaNativeDirectoryName(classpath) ?: return null
+        return File(engineNatives, directoryName)
+            .takeIf { File(it, "libjnidispatch.so").isFile }
     }
 
     /**
@@ -494,4 +528,22 @@ class NativeEngineCoordinator(
 
     private fun findFile(root: File, name: String): File? =
         root.walkTopDown().firstOrNull { it.isFile && it.name == name }
+}
+
+internal fun jnaNativeDirectoryName(classpath: List<String>): String? {
+    val version = classpath.asSequence()
+        .map { File(it).name }
+        .mapNotNull { filename ->
+            Regex(
+                """^jna-(\d+)\.(\d+)(?:\.\d+)?(?:[-.].*)?\.jar$""",
+                RegexOption.IGNORE_CASE
+            ).matchEntire(filename)
+        }
+        .map { match ->
+            match.groupValues[1].toInt() to match.groupValues[2].toInt()
+        }
+        .firstOrNull()
+        ?: return null
+    if (version.first != 5) return null
+    return if (version.second >= 14) "jna-7" else "jna-6"
 }

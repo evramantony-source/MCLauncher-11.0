@@ -6,7 +6,7 @@
   "version": "replace-me",
   "kind": "renderer",
   "renderer": "KRYPTON",
-  "pojavRenderer": "opengles2",
+  "pojavRenderer": "krypton",
   "preload": [
     "krypton",
     "egl",

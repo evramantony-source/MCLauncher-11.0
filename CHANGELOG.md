@@ -12,6 +12,9 @@
 - Kept native/runtime binaries out of Git and made the APK workflow responsible for producing and verifying them.
 - Added the Android AWT runtime overlay required by the pinned MojoLauncher compatibility path.
 - Disabled native heap pointer tagging for the Minecraft compatibility process after Android 16 detected a truncated tag inside the embedded desktop-native stack.
+- Bundled the hash-pinned MobileGlues 1.3.5 ARM renderer and made it the automatic first choice for modern Minecraft OpenGL calls.
+- Added version-matched Android JNA 6/7 dispatch libraries and classpath-driven selection.
+- Fixed stale renderer settings falling through to the wrong backend and removed the false account-expired crash diagnosis.
 
 ## 6.0.0-beta05
 

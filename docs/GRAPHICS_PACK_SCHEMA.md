@@ -40,10 +40,11 @@ Example:
   "kind": "renderer",
   "architecture": "arm64-v8a",
   "renderer": "MOBILE_GLUES",
-  "pojavRenderer": "opengles2",
-  "preload": ["mobileglues", "libmg"],
+  "pojavRenderer": "mobileglues",
+  "preload": ["libmobileglues.so"],
   "environment": {
-    "LIBGL_ES": "3"
+    "LIBGL_ES": "3",
+    "MG_DIR_PATH": "${cache}/mobileglues"
   },
   "license": "LGPL-2.1"
 }

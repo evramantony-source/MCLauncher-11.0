@@ -16,7 +16,7 @@ MCLauncher is an independent Android launcher for Minecraft: Java Edition. It ha
 - Java 8, 17, 21 and 25 Android runtime selection.
 - ABI-specific Android LWJGL substitutions and native classifiers.
 - Android Surface/JVM bridge, touch controls, keyboard, mouse, controller and gyroscope input.
-- Manifest-driven GL4ES/OpenLTW and optional renderer-pack selection.
+- Hash-pinned MobileGlues 1.3.5 default renderer, GL4ES/OpenLTW fallbacks and optional manifest-driven renderer packs.
 
 These features are present in source. They are not considered device-proven until the standalone APK workflow succeeds and a real Android test reaches the Minecraft main menu.
 
@@ -26,8 +26,8 @@ The installed application does not download or install another launcher APK. Git
 
 1. Checks out the exact LGPL engine revision in `vendor/engine-lock.json`.
 2. Builds the Android engine and GLFW from source.
-3. Extracts only the selected ABI's required native libraries and renderer.
-4. Downloads Java 8/17/21/25 and the exact patched LWJGL files from the pinned engine manifest.
+3. Extracts only the selected ABI's required native libraries and fallback renderer.
+4. Downloads the hash-pinned MobileGlues and Android JNA payloads, Java 8/17/21/25, and the exact patched LWJGL files.
 5. Verifies Java 17/21/25 runtime archives against MojoLauncher's RSA signing certificate.
 6. Verifies archive formats, hashes, ELF files, classifier JARs, support JARs and notices.
 7. Compiles an ABI-specific APK, reopens it, and verifies the embedded payload.

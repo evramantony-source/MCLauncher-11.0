@@ -6,13 +6,13 @@
   "version": "replace-me",
   "kind": "renderer",
   "renderer": "MOBILE_GLUES",
-  "pojavRenderer": "opengles2",
+  "pojavRenderer": "mobileglues",
   "preload": [
-    "mobileglues",
-    "libmg"
+    "libmobileglues.so"
   ],
   "environment": {
-    "LIBGL_ES": "3"
+    "LIBGL_ES": "3",
+    "MG_DIR_PATH": "${cache}/mobileglues"
   },
   "sourceProject": "https://github.com/MobileGL-Dev/MobileGlues",
   "license": "LGPL-2.1"

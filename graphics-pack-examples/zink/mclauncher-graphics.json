@@ -6,7 +6,7 @@
   "version": "replace-me",
   "kind": "renderer",
   "renderer": "ZINK",
-  "pojavRenderer": "opengles2",
+  "pojavRenderer": "vulkan_zink",
   "preload": [
     "vulkan",
     "mesa",

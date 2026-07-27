@@ -43,6 +43,10 @@ def sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def contains_bytes(path: Path, value: bytes) -> bool:
+    return is_nonempty(path) and value in path.read_bytes()
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--root", type=Path, default=Path("app/src/main/assets/bundled_engine"))
@@ -175,6 +179,11 @@ def main() -> int:
 
     renderer_records = manifest.get("rendererPacks") or []
     native_records = manifest.get("nativeLibraries") or {}
+    jna_dispatch = manifest.get("jnaDispatch") or {}
+    if jna_dispatch.get("version") != "5.17.0":
+        errors.append("Pinned JNA 5.17.0 Android compatibility record is missing")
+    if len(str(jna_dispatch.get("sourceSha256") or "")) != 64:
+        errors.append("Pinned JNA Android source digest is missing")
     for abi in abis:
         native_dir = root / abi / "natives"
         names = set(native_records.get(abi) or [])
@@ -183,12 +192,59 @@ def main() -> int:
             if required not in names or not has_magic(target, ELF_MAGIC):
                 errors.append(f"{abi}: required ELF library is missing or invalid: {required}")
 
+        jna6 = native_dir / "jna-6/libjnidispatch.so"
+        jna7 = native_dir / "jna-7/libjnidispatch.so"
+        if (native_dir / "libjnidispatch.so").exists():
+            errors.append(f"{abi}: ambiguous root-level libjnidispatch.so must not be packaged")
+        for relative, target in (
+            ("jna-6/libjnidispatch.so", jna6),
+            ("jna-7/libjnidispatch.so", jna7),
+        ):
+            if relative not in names or not has_magic(target, ELF_MAGIC):
+                errors.append(f"{abi}: JNA compatibility ELF is missing or invalid: {relative}")
+        if has_magic(jna7, ELF_MAGIC) and not contains_bytes(jna7, b"7.0.4"):
+            errors.append(f"{abi}: JNA 7 native does not report ABI version 7.0.4")
+        jna_record = (jna_dispatch.get("libraries") or {}).get(abi) or {}
+        if is_nonempty(jna6) and jna_record.get("jna6Sha256") != sha256(jna6):
+            errors.append(f"{abi}: JNA 6 native digest does not match")
+        if is_nonempty(jna7) and jna_record.get("jna7Sha256") != sha256(jna7):
+            errors.append(f"{abi}: JNA 7 native digest does not match")
+
+        mobile_records = [
+            entry for entry in renderer_records
+            if entry.get("abi") == abi and entry.get("id") == "mobileglues"
+        ]
+        if len(mobile_records) != 1:
+            errors.append(f"{abi}: exactly one MobileGlues renderer pack is required")
+        else:
+            mobile_pack = root / abi / "renderers/mobileglues"
+            mobile_manifest_path = mobile_pack / "mclauncher-graphics.json"
+            try:
+                mobile_manifest = json.loads(
+                    mobile_manifest_path.read_text(encoding="utf-8")
+                )
+            except Exception as exc:  # noqa: BLE001
+                errors.append(f"{abi}: invalid MobileGlues manifest: {exc}")
+                mobile_manifest = {}
+            if mobile_manifest.get("renderer") != "MOBILE_GLUES":
+                errors.append(f"{abi}: MobileGlues renderer enum is incorrect")
+            if mobile_manifest.get("pojavRenderer") != "mobileglues":
+                errors.append(f"{abi}: MobileGlues renderer token is incorrect")
+            if (mobile_manifest.get("environment") or {}).get("MG_DIR_PATH") != "${cache}/mobileglues":
+                errors.append(f"{abi}: MobileGlues cache directory is not configured")
+            mobile_library = mobile_pack / "libmobileglues.so"
+            if not has_magic(mobile_library, ELF_MAGIC):
+                errors.append(f"{abi}: MobileGlues ELF is missing or invalid")
+            for symbol in (b"glGenSamplers", b"glBindSampler"):
+                if has_magic(mobile_library, ELF_MAGIC) and not contains_bytes(mobile_library, symbol):
+                    errors.append(f"{abi}: MobileGlues is missing required symbol {symbol.decode()}")
+
         default_renderers = [
             entry for entry in renderer_records
-            if entry.get("abi") == abi and entry.get("id") in {"gl4es", "openltw"}
+            if entry.get("abi") == abi and entry.get("id") in {"mobileglues", "gl4es", "openltw"}
         ]
         if not default_renderers:
-            errors.append(f"{abi}: no default GL4ES/OpenLTW renderer pack is present")
+            errors.append(f"{abi}: no default MobileGlues/GL4ES/OpenLTW renderer pack is present")
         for renderer in default_renderers:
             pack = root / abi / "renderers" / str(renderer.get("id"))
             manifest_path = pack / "mclauncher-graphics.json"
@@ -219,6 +275,10 @@ def main() -> int:
         errors.append("LGPL license notice is missing")
     if not any("glfw" in path.name.lower() and is_nonempty(path) for path in license_paths):
         errors.append("GLFW license notice is missing")
+    if not any("mobileglues" in path.name.lower() and is_nonempty(path) for path in license_paths):
+        errors.append("MobileGlues license notice is missing")
+    if not any("jna" in path.name.lower() and is_nonempty(path) for path in license_paths):
+        errors.append("JNA license notice is missing")
 
     if errors:
         print("Bundled-engine verification FAILED:")

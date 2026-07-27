@@ -6,7 +6,7 @@
   "version": "replace-me",
   "kind": "renderer",
   "renderer": "NG_GL4ES",
-  "pojavRenderer": "opengles2",
+  "pojavRenderer": "ng-gl4es",
   "preload": [
     "ng_gl4es",
     "gl4es"
