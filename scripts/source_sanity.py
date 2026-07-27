@@ -181,8 +181,23 @@ require_contains(
     'Java_git_artdeell_dnbootstrap_glfw_GLFW_initialize',
     'Java_git_artdeell_dnbootstrap_glfw_GLFW_nativeSurfaceCreated',
     'Java_git_artdeell_dnbootstrap_glfw_GLFW_sendKeyEvent',
-    'JLI_Launch',
     'JNI_CreateJavaVM',
+    'Java_net_kdt_pojavlaunch_utils_jre_JavaRunner_nativeLoadJVM',
+    'Java_net_kdt_pojavlaunch_utils_jre_JavaRunner_nativeSetupExit',
+)
+require_absent(
+    "app/src/main/cpp/native_engine.cpp",
+    'JLI_Launch',
+    '/ "bin" / "java"',
+)
+require_contains(
+    "app/src/main/java/net/kdt/pojavlaunch/ExitActivity.java",
+    'showExitMessage(Context context, int code, boolean isSignal)',
+    'Process.killProcess(Process.myPid())',
+)
+require_contains(
+    "vendor/patches/mojo-single-destroy.patch",
+    '-    (*java_vm.vm)->DestroyJavaVM(java_vm.vm);',
 )
 require_absent(
     "app/src/main/java/com/mclauncher/app/ui/screens/LogsScreen.kt",

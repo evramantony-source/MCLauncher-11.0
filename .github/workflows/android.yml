@@ -106,6 +106,7 @@ jobs:
         working-directory: .vendor-build/MojoLauncher
         shell: bash
         run: |
+          git apply "$GITHUB_WORKSPACE/vendor/patches/mojo-single-destroy.patch"
           chmod +x gradlew
           ./gradlew --no-daemon :app_pojavlauncher:assembleNoruntimeDebug
 

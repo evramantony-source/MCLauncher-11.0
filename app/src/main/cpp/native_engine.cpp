@@ -399,11 +399,6 @@ jobjectArray buildJavaStringArray(JNIEnv* env, const std::vector<std::string>& a
     return array;
 }
 
-std::string slashClassName(std::string name) {
-    std::replace(name.begin(), name.end(), '.', '/');
-    return name;
-}
-
 void describeAndClear(JNIEnv* env, const std::string& stage) {
     if (!env->ExceptionCheck()) return;
     pushError("Java exception during " + stage + "; stack trace follows in output");
@@ -411,11 +406,11 @@ void describeAndClear(JNIEnv* env, const std::string& stage) {
     env->ExceptionClear();
 }
 
-using CreateJavaVm = jint (*)(JavaVM**, void**, void*);
 using GetCreatedJavaVms = jint (*)(JavaVM**, jsize, jsize*);
-using JliLaunch = int (*)(int, char**, int, const char**, int, const char**,
-                          const char*, const char*, const char*, const char*,
-                          jboolean, jboolean, jboolean, jint);
+using MojoNativeLoadJvm = jboolean (*)(
+    JNIEnv*, jclass, jstring, jobjectArray, jstring, jobjectArray, jboolean
+);
+using MojoNativeSetupExit = void (*)(JNIEnv*, jclass, jobject);
 
 JavaVM* locateCreatedVm() {
     if (gMinecraftVm != nullptr) return gMinecraftVm;
@@ -600,6 +595,7 @@ extern "C" JNIEXPORT jint JNICALL
 Java_com_mclauncher_app_engine_NativeLaunchBridge_nativeStart(
         JNIEnv* env,
         jobject,
+        jobject context,
         jstring javaHomeValue,
         jstring workingDirectoryValue,
         jobjectArray jvmArgumentsValue,
@@ -702,9 +698,6 @@ Java_com_mclauncher_app_engine_NativeLaunchBridge_nativeStart(
     }
     setupUpstreamBridge(env, surface);
 
-    const fs::path jliPath = findByName(javaHome, "libjli.so");
-    void* jliHandle = jliPath.empty() ? nullptr : loadAbsolute(jliPath.string(), false);
-
     const fs::path jvmPath = findByName(javaHome, "libjvm.so");
     if (jvmPath.empty()) {
         pushError("libjvm.so was not found inside " + javaHome);
@@ -731,135 +724,91 @@ Java_com_mclauncher_app_engine_NativeLaunchBridge_nativeStart(
         if (!found.empty()) loadAbsolute(found.string(), false);
     }
 
-    // Mobile OpenJDK builds used by Android launchers normally expose JLI_Launch.
-    // It performs the same launcher initialization as the desktop `java` executable.
-    auto jliLaunch = jliHandle == nullptr ? nullptr :
-        reinterpret_cast<JliLaunch>(dlsym(jliHandle, "JLI_Launch"));
-    if (jliLaunch != nullptr) {
-        std::vector<std::string> arguments;
-        arguments.reserve(1 + jvmArguments.size() + 1 + gameArguments.size());
-        arguments.push_back((fs::path(javaHome) / "bin" / "java").string());
-        arguments.insert(arguments.end(), jvmArguments.begin(), jvmArguments.end());
-        arguments.push_back(mainClass);
-        arguments.insert(arguments.end(), gameArguments.begin(), gameArguments.end());
-
-        std::vector<char*> argv;
-        argv.reserve(arguments.size());
-        for (auto& argument : arguments) {
-            argv.push_back(argument.data());
-            pushLog("ARG: " + argument);
-        }
-
-        pushLog("Found JLI_Launch; invoking the mobile Java launcher");
-        const int result = jliLaunch(
-            static_cast<int>(argv.size()), argv.data(),
-            0, nullptr, 0, nullptr,
-            "MCLauncher 11.0", "11.0", "java", "java",
-            JNI_FALSE, JNI_FALSE, JNI_FALSE, 0
-        );
-        pushLog("JLI_Launch returned " + std::to_string(result));
-        gMinecraftVm = nullptr;
-        releaseUpstreamBridge(env);
-        replaceWindow(env, nullptr);
-        endOutputCapture();
-        return result;
-    }
-
-    pushLog("JLI_Launch is unavailable; falling back to JNI_CreateJavaVM");
-    dlerror();
-    auto createJavaVm = reinterpret_cast<CreateJavaVm>(dlsym(gJvmHandle, "JNI_CreateJavaVM"));
-    const char* symbolError = dlerror();
-    if (createJavaVm == nullptr) {
-        pushError("JNI_CreateJavaVM is unavailable: " + std::string(symbolError ? symbolError : "unknown error"));
+    auto nativeLoadJvm = reinterpret_cast<MojoNativeLoadJvm>(
+        dlsym(RTLD_DEFAULT, "Java_net_kdt_pojavlaunch_utils_jre_JavaRunner_nativeLoadJVM")
+    );
+    auto nativeSetupExit = reinterpret_cast<MojoNativeSetupExit>(
+        dlsym(RTLD_DEFAULT, "Java_net_kdt_pojavlaunch_utils_jre_JavaRunner_nativeSetupExit")
+    );
+    if (nativeLoadJvm == nullptr || nativeSetupExit == nullptr) {
+        pushError("Pinned MojoLauncher embedded JVM entry points are unavailable");
         releaseUpstreamBridge(env);
         replaceWindow(env, nullptr);
         endOutputCapture();
         return 25;
     }
-
-    std::vector<std::string> stableArguments = jvmArguments;
-    std::vector<JavaVMOption> options;
-    options.reserve(stableArguments.size());
-    for (auto& argument : stableArguments) {
-        JavaVMOption option{};
-        option.optionString = argument.data();
-        option.extraInfo = nullptr;
-        options.push_back(option);
-        pushLog("JVM: " + argument);
-    }
-
-    JavaVMInitArgs vmArgs{};
-    // Android's public JNI headers expose the 1.6 invocation ABI. Newer Java
-    // runtimes remain compatible with it, while JNI_VERSION_1_8 is not defined
-    // by every supported NDK.
-    vmArgs.version = JNI_VERSION_1_6;
-    vmArgs.nOptions = static_cast<jint>(options.size());
-    vmArgs.options = options.data();
-    vmArgs.ignoreUnrecognized = JNI_TRUE;
-
-    JNIEnv* minecraftEnv = nullptr;
-    pushLog("Creating Java VM from " + jvmPath.string());
-    const jint createResult = createJavaVm(&gMinecraftVm, reinterpret_cast<void**>(&minecraftEnv), &vmArgs);
-    if (createResult != JNI_OK || minecraftEnv == nullptr) {
-        pushError("JNI_CreateJavaVM failed with code " + std::to_string(createResult));
-        gMinecraftVm = nullptr;
+    if (context == nullptr) {
+        pushError("Android context is unavailable for the embedded JVM exit hook");
         releaseUpstreamBridge(env);
         replaceWindow(env, nullptr);
         endOutputCapture();
         return 26;
     }
 
-    const std::string slashName = slashClassName(mainClass);
-    pushLog("Invoking " + mainClass + ".main(String[])");
-    jclass targetClass = minecraftEnv->FindClass(slashName.c_str());
-    if (targetClass == nullptr) {
-        describeAndClear(minecraftEnv, "main class lookup");
-        gMinecraftVm->DestroyJavaVM();
-        gMinecraftVm = nullptr;
+    nativeSetupExit(env, nullptr, context);
+    if (env->ExceptionCheck()) {
+        describeAndClear(env, "embedded JVM exit-hook setup");
         releaseUpstreamBridge(env);
         replaceWindow(env, nullptr);
         endOutputCapture();
         return 27;
     }
 
-    jmethodID mainMethod = minecraftEnv->GetStaticMethodID(targetClass, "main", "([Ljava/lang/String;)V");
-    if (mainMethod == nullptr) {
-        describeAndClear(minecraftEnv, "main method lookup");
-        minecraftEnv->DeleteLocalRef(targetClass);
-        gMinecraftVm->DestroyJavaVM();
-        gMinecraftVm = nullptr;
+    jobjectArray javaArguments = buildJavaStringArray(env, jvmArguments);
+    jobjectArray applicationArguments = buildJavaStringArray(env, gameArguments);
+    jstring jvmPathValue = env->NewStringUTF(jvmPath.string().c_str());
+    jstring mainClassValueCopy = env->NewStringUTF(mainClass.c_str());
+    if (javaArguments == nullptr || applicationArguments == nullptr ||
+        jvmPathValue == nullptr || mainClassValueCopy == nullptr || env->ExceptionCheck()) {
+        describeAndClear(env, "embedded JVM argument preparation");
+        if (javaArguments != nullptr) env->DeleteLocalRef(javaArguments);
+        if (applicationArguments != nullptr) env->DeleteLocalRef(applicationArguments);
+        if (jvmPathValue != nullptr) env->DeleteLocalRef(jvmPathValue);
+        if (mainClassValueCopy != nullptr) env->DeleteLocalRef(mainClassValueCopy);
         releaseUpstreamBridge(env);
         replaceWindow(env, nullptr);
         endOutputCapture();
         return 28;
     }
 
-    jobjectArray javaArguments = buildJavaStringArray(minecraftEnv, gameArguments);
-    if (javaArguments == nullptr) {
-        describeAndClear(minecraftEnv, "argument creation");
-        minecraftEnv->DeleteLocalRef(targetClass);
-        gMinecraftVm->DestroyJavaVM();
-        gMinecraftVm = nullptr;
-        releaseUpstreamBridge(env);
-        replaceWindow(env, nullptr);
-        endOutputCapture();
-        return 29;
-    }
+    const bool hasJavaAgents = std::any_of(
+        jvmArguments.begin(),
+        jvmArguments.end(),
+        [](const std::string& argument) { return argument.rfind("-javaagent:", 0) == 0; }
+    );
+    for (const auto& argument : jvmArguments) pushLog("JVM: " + argument);
+    for (const auto& argument : gameArguments) pushLog("GAME: " + argument);
+    pushLog(
+        "Launching " + mainClass +
+        " with the pinned MojoLauncher JNI_CreateJavaVM engine"
+    );
 
-    minecraftEnv->CallStaticVoidMethod(targetClass, mainMethod, javaArguments);
-    const bool hadException = minecraftEnv->ExceptionCheck();
-    describeAndClear(minecraftEnv, "Minecraft main");
-    minecraftEnv->DeleteLocalRef(javaArguments);
-    minecraftEnv->DeleteLocalRef(targetClass);
+    const jboolean launchResult = nativeLoadJvm(
+        env,
+        nullptr,
+        jvmPathValue,
+        javaArguments,
+        mainClassValueCopy,
+        applicationArguments,
+        hasJavaAgents ? JNI_TRUE : JNI_FALSE
+    );
+    const bool hadException = env->ExceptionCheck();
+    describeAndClear(env, "pinned MojoLauncher embedded JVM");
+    env->DeleteLocalRef(mainClassValueCopy);
+    env->DeleteLocalRef(jvmPathValue);
+    env->DeleteLocalRef(applicationArguments);
+    env->DeleteLocalRef(javaArguments);
 
-    pushLog("Minecraft main method returned");
-    const jint destroyResult = gMinecraftVm->DestroyJavaVM();
-    pushLog("DestroyJavaVM returned " + std::to_string(destroyResult));
+    pushLog(
+        launchResult == JNI_TRUE
+            ? "Embedded Minecraft main method returned normally"
+            : "Embedded Minecraft launch returned a failure"
+    );
     gMinecraftVm = nullptr;
     releaseUpstreamBridge(env);
     replaceWindow(env, nullptr);
     endOutputCapture();
-    return hadException ? 30 : 0;
+    return (launchResult == JNI_TRUE && !hadException) ? 0 : 30;
 }
 
 extern "C" JNIEXPORT void JNICALL

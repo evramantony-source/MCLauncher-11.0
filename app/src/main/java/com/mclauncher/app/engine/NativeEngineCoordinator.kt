@@ -160,6 +160,7 @@ class NativeEngineCoordinator(
         )
 
         NativeLaunchBridge.nativeStart(
+            context = context,
             javaHome = javaHome.absolutePath,
             workingDirectory = plan.workingDirectory,
             jvmArguments = jvmArguments.toTypedArray(),
@@ -221,6 +222,7 @@ class NativeEngineCoordinator(
                 .forEach(preload::add)
         }
         NativeLaunchBridge.nativeStart(
+            context = context,
             javaHome = javaHome.absolutePath,
             workingDirectory = tool.workingDirectory,
             jvmArguments = jvmArguments.toTypedArray(),

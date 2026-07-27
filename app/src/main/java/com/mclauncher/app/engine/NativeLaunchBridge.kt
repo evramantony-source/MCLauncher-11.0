@@ -1,5 +1,6 @@
 package com.mclauncher.app.engine
 
+import android.content.Context
 import android.view.Surface
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -23,6 +24,7 @@ object NativeLaunchBridge {
     }
 
     external fun nativeStart(
+        context: Context,
         javaHome: String,
         workingDirectory: String,
         jvmArguments: Array<String>,

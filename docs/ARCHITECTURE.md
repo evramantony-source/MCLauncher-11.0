@@ -14,7 +14,7 @@
 4. Play creates a complete serialized `LaunchPlan`.
 5. `GameActivity` starts in the isolated `:minecraft` process and creates a `SurfaceView`.
 6. `NativeEngineCoordinator` validates the APK-bundled JRE/engine payload, places Android engine natives before desktop natives, configures renderer variables, and preloads libraries.
-7. `libmclauncher.so` attaches the surface, captures logs, and calls the mobile OpenJDK `JLI_Launch` entry point.
+7. `libmclauncher.so` attaches the surface, captures logs, and calls the pinned MojoLauncher in-process JVM entry point; it never executes the app-private `bin/java` file.
 8. Minecraft's exit code and logs return to the activity and are stored in `latest-session.log`.
 
 No UI state is treated as proof of successful rendering; the native logs and real device output are authoritative.

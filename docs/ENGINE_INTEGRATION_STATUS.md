@@ -18,7 +18,7 @@
 3. Resolve the Minecraft version's exact LWJGL coordinates through the Android substitution mapping.
 4. Extract the matching ABI classifier natives.
 5. Configure GL4ES/OpenLTW or an installed graphics pack before GLFW initialization.
-6. Attach the Android Surface and launch through `JLI_Launch`, with `JNI_CreateJavaVM` fallback.
+6. Attach the Android Surface and launch in-process through the pinned MojoLauncher `JNI_CreateJavaVM` engine, including its Android linker, native-library and exit/abort hooks.
 7. Forward touch, keyboard, mouse, controller and gyroscope input.
 
 There is no installed-app dependency on another launcher. CI and physical-device validation are still release gates.

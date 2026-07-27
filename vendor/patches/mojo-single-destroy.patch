@@ -1,0 +1,12 @@
+diff --git a/app_pojavlauncher/src/main/jni/jre_launcher/jre_launcher.c b/app_pojavlauncher/src/main/jni/jre_launcher/jre_launcher.c
+--- a/app_pojavlauncher/src/main/jni/jre_launcher/jre_launcher.c
++++ b/app_pojavlauncher/src/main/jni/jre_launcher/jre_launcher.c
+@@ -200,7 +200,6 @@ Java_net_kdt_pojavlaunch_utils_jre_JavaRunner_nativeLoadJVM(JNIEnv *env, jclass
+     strncpy(mainClassName, mainClassNameBuf, mainClassLen + 1);
+     (*env)->ReleaseStringUTFChars(env, mainClass, mainClassNameBuf);
+ 
+     bool main_result = executeMain(vm_env, mainClassName, vm_appArgs);
+-    (*java_vm.vm)->DestroyJavaVM(java_vm.vm);
+     unloadJavaVM(&java_vm);
+     if(!main_result) {
+         throwException(env, STAGE_RUN_MAIN, JNI_ERR, "Failed to start the main class. Check latestlog.txt");
