@@ -132,8 +132,17 @@ class NativeEngineCoordinator(
         putSystemProperty(jvmArguments, "user.home", plan.workingDirectory)
         putSystemProperty(jvmArguments, "user.dir", plan.workingDirectory)
         val tempDirectory = File(plan.workingDirectory, ".mclauncher-tmp").apply { mkdirs() }
+        require(tempDirectory.isDirectory) {
+            "Could not prepare Java temporary directory: ${tempDirectory.absolutePath}"
+        }
+        val lwjglExtractDirectory = File(plan.workingDirectory, ".lwjgl").apply { mkdirs() }
+        require(lwjglExtractDirectory.isDirectory) {
+            "Could not prepare LWJGL native directory: ${lwjglExtractDirectory.absolutePath}"
+        }
         putSystemProperty(jvmArguments, "java.io.tmpdir", tempDirectory.absolutePath)
-        putSystemProperty(jvmArguments, "org.lwjgl.system.SharedLibraryExtractPath", File(plan.workingDirectory, ".lwjgl").absolutePath)
+        putSystemProperty(jvmArguments, "jna.tmpdir", tempDirectory.absolutePath)
+        putSystemProperty(jvmArguments, "jna.boot.library.path", engineNatives.absolutePath)
+        putSystemProperty(jvmArguments, "org.lwjgl.system.SharedLibraryExtractPath", lwjglExtractDirectory.absolutePath)
         putSystemProperty(jvmArguments, "org.lwjgl.system.allocator", "system")
         putSystemProperty(jvmArguments, "mclauncher.renderer", graphics.renderer.id)
         putSystemProperty(jvmArguments, "mclauncher.graphicsDriver", graphics.driver.id)
@@ -150,6 +159,12 @@ class NativeEngineCoordinator(
         findFile(engineNatives, "libopenal.so")?.let { putSystemProperty(jvmArguments, "org.lwjgl.openal.libname", it.absolutePath) }
         (findFile(engineNatives, "libfreetype.so") ?: findFile(javaHome, "libfreetype.so"))
             ?.let { putSystemProperty(jvmArguments, "org.lwjgl.freetype.libname", it.absolutePath) }
+        resolveLwjglOpenGlLibrary(graphics)?.let { rendererLibrary ->
+            putSystemProperty(jvmArguments, "org.lwjgl.opengl.libname", rendererLibrary.absolutePath)
+            sessionLog?.appendText(
+                "Prepared LWJGL OpenGL library ${rendererLibrary.absolutePath}\n"
+            )
+        }
         putSystemProperty(jvmArguments, "org.lwjgl.vulkan.libname", "libvulkan.so")
         putSystemProperty(jvmArguments, "org.lwjgl.spvc.libname", "spirv-cross-c-shared")
         putSystemProperty(jvmArguments, "glfwstub.windowWidth", plan.windowWidth.toString())
@@ -305,6 +320,35 @@ class NativeEngineCoordinator(
             .forEach(output::add)
         output += runtimeLibraries
         return output.distinctBy(File::getAbsolutePath)
+    }
+
+    /**
+     * Upstream LWJGL assumes desktop Linux and falls back to libGLX.so.0 when
+     * org.lwjgl.opengl.libname is absent. Android renderer packs expose their
+     * desktop-OpenGL compatibility entry point under a different filename, so
+     * pass the same renderer selected by the Mojo renderspec bridge explicitly.
+     */
+    private fun resolveLwjglOpenGlLibrary(graphics: ResolvedGraphicsStack): File? {
+        val renderer = graphics.pojavRenderer.lowercase()
+        if (renderer == "vulkan") return null
+
+        val tokens = when {
+            renderer.contains("ltw") -> listOf("libltw")
+            renderer.contains("zink") || renderer.contains("freedreno") ->
+                listOf("libegl_mesa", "libosmesa", "mesa")
+            renderer.contains("angle") -> listOf("libegl_angle", "libegl")
+            else -> listOf("libgl4es")
+        }
+        val libraries = graphics.searchDirectories.asSequence()
+            .filter(File::isDirectory)
+            .flatMap { it.walkTopDown().asSequence() }
+            .filter { it.isFile && it.extension.equals("so", ignoreCase = true) }
+            .toList()
+        return tokens.firstNotNullOfOrNull { token ->
+            libraries.firstOrNull { it.name.contains(token, ignoreCase = true) }
+        } ?: error(
+            "No Android OpenGL library matched POJAV_RENDERER=${graphics.pojavRenderer}"
+        )
     }
 
 
