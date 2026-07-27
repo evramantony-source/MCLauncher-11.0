@@ -141,6 +141,7 @@ require_absent(
 require_contains(
     "app/src/main/AndroidManifest.xml",
     'android:launchMode="singleTask"',
+    'android:allowNativeHeapPointerTagging="false"',
 )
 require_contains(
     "app/src/main/java/com/mclauncher/app/ui/LauncherViewModel.kt",

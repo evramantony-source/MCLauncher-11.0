@@ -10,6 +10,8 @@
 - Added unit coverage for ABI parsing, classifier selection and runtime signature manifests.
 - Removed the unpinned optional renderer-artifact injection from the standalone build.
 - Kept native/runtime binaries out of Git and made the APK workflow responsible for producing and verifying them.
+- Added the Android AWT runtime overlay required by the pinned MojoLauncher compatibility path.
+- Disabled native heap pointer tagging for the Minecraft compatibility process after Android 16 detected a truncated tag inside the embedded desktop-native stack.
 
 ## 6.0.0-beta05
 

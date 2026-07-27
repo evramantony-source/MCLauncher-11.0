@@ -6,6 +6,7 @@
     <application
         android:name=".MCLauncherApplication"
         android:allowBackup="true"
+        android:allowNativeHeapPointerTagging="false"
         android:hardwareAccelerated="true"
         android:largeHeap="true"
         android:label="MCLauncher 11.0"
