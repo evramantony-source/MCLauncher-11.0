@@ -125,8 +125,10 @@ dependencies {
     implementation("org.apache.commons:commons-compress:1.27.1")
     implementation("androidx.security:security-crypto:1.1.0")
     implementation("org.tukaani:xz:1.10")
-    implementation("io.coil-kt.coil3:coil-compose:3.5.0")
-    implementation("io.coil-kt.coil3:coil-network-okhttp:3.5.0")
+    // Coil 3.5 requires compileSdk 36. Keep the last SDK-35-compatible release
+    // until the launch-engine project moves to an Android-16-compatible AGP.
+    implementation("io.coil-kt.coil3:coil-compose:3.4.0")
+    implementation("io.coil-kt.coil3:coil-network-okhttp:3.4.0")
 
     testImplementation(kotlin("test"))
 
