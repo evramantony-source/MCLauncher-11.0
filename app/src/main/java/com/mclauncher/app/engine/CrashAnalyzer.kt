@@ -17,6 +17,10 @@ object CrashAnalyzer {
         val hasVulkanFailure = lines.any { line ->
             "vulkan" in line && listOf("failed", "error", "fatal", "unsupported").any(line::contains)
         }
+        val hasOpenGlFailure = lines.any { line ->
+            ("glfw error" in line || "opengl" in line) &&
+                listOf("failed", "error", "fatal", "unsupported", "not supported").any(line::contains)
+        }
         return when {
             "a minecraft launch is already running in this process" in text ->
                 CrashDiagnosis("Duplicate launch blocked", "Two game screens requested startup together. Close the game screen before retrying.")
@@ -39,9 +43,16 @@ object CrashAnalyzer {
                     "JNA native mismatch",
                     "Update MCLauncher so it can select the Android JNA native matching this Minecraft version."
                 )
+            "sodium" in text &&
+                ("it appears that you are using pojavlauncher" in text ||
+                    "sodium-postlaunchchecks" in text && "pojav_renderer" in text) ->
+                CrashDiagnosis(
+                    "Sodium blocked the Android launch",
+                    "This desktop Sodium build rejected the Android renderer marker. Use MCLauncher Alpha 03 or disable Sodium and Iris if this still appears."
+                )
             "unsatisfiedlinkerror" in text || "no lwjgl" in text || "could not load library" in text ->
                 CrashDiagnosis("Native library problem", "Reinstall the matching engine pack and renderer for your device ABI.")
-            "glfw error" in text || "opengl" in text && "not supported" in text ->
+            hasOpenGlFailure ->
                 CrashDiagnosis("Renderer incompatibility", "Try MobileGlues, ANGLE, Zink, GL4ES or another installed renderer/driver combination.")
             hasVulkanFailure ->
                 CrashDiagnosis("Vulkan driver problem", "Try the system driver, a compatible Turnip/PanVK pack, or an OpenGL ES renderer.")

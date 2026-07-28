@@ -470,7 +470,14 @@ bool configureMojoRenderer(JNIEnv* env, const std::vector<std::string>& preloadL
     const int height = std::max(1, mclauncher_window_height());
     configureDisplay(env, nullptr, width, height, 60);
 
-    std::string renderer = getenv("POJAV_RENDERER") ? getenv("POJAV_RENDERER") : "opengles3";
+    const char* rendererToken = getenv("MCLAUNCHER_RENDERER_TOKEN");
+    if (rendererToken == nullptr || rendererToken[0] == '\0') {
+        // Compatibility fallback for third-party plans created before Alpha 03.
+        rendererToken = getenv("POJAV_RENDERER");
+    }
+    std::string renderer = rendererToken && rendererToken[0] != '\0'
+        ? rendererToken
+        : "opengles3";
     std::transform(renderer.begin(), renderer.end(), renderer.begin(), [](unsigned char ch) {
         return static_cast<char>(std::tolower(ch));
     });
@@ -520,7 +527,7 @@ bool configureMojoRenderer(JNIEnv* env, const std::vector<std::string>& preloadL
         rendererLibrary = findPreloadByTokens(preloadLibraries, {renderer});
     }
     if (rendererLibrary.empty()) {
-        pushError("No renderer library matched POJAV_RENDERER=" + renderer);
+        pushError("No renderer library matched MCLAUNCHER_RENDERER_TOKEN=" + renderer);
         return false;
     }
     jstring rendererPath = env->NewStringUTF(rendererLibrary.c_str());
@@ -715,6 +722,12 @@ Java_com_mclauncher_app_engine_NativeLaunchBridge_nativeStart(
         endOutputCapture();
         return 31;
     }
+    // The renderer is fully selected through the native renderspec API above.
+    // Do not leak legacy launcher markers into the Minecraft JVM: Sodium 0.8.x
+    // deliberately aborts when POJAV_RENDERER is present.
+    unsetenv("POJAV_RENDERER");
+    unsetenv("POJAV_LAUNCHER");
+    pushLog("Sanitized legacy renderer markers before Minecraft JVM startup");
     for (const auto& library : deferredGlfw) {
         void* handle = loadAbsolute(library, true);
         initializeMojoGlfw(env, library, handle);

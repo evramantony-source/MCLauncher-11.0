@@ -1,5 +1,13 @@
 # Changelog
 
+## 11.0.0-alpha03
+
+- Replaced the limited right-side menu touchpad with full-screen direct-touch cursor positioning, tap-to-click and long-press right click.
+- Hidden in-world movement/action controls while Minecraft owns an ungrabbed menu cursor.
+- Kept Java and native cursor state synchronized so touch, physical mouse and GLFW mode changes share one position.
+- Stopped exposing the legacy `POJAV_RENDERER` marker to Minecraft after native renderer setup, preventing Sodium 0.8.x from aborting solely on that marker.
+- Corrected crash analysis so Sodium's explicit Android block and harmless Android CPU-telemetry warnings are not mislabeled as renderer failures.
+
 ## 11.0.0-alpha02
 
 - Replaced the duplicated physical-keyboard event path with the pinned GLFW engine's raw Android key path and added mouse-generated Back/right-click handling.

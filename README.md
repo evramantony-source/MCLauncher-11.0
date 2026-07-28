@@ -1,4 +1,4 @@
-# MCLauncher 11.0 Alpha 02
+# MCLauncher 11.0 Alpha 03
 
 MCLauncher is an independent Android launcher for Minecraft: Java Edition. It has a responsive Material 3 interface and its own instance, account, download, content, settings and game-screen code. It reuses third-party Android launch-engine components only where required to start the Java game.
 
@@ -20,7 +20,7 @@ MCLauncher is an independent Android launcher for Minecraft: Java Edition. It ha
 - Hash-pinned MobileGlues 1.3.5 default renderer, GL4ES/OpenLTW fallbacks and optional manifest-driven renderer packs.
 - Verified one-tap installers for selected compatible renderer packages.
 
-Alpha 01 reached the Minecraft main menu and a playable world on a physical Android device. Alpha 02 changes input and UI behavior and therefore requires a new device test before those changes are considered proven.
+Alpha 01 reached the Minecraft main menu and a playable world on a physical Android device. Alpha 02 also reached Minecraft with mods disabled, proving its engine and MobileGlues path, but exposed a Sodium launcher-marker block and an unusable menu touchpad. Alpha 03 addresses both and requires a focused device retest.
 
 CurseForge's official REST API requires an `x-api-key`. A private build can inject
 `CURSEFORGE_API_KEY`, or the user can enter a key in Settings. Modrinth requires no key.
@@ -44,15 +44,15 @@ The large generated runtime/native payload belongs in the APK artifact, not in G
 1. Open **Actions → Build standalone MCLauncher 11 APK**.
 2. Select **Run workflow**.
 3. Keep `arm64-v8a` for modern Android phones and tablets.
-4. Download the `MCLauncher-11.0-alpha02-arm64-v8a` artifact.
-5. Extract it and install `MCLauncher-11.0-alpha02-arm64-v8a.apk`.
+4. Download the `MCLauncher-11.0-alpha03-arm64-v8a` artifact.
+5. Extract it and install `MCLauncher-11.0-alpha03-arm64-v8a.apk`.
 6. Follow `docs/FIRST_DEVICE_TEST.md`.
 
 Pull requests and pushes to `main` run the default arm64 build automatically.
 
 ## Proof still required
 
-A green workflow proves that the project compiled and the expected payload is present in the APK. It does not prove compatibility with every Minecraft version, mod, GPU or Android firmware. Alpha 01 has reached the main menu and a world on a physical device; Alpha 02 must now pass menu navigation, keyboard/mouse stability and content-install checks on that device.
+A green workflow proves that the project compiled and the expected payload is present in the APK. It does not prove compatibility with every Minecraft version, mod, GPU or Android firmware. Alpha 03 must pass direct-touch menu navigation, Sodium/Iris startup, keyboard/mouse stability and content-install checks on the target device.
 
 ## Legal
 

@@ -76,7 +76,10 @@ class NativeEngineCoordinator(
             .joinToString(File.pathSeparator)
         environment["LD_LIBRARY_PATH"] = nativePath
         environment["POJAV_NATIVEDIR"] = if (engineNatives.isDirectory) engineNatives.absolutePath else appNativeDirectory
-        environment["POJAV_RENDERER"] = graphics.pojavRenderer
+        // Renderer selection is an internal MCLauncher concern. Sodium treats the
+        // legacy POJAV_RENDERER variable as a hard Android-launcher block even after
+        // the renderer has initialized successfully, so never expose it to Minecraft.
+        environment["MCLAUNCHER_RENDERER_TOKEN"] = graphics.pojavRenderer
         environment["AWTSTUB_WIDTH"] = plan.windowWidth.toString()
         environment["AWTSTUB_HEIGHT"] = plan.windowHeight.toString()
         environment["MESA_GLSL_CACHE_DIR"] = cacheDirectory.absolutePath
@@ -92,6 +95,8 @@ class NativeEngineCoordinator(
         environment.putIfAbsent("force_glsl_extensions_warn", "true")
         environment.putIfAbsent("allow_glsl_extension_directive_midshader", "true")
         environment.putAll(graphics.environment)
+        environment.remove("POJAV_RENDERER")
+        environment.remove("POJAV_LAUNCHER")
         environment["MG_DIR_PATH"]?.let { path ->
             require(File(path).apply { mkdirs() }.isDirectory) {
                 "Could not prepare MobileGlues data directory: $path"

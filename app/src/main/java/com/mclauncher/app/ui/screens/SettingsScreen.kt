@@ -424,7 +424,7 @@ fun SettingsScreen(
                         }
                     }
                     Text(
-                        "Swipe anywhere uses the right side of the screen like a normal mobile game. In menus it becomes a virtual mouse touchpad.",
+                        "Swipe anywhere uses the right side of the screen like a normal mobile game. In menus, tap or drag anywhere to position the virtual mouse.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

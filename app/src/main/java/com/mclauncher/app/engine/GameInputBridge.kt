@@ -4,6 +4,7 @@ import android.view.InputDevice
 import android.view.KeyEvent
 import android.view.MotionEvent
 import com.mclauncher.model.ControllerBinding
+import git.artdeell.dnbootstrap.glfw.GLFW
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -125,12 +126,15 @@ object GameInputBridge {
             val multiplier = if (applySensitivity) lookSensitivity else 1f
             val scaledX = dx * multiplier
             val scaledY = dy * multiplier
-            _pointerState.update { current ->
-                if (current.grabbed) current
-                else current.copy(
+            val current = _pointerState.value
+            if (!current.grabbed) {
+                val next = current.copy(
                     x = (current.x + scaledX / surfaceWidth).coerceIn(0f, 1f),
                     y = (current.y + scaledY / surfaceHeight).coerceIn(0f, 1f)
                 )
+                _pointerState.value = next
+                GLFW.cursorX = next.x.toDouble()
+                GLFW.cursorY = next.y.toDouble()
             }
             NativeLaunchBridge.nativeSendCursorDelta(scaledX, scaledY)
         }
@@ -141,6 +145,8 @@ object GameInputBridge {
         val normalizedX = (x / surfaceWidth).coerceIn(0f, 1f)
         val normalizedY = (y / surfaceHeight).coerceIn(0f, 1f)
         _pointerState.update { it.copy(x = normalizedX, y = normalizedY) }
+        GLFW.cursorX = normalizedX.toDouble()
+        GLFW.cursorY = normalizedY.toDouble()
         NativeLaunchBridge.nativeSendCursorPosition(normalizedX.toDouble(), normalizedY.toDouble())
     }
 

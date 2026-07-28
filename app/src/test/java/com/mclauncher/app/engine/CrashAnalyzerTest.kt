@@ -37,6 +37,34 @@ class CrashAnalyzerTest {
     }
 
     @Test
+    fun sodiumAndroidBlockIsNotMisreportedAsRendererFailure() {
+        val result = CrashAnalyzer.analyzeText(
+            """
+            OpenGL Renderer: Adreno (TM) 710 | OpenGL ES 3.2
+            java.io.UncheckedIOException: java.nio.file.AccessDeniedException:
+            /sys/devices/system/cpu/bus_dcvs/DDR/cur_freq
+            Sodium-PostlaunchChecks: Detected presence of environment variable POJAV_LAUNCHER
+            java.lang.RuntimeException: It appears that you are using PojavLauncher,
+            which is not supported when using Sodium. Please check your mods list.
+            """.trimIndent()
+        )
+
+        assertEquals("Sodium blocked the Android launch", result?.title)
+    }
+
+    @Test
+    fun unrelatedNotSupportedTextDoesNotBecomeOpenGlFailure() {
+        val result = CrashAnalyzer.analyzeText(
+            """
+            OpenGL Version: 4.0.0 MobileGlues 1.3.5
+            Optional telemetry feature is not supported
+            """.trimIndent()
+        )
+
+        assertNull(result)
+    }
+
+    @Test
     fun jnaVersionSelectsMatchingAndroidNativeAbi() {
         assertEquals(
             "jna-7",

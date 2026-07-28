@@ -1,4 +1,4 @@
-# Engine integration status — 11.0 Alpha 02
+# Engine integration status — 11.0 Alpha 03
 
 ## Build-time path
 
@@ -25,5 +25,6 @@
    mouse input, context-aware controllers and gyroscope input.
 
 There is no installed-app dependency on another launcher. Alpha 01 reached
-Minecraft's main menu and a world on a physical device. CI and an Alpha 02 input
-regression test remain release gates.
+Minecraft's main menu and a world on a physical device, and Alpha 02 reached the
+game with mods disabled. CI plus Alpha 03 direct-touch, Sodium/Iris and external-
+input regression tests remain release gates.

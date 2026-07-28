@@ -1,4 +1,4 @@
-# Build verification — MCLauncher 11.0 Alpha 02
+# Build verification — MCLauncher 11.0 Alpha 03
 
 ## Fast validation
 
@@ -27,4 +27,4 @@ The workflow must:
 
 ## Device proof
 
-Alpha 01 reached Minecraft 1.21.11/Fabric's main menu and a playable world on a physical Android device. Alpha 02 still needs physical checks for touch menu navigation, swipe look, keyboard/mouse stability, controllers, content state/icons and one-tap renderer installation.
+Alpha 01 reached Minecraft 1.21.11/Fabric's main menu and a playable world on a physical Android device. Alpha 02 reached the game with mods disabled, while the device log identified Sodium's renderer-marker block and a failed virtual-menu-mouse UX. Alpha 03 requires focused checks for direct-touch menu navigation, Sodium/Iris startup, swipe look, external input, content state/icons and one-tap renderer installation.

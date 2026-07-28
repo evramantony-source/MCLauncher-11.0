@@ -73,28 +73,32 @@ fun GameTouchOverlay(
         val shortSide = if (maxWidth < maxHeight) maxWidth else maxHeight
         val joystickDiameter = shortSide * settings.joystickSize.coerceIn(0.14f, 0.34f)
 
-        if (settings.touchLookMode == TouchLookMode.JOYSTICK && pointerState.grabbed) {
-            LookJoystick(
-                sensitivity = settings.lookSensitivity,
-                deadZone = settings.joystickDeadZone,
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(end = 28.dp, bottom = 28.dp)
-                    .size(joystickDiameter)
-            )
-        } else {
-            LookPad(
-                sensitivity = settings.lookSensitivity,
-                grabbed = pointerState.grabbed,
-                virtualMouseEnabled = settings.virtualMouseEnabled,
-                modifier = Modifier
-                    .align(Alignment.CenterEnd)
-                    .fillMaxHeight()
-                    .fillMaxWidth(0.62f)
-            )
+        when {
+            !pointerState.grabbed && settings.virtualMouseEnabled -> {
+                MenuTouchSurface(modifier = Modifier.fillMaxSize())
+            }
+            pointerState.grabbed && settings.touchLookMode == TouchLookMode.JOYSTICK -> {
+                LookJoystick(
+                    sensitivity = settings.lookSensitivity,
+                    deadZone = settings.joystickDeadZone,
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(end = 28.dp, bottom = 28.dp)
+                        .size(joystickDiameter)
+                )
+            }
+            pointerState.grabbed -> {
+                LookPad(
+                    sensitivity = settings.lookSensitivity,
+                    modifier = Modifier
+                        .align(Alignment.CenterEnd)
+                        .fillMaxHeight()
+                        .fillMaxWidth(0.62f)
+                )
+            }
         }
 
-        if (settings.movementJoystickEnabled) {
+        if (pointerState.grabbed && settings.movementJoystickEnabled) {
             MovementJoystick(
                 deadZone = settings.joystickDeadZone,
                 modifier = Modifier
@@ -104,22 +108,24 @@ fun GameTouchOverlay(
             )
         }
 
-        settings.controlLayout.filter(ControlElement::visible).forEach { control ->
-            val width = maxWidth * (control.width * settings.controlScale).coerceIn(0.04f, 0.35f)
-            val height = maxHeight * (control.height * settings.controlScale).coerceIn(0.04f, 0.30f)
-            DynamicControl(
-                control = control,
-                toggled = toggles[control.id] == true,
-                globalOpacity = settings.controlOpacity,
-                modifier = Modifier
-                    .offset(
-                        x = maxWidth * control.x.coerceIn(0f, 0.94f),
-                        y = maxHeight * control.y.coerceIn(0f, 0.92f)
-                    )
-                    .size(width, height),
-                onToggle = { active -> toggles[control.id] = active },
-                onMenu = if (control.id == "escape") onMenu else null
-            )
+        if (pointerState.grabbed) {
+            settings.controlLayout.filter(ControlElement::visible).forEach { control ->
+                val width = maxWidth * (control.width * settings.controlScale).coerceIn(0.04f, 0.35f)
+                val height = maxHeight * (control.height * settings.controlScale).coerceIn(0.04f, 0.30f)
+                DynamicControl(
+                    control = control,
+                    toggled = toggles[control.id] == true,
+                    globalOpacity = settings.controlOpacity,
+                    modifier = Modifier
+                        .offset(
+                            x = maxWidth * control.x.coerceIn(0f, 0.94f),
+                            y = maxHeight * control.y.coerceIn(0f, 0.92f)
+                        )
+                        .size(width, height),
+                    onToggle = { active -> toggles[control.id] = active },
+                    onMenu = if (control.id == "escape") onMenu else null
+                )
+            }
         }
 
         if (settings.virtualMouseEnabled && !pointerState.grabbed) {
@@ -299,33 +305,54 @@ private fun DynamicControl(
 @Composable
 private fun LookPad(
     sensitivity: Float,
-    grabbed: Boolean,
-    virtualMouseEnabled: Boolean,
     modifier: Modifier = Modifier
 ) {
     Box(
         modifier = modifier
-            .pointerInput(sensitivity, grabbed) {
+            .pointerInput(sensitivity) {
                 detectDragGestures { change, amount ->
                     change.consume()
-                    GameInputBridge.cursorDelta(
-                        amount.x,
-                        amount.y,
-                        applySensitivity = grabbed
-                    )
+                    GameInputBridge.cursorDelta(amount.x, amount.y)
                 }
             }
-            .pointerInput(grabbed, virtualMouseEnabled) {
+            .pointerInput(Unit) {
                 detectTapGestures(
-                    onTap = {
-                        if (!grabbed && virtualMouseEnabled) {
-                            tapMouse(GameInputBridge.MOUSE_LEFT)
-                        }
-                    },
-                    onDoubleTap = {
-                        if (grabbed) tapMouse(GameInputBridge.MOUSE_LEFT)
-                    },
+                    onDoubleTap = { tapMouse(GameInputBridge.MOUSE_LEFT) },
                     onLongPress = { tapMouse(GameInputBridge.MOUSE_RIGHT) }
+                )
+            }
+    )
+}
+
+/**
+ * Minecraft menus use an absolute pointer. Mapping the finger directly to that
+ * pointer is predictable on a touchscreen and guarantees that the cursor move is
+ * delivered before the click. In-game camera movement remains relative in LookPad.
+ */
+@Composable
+private fun MenuTouchSurface(modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .pointerInput(Unit) {
+                detectDragGestures(
+                    onDragStart = { position ->
+                        GameInputBridge.cursorPosition(position.x, position.y)
+                    }
+                ) { change, _ ->
+                    change.consume()
+                    GameInputBridge.cursorPosition(change.position.x, change.position.y)
+                }
+            }
+            .pointerInput(Unit) {
+                detectTapGestures(
+                    onTap = { position ->
+                        GameInputBridge.cursorPosition(position.x, position.y)
+                        tapMouse(GameInputBridge.MOUSE_LEFT)
+                    },
+                    onLongPress = { position ->
+                        GameInputBridge.cursorPosition(position.x, position.y)
+                        tapMouse(GameInputBridge.MOUSE_RIGHT)
+                    }
                 )
             }
     )
