@@ -144,7 +144,7 @@ require_contains(
     'mclauncherAbi',
     'abiFilters += targetAbi',
     'CURSEFORGE_API_KEY',
-    'coil-compose:3.4.0',
+    'coil-compose:3.1.0',
 )
 require_contains(
     ".github/workflows/android.yml",
