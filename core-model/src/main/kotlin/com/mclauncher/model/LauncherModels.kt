@@ -42,9 +42,22 @@ enum class PerformancePreset(val displayName: String) {
     CUSTOM("Custom")
 }
 
+@Serializable
+enum class LauncherThemeMode(val displayName: String) {
+    SYSTEM("Use device theme"),
+    DARK("Dark"),
+    LIGHT("Light")
+}
+
+@Serializable
+enum class TouchLookMode(val displayName: String) {
+    SWIPE("Swipe anywhere"),
+    JOYSTICK("Look joystick")
+}
+
 /**
  * Desktop-OpenGL/Vulkan compatibility backends understood by the launcher.
- * Alpha 01 embeds a verified default backend in the APK and keeps manifest-driven
+ * Alpha 02 embeds a verified default backend in the APK and keeps manifest-driven
  * overrides for advanced testing because each backend has separate ABI/GPU rules.
  */
 @Serializable
@@ -112,12 +125,18 @@ object DefaultControls {
         ControlElement("move_a", "A", keyCode = 65, x = 0.04f, y = 0.76f, visible = false),
         ControlElement("move_s", "S", keyCode = 83, x = 0.12f, y = 0.76f, visible = false),
         ControlElement("move_d", "D", keyCode = 68, x = 0.20f, y = 0.76f, visible = false),
+        ControlElement("sneak", "Sneak", keyCode = 340, x = 0.03f, y = 0.52f, width = 0.13f),
+        ControlElement("sprint", "Sprint", keyCode = 341, x = 0.18f, y = 0.52f, width = 0.13f),
         ControlElement("jump", "Jump", keyCode = 32, x = 0.82f, y = 0.66f, width = 0.15f),
         ControlElement("attack", "Hit", mouseButton = 0, x = 0.82f, y = 0.77f, width = 0.15f),
         ControlElement("use", "Use", mouseButton = 1, x = 0.66f, y = 0.77f, width = 0.15f),
         ControlElement("inventory", "Inv", keyCode = 69, x = 0.68f, y = 0.08f, width = 0.1f, height = 0.07f),
         ControlElement("chat", "Chat", keyCode = 84, x = 0.80f, y = 0.08f, width = 0.1f, height = 0.07f),
-        ControlElement("escape", "Esc", keyCode = 256, x = 0.02f, y = 0.04f, width = 0.1f, height = 0.07f)
+        ControlElement("escape", "Esc", keyCode = 256, x = 0.02f, y = 0.04f, width = 0.1f, height = 0.07f),
+        ControlElement("drop", "Drop", keyCode = 81, x = 0.56f, y = 0.08f, width = 0.1f, height = 0.07f, visible = false),
+        ControlElement("swap_hands", "Swap", keyCode = 70, x = 0.56f, y = 0.17f, width = 0.1f, height = 0.07f, visible = false),
+        ControlElement("perspective", "F5", keyCode = 294, x = 0.44f, y = 0.08f, width = 0.08f, height = 0.07f, visible = false),
+        ControlElement("pick_block", "Pick", mouseButton = 2, x = 0.70f, y = 0.58f, width = 0.1f, height = 0.07f, visible = false)
     )
 
     fun controllerBindings(): List<ControllerBinding> = listOf(
@@ -136,6 +155,7 @@ data class LauncherSettings(
     val selectedJava: JavaVersion = JavaVersion.JAVA_21,
     val renderer: Renderer = Renderer.AUTO,
     val graphicsDriver: GraphicsDriver = GraphicsDriver.AUTO,
+    val themeMode: LauncherThemeMode = LauncherThemeMode.SYSTEM,
     val memoryMb: Int = 2048,
     val width: Int = 1280,
     val height: Int = 720,
@@ -156,6 +176,9 @@ data class LauncherSettings(
     val lookSensitivity: Float = 1f,
     val gyroEnabled: Boolean = false,
     val movementJoystickEnabled: Boolean = true,
+    val touchLookMode: TouchLookMode = TouchLookMode.SWIPE,
+    val virtualMouseEnabled: Boolean = true,
+    // Kept for settings written by Alpha 01. touchLookMode is authoritative in Alpha 02.
     val lookJoystickEnabled: Boolean = true,
     val joystickSize: Float = 0.22f,
     val joystickDeadZone: Float = 0.18f,

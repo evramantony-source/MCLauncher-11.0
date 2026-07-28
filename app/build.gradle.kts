@@ -8,6 +8,13 @@ plugins {
 val supportedAbis = setOf("arm64-v8a", "armeabi-v7a", "x86_64")
 val targetAbi = providers.gradleProperty("mclauncherAbi").orElse("arm64-v8a").get()
 val alphaKeystore = rootProject.file(".ci-signing/mclauncher-alpha-debug.jks")
+val curseForgeApiKey = providers.gradleProperty("curseforgeApiKey")
+    .orElse(providers.environmentVariable("CURSEFORGE_API_KEY"))
+    .orElse("")
+    .get()
+val escapedCurseForgeApiKey = curseForgeApiKey
+    .replace("\\", "\\\\")
+    .replace("\"", "\\\"")
 require(targetAbi in supportedAbis) {
     "Unsupported mclauncherAbi=$targetAbi. Supported values: ${supportedAbis.joinToString()}"
 }
@@ -21,9 +28,10 @@ android {
         applicationId = "com.mclauncher.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 11
-        versionName = "11.0.0-alpha01"
+        versionCode = 12
+        versionName = "11.0.0-alpha02"
         buildConfigField("boolean", "PUBLIC_ALPHA_SIGNER", "true")
+        buildConfigField("String", "CURSEFORGE_API_KEY", "\"$escapedCurseForgeApiKey\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -117,6 +125,8 @@ dependencies {
     implementation("org.apache.commons:commons-compress:1.27.1")
     implementation("androidx.security:security-crypto:1.1.0")
     implementation("org.tukaani:xz:1.10")
+    implementation("io.coil-kt.coil3:coil-compose:3.5.0")
+    implementation("io.coil-kt.coil3:coil-network-okhttp:3.5.0")
 
     testImplementation(kotlin("test"))
 

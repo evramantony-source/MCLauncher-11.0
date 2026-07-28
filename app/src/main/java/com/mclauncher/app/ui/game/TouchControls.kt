@@ -2,6 +2,7 @@ package com.mclauncher.app.ui.game
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
@@ -33,6 +34,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
@@ -42,8 +44,10 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.mclauncher.app.engine.GameInputBridge
+import com.mclauncher.app.engine.GamePointerState
 import com.mclauncher.model.ControlElement
 import com.mclauncher.model.LauncherSettings
+import com.mclauncher.model.TouchLookMode
 import kotlin.math.hypot
 import kotlin.math.roundToInt
 
@@ -51,6 +55,7 @@ import kotlin.math.roundToInt
 fun GameTouchOverlay(
     visible: Boolean,
     settings: LauncherSettings,
+    pointerState: GamePointerState,
     modifier: Modifier = Modifier,
     onMenu: () -> Unit,
     onToggleVisibility: () -> Unit
@@ -68,7 +73,7 @@ fun GameTouchOverlay(
         val shortSide = if (maxWidth < maxHeight) maxWidth else maxHeight
         val joystickDiameter = shortSide * settings.joystickSize.coerceIn(0.14f, 0.34f)
 
-        if (settings.lookJoystickEnabled) {
+        if (settings.touchLookMode == TouchLookMode.JOYSTICK && pointerState.grabbed) {
             LookJoystick(
                 sensitivity = settings.lookSensitivity,
                 deadZone = settings.joystickDeadZone,
@@ -80,6 +85,8 @@ fun GameTouchOverlay(
         } else {
             LookPad(
                 sensitivity = settings.lookSensitivity,
+                grabbed = pointerState.grabbed,
+                virtualMouseEnabled = settings.virtualMouseEnabled,
                 modifier = Modifier
                     .align(Alignment.CenterEnd)
                     .fillMaxHeight()
@@ -112,6 +119,17 @@ fun GameTouchOverlay(
                     .size(width, height),
                 onToggle = { active -> toggles[control.id] = active },
                 onMenu = if (control.id == "escape") onMenu else null
+            )
+        }
+
+        if (settings.virtualMouseEnabled && !pointerState.grabbed) {
+            VirtualMouseCursor(
+                modifier = Modifier
+                    .offset(
+                        x = maxWidth * pointerState.x.coerceIn(0f, 0.97f),
+                        y = maxHeight * pointerState.y.coerceIn(0f, 0.95f)
+                    )
+                    .size(28.dp)
             )
         }
 
@@ -279,22 +297,61 @@ private fun DynamicControl(
 }
 
 @Composable
-private fun LookPad(sensitivity: Float, modifier: Modifier = Modifier) {
+private fun LookPad(
+    sensitivity: Float,
+    grabbed: Boolean,
+    virtualMouseEnabled: Boolean,
+    modifier: Modifier = Modifier
+) {
     Box(
         modifier = modifier
-            .pointerInput(sensitivity) {
+            .pointerInput(sensitivity, grabbed) {
                 detectDragGestures { change, amount ->
                     change.consume()
-                    GameInputBridge.cursorDelta(amount.x, amount.y)
+                    GameInputBridge.cursorDelta(
+                        amount.x,
+                        amount.y,
+                        applySensitivity = grabbed
+                    )
                 }
             }
-            .pointerInput(Unit) {
+            .pointerInput(grabbed, virtualMouseEnabled) {
                 detectTapGestures(
-                    onDoubleTap = { tapMouse(GameInputBridge.MOUSE_LEFT) },
+                    onTap = {
+                        if (!grabbed && virtualMouseEnabled) {
+                            tapMouse(GameInputBridge.MOUSE_LEFT)
+                        }
+                    },
+                    onDoubleTap = {
+                        if (grabbed) tapMouse(GameInputBridge.MOUSE_LEFT)
+                    },
                     onLongPress = { tapMouse(GameInputBridge.MOUSE_RIGHT) }
                 )
             }
     )
+}
+
+@Composable
+private fun VirtualMouseCursor(modifier: Modifier = Modifier) {
+    Canvas(modifier = modifier) {
+        val cursor = Path().apply {
+            moveTo(size.width * 0.08f, size.height * 0.04f)
+            lineTo(size.width * 0.82f, size.height * 0.58f)
+            lineTo(size.width * 0.50f, size.height * 0.64f)
+            lineTo(size.width * 0.68f, size.height * 0.94f)
+            lineTo(size.width * 0.48f, size.height)
+            lineTo(size.width * 0.31f, size.height * 0.69f)
+            lineTo(size.width * 0.08f, size.height * 0.91f)
+            close()
+        }
+        drawPath(cursor, Color.Black)
+        drawPath(
+            path = cursor,
+            color = Color.White,
+            alpha = 0.96f,
+            style = androidx.compose.ui.graphics.drawscope.Stroke(width = size.minDimension * 0.09f)
+        )
+    }
 }
 
 @Composable

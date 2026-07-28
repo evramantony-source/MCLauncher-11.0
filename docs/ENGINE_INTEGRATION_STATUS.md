@@ -1,4 +1,4 @@
-# Engine integration status — 11.0 Alpha 01
+# Engine integration status — 11.0 Alpha 02
 
 ## Build-time path
 
@@ -21,6 +21,9 @@
 6. Overlay MojoLauncher's `libawt_xawt.so` stub into the selected runtime while preserving OpenJDK's real `libawt_headless.so`.
 7. Disable Android native heap pointer tagging for the compatibility process because the embedded OpenJDK/desktop-native stack contains code that truncates top-byte tags before deallocation.
 8. Attach the Android Surface and launch in-process through the pinned MojoLauncher `JNI_CreateJavaVM` engine and its Android linker/native-library compatibility bridge.
-9. Forward touch, keyboard, mouse, controller and gyroscope input.
+9. Forward swipe/touch controls, raw Android keyboard events, absolute/relative
+   mouse input, context-aware controllers and gyroscope input.
 
-There is no installed-app dependency on another launcher. CI and physical-device validation are still release gates.
+There is no installed-app dependency on another launcher. Alpha 01 reached
+Minecraft's main menu and a world on a physical device. CI and an Alpha 02 input
+regression test remain release gates.

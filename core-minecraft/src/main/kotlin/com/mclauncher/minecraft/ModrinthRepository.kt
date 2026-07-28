@@ -100,6 +100,7 @@ class ModrinthRepository(
             contentType = contentType,
             fileName = destination.name,
             title = project.title,
+            iconUrl = project.icon_url,
             versionNumber = version.version_number,
             loader = version.loaders.firstOrNull(),
             gameVersion = instance.versionId.substringBefore("-fabric").substringBefore("-quilt"),

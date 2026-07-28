@@ -74,6 +74,7 @@ data class LauncherUiState(
     val contentSource: ContentSource = ContentSource.MODRINTH,
     val contentType: ContentType = ContentType.MOD,
     val contentLoading: Boolean = false,
+    val activeContentInstallId: String? = null,
     val installedContent: List<InstalledContent> = emptyList(),
     val selectedContentInstanceId: String? = null,
     val loaderChoices: List<LoaderVersionChoice> = emptyList(),
@@ -85,6 +86,8 @@ data class LauncherUiState(
     val message: String? = null
 ) {
     val selectedAccount get() = snapshot.accounts.firstOrNull { it.id == snapshot.selectedAccountId }
+    val curseForgeAvailable: Boolean
+        get() = snapshot.settings.curseForgeApiKey.isNotBlank() || BuildConfig.CURSEFORGE_API_KEY.isNotBlank()
     val orderedInstances: List<MinecraftInstance>
         get() = snapshot.instances.sortedWith(
             compareByDescending<MinecraftInstance> { it.favorite }
@@ -118,7 +121,16 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     init {
         viewModelScope.launch {
             val snapshot = store.load()
-            _state.update { it.copy(snapshot = snapshot, loading = false) }
+            val contentInstance = snapshot.instances.firstOrNull { it.installed }
+            _state.update {
+                it.copy(
+                    snapshot = snapshot,
+                    loading = false,
+                    componentCatalog = packageCatalogManager.builtInCatalog(),
+                    selectedContentInstanceId = contentInstance?.id
+                )
+            }
+            contentInstance?.let { loadInstalledContent(it.id) }
             refreshEngineEnvironment()
             refreshVersions()
         }
@@ -206,13 +218,28 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         val settings = _state.value.snapshot.settings
         val url = settings.componentCatalogUrl.trim().ifBlank { settings.runtimeCatalogUrl.trim() }
         if (url.isBlank()) {
-            _state.update { it.copy(message = "Enter a component catalog URL in Settings") }
+            _state.update {
+                it.copy(
+                    componentCatalog = packageCatalogManager.builtInCatalog(),
+                    message = "Curated renderer installers loaded"
+                )
+            }
             return
         }
         viewModelScope.launch {
             _state.update { it.copy(componentLoading = true) }
             runCatching { packageCatalogManager.load(url) }
-                .onSuccess { catalog -> _state.update { it.copy(componentCatalog = catalog, componentLoading = false) } }
+                .onSuccess { catalog ->
+                    val builtIn = packageCatalogManager.builtInCatalog()
+                    _state.update {
+                        it.copy(
+                            componentCatalog = catalog.copy(
+                                packages = (builtIn.packages + catalog.packages).distinctBy { item -> item.id }
+                            ),
+                            componentLoading = false
+                        )
+                    }
+                }
                 .onFailure { error -> _state.update { it.copy(componentLoading = false, message = "Catalog failed: ${error.message}") } }
         }
     }
@@ -230,7 +257,15 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                     )
                     ComponentPackageType.ENGINE -> error("External engine replacement is disabled in standalone builds")
                     ComponentPackageType.RENDERER,
-                    ComponentPackageType.DRIVER -> enginePackManager.importGraphicsPack(uri)
+                    ComponentPackageType.DRIVER -> enginePackManager.importGraphicsPack(
+                        uri = uri,
+                        expectedRenderer = item.renderer,
+                        expectedDriver = item.driver,
+                        packageName = item.name,
+                        packageVersion = item.version,
+                        sourceProject = item.sourceProject,
+                        packageLicense = item.license
+                    )
                 }
             }.onSuccess {
                 _state.update { it.copy(engineOperation = null, message = "${item.name} installed") }
@@ -430,12 +465,16 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     ) {
         val instance = _state.value.snapshot.instances.firstOrNull { it.id == instanceId }
         viewModelScope.launch {
+            val installed = instance?.let {
+                runCatching { modrinth.listInstalled(it) }.getOrDefault(emptyList())
+            }.orEmpty()
             _state.update {
                 it.copy(
                     contentLoading = true,
                     contentSource = source,
                     contentType = contentType,
                     selectedContentInstanceId = instanceId,
+                    installedContent = installed,
                     contentResults = emptyList(),
                     curseForgeResults = emptyList()
                 )
@@ -455,7 +494,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                 }
                 ContentSource.CURSEFORGE -> runCatching {
                     curseForge.search(
-                        apiKey = _state.value.snapshot.settings.curseForgeApiKey,
+                        apiKey = effectiveCurseForgeApiKey(),
                         query = query,
                         contentType = contentType,
                         gameVersion = instance?.let(::baseGameVersion),
@@ -478,7 +517,12 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
             return
         }
         viewModelScope.launch {
-            _state.update { it.copy(engineOperation = "Installing ${project.title}") }
+            _state.update {
+                it.copy(
+                    engineOperation = "Installing ${project.title}",
+                    activeContentInstallId = project.project_id
+                )
+            }
             runCatching {
                 val versions = modrinth.versions(project.project_id, baseGameVersion(instance), instance.loader)
                 val version = versions.firstOrNull() ?: error("No compatible file for ${instance.name}")
@@ -490,9 +534,23 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                     installDependencies = state.snapshot.settings.autoInstallDependencies
                 ) { text -> _state.update { it.copy(engineOperation = text) } }
             }.onSuccess {
-                _state.update { it.copy(engineOperation = null, message = "${project.title} installed") }
+                _state.update {
+                    it.copy(
+                        engineOperation = null,
+                        activeContentInstallId = null,
+                        message = "${project.title} installed"
+                    )
+                }
                 loadInstalledContent(instance.id)
-            }.onFailure { error -> _state.update { it.copy(engineOperation = null, message = "Content install failed: ${error.message}") } }
+            }.onFailure { error ->
+                _state.update {
+                    it.copy(
+                        engineOperation = null,
+                        activeContentInstallId = null,
+                        message = "Content install failed: ${error.message}"
+                    )
+                }
+            }
         }
     }
 
@@ -503,9 +561,14 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
             _state.update { it.copy(message = "Select an installed instance first") }
             return
         }
-        val apiKey = currentState.snapshot.settings.curseForgeApiKey
+        val apiKey = effectiveCurseForgeApiKey()
         viewModelScope.launch {
-            _state.update { it.copy(engineOperation = "Installing ${mod.name}") }
+            _state.update {
+                it.copy(
+                    engineOperation = "Installing ${mod.name}",
+                    activeContentInstallId = "curseforge:${mod.id}"
+                )
+            }
             runCatching {
                 val gameVersion = baseGameVersion(instance)
                 val compatible = curseForge.files(apiKey, mod.id, gameVersion)
@@ -522,10 +585,22 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                     installDependencies = currentState.snapshot.settings.autoInstallDependencies
                 ) { text -> _state.update { it.copy(engineOperation = text) } }
             }.onSuccess {
-                _state.update { it.copy(engineOperation = null, message = "${mod.name} installed") }
+                _state.update {
+                    it.copy(
+                        engineOperation = null,
+                        activeContentInstallId = null,
+                        message = "${mod.name} installed"
+                    )
+                }
                 loadInstalledContent(instance.id)
             }.onFailure { error ->
-                _state.update { it.copy(engineOperation = null, message = "CurseForge install failed: ${error.message}") }
+                _state.update {
+                    it.copy(
+                        engineOperation = null,
+                        activeContentInstallId = null,
+                        message = "CurseForge install failed: ${error.message}"
+                    )
+                }
             }
         }
     }
@@ -537,6 +612,8 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
             _state.update { it.copy(installedContent = items, selectedContentInstanceId = instanceId) }
         }
     }
+
+    fun selectContentInstance(instanceId: String) = loadInstalledContent(instanceId)
 
     fun updateManagedContent(instanceId: String) {
         val instance = _state.value.snapshot.instances.firstOrNull { it.id == instanceId } ?: return
@@ -691,7 +768,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         items.forEachIndexed { index, item ->
             _state.update { it.copy(engineOperation = "Checking update ${index + 1}/${items.size}: ${item.title}") }
             if (item.projectId.startsWith("curseforge:")) {
-                val apiKey = settings.curseForgeApiKey
+                val apiKey = effectiveCurseForgeApiKey()
                 if (apiKey.isBlank()) return@forEachIndexed
                 val latest = curseForge.updateAvailable(apiKey, instance, item) ?: return@forEachIndexed
                 val modId = item.projectId.removePrefix("curseforge:").toIntOrNull() ?: return@forEachIndexed
@@ -730,6 +807,10 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
             }.getOrNull()
         } ?: instance.versionId.substringBefore("-${instance.loader.id}")
     }
+
+    private fun effectiveCurseForgeApiKey(): String =
+        _state.value.snapshot.settings.curseForgeApiKey.trim()
+            .ifBlank { BuildConfig.CURSEFORGE_API_KEY.trim() }
 
     private suspend fun updateSnapshot(snapshot: LauncherSnapshot) {
         _state.update { it.copy(snapshot = snapshot) }

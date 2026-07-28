@@ -139,10 +139,12 @@ if not re.fullmatch(r"[0-9a-f]{40}", str(mobileglues.get("sourceCommit", ""))):
 
 require_contains(
     "app/build.gradle.kts",
-    'versionName = "11.0.0-alpha01"',
-    'versionCode = 11',
+    'versionName = "11.0.0-alpha02"',
+    'versionCode = 12',
     'mclauncherAbi',
     'abiFilters += targetAbi',
+    'CURSEFORGE_API_KEY',
+    'coil-compose:3.5.0',
 )
 require_contains(
     ".github/workflows/android.yml",
@@ -151,9 +153,10 @@ require_contains(
     "scripts/source_sanity.py",
     'assembleNoruntimeDebug',
     'assembleDebug -PmclauncherAbi=',
-    'MCLauncher-11.0-alpha01-',
+    'MCLauncher-11.0-alpha02-',
     "pull_request:",
     "mclauncher-alpha-debug.jks.b64",
+    "CURSEFORGE_API_KEY",
 )
 if engine_commit and engine_commit not in text("vendor/engine-lock.json"):
     errors.append("Engine commit was not retained in the lock file")
@@ -241,11 +244,16 @@ require_contains(
     "app/src/main/java/com/mclauncher/app/ui/game/TouchControls.kt",
     'MovementJoystick',
     'LookJoystick',
+    'LookPad',
+    'VirtualMouseCursor',
+    'virtualMouseEnabled',
 )
 require_contains(
     "app/src/main/java/com/mclauncher/app/ui/screens/SettingsScreen.kt",
-    'enabled = renderer == Renderer.AUTO || status?.installed == true',
-    'enabled = driver in listOf(GraphicsDriver.AUTO, GraphicsDriver.SYSTEM) || status?.installed == true',
+    'LauncherThemeMode.entries',
+    'TouchLookMode.entries',
+    'Text("Install")',
+    'Text("Installed"',
 )
 require_contains(
     "app/src/main/java/com/mclauncher/app/engine/GameInputBridge.kt",
@@ -253,17 +261,35 @@ require_contains(
     'SOURCE_JOYSTICK',
     'AXIS_HSCROLL',
     'AndroidGlfwKeyMapper',
+    'nativeSendRawKey',
+    'cursorPosition',
 )
 require_contains(
     "app/src/main/cpp/native_engine.cpp",
     'Java_git_artdeell_dnbootstrap_glfw_GLFW_initialize',
     'Java_git_artdeell_dnbootstrap_glfw_GLFW_nativeSurfaceCreated',
     'Java_git_artdeell_dnbootstrap_glfw_GLFW_sendKeyEvent',
+    'Java_git_artdeell_dnbootstrap_glfw_GLFW_sendRawKeyEvent',
+    'Java_com_mclauncher_app_engine_NativeLaunchBridge_nativeSendCursorPosition',
     'JNI_CreateJavaVM',
     'Java_net_kdt_pojavlaunch_utils_jre_JavaRunner_nativeLoadJVM',
     'Java_net_kdt_pojavlaunch_utils_jre_JavaRunner_nativeSetupExit',
     'libmobileglues.so',
     'getenv("LIBGL_ES")',
+)
+require_contains(
+    "app/src/main/java/com/mclauncher/app/ui/screens/DiscoverScreen.kt",
+    'AsyncImage',
+    'CheckCircle',
+    'Text("Installed"',
+    'state.curseForgeAvailable',
+)
+require_contains(
+    "app/src/main/java/com/mclauncher/app/engine/PackageCatalogManager.kt",
+    'LTW-2025.7.16.apk',
+    'ANGLE.Renderer.apk',
+    'Zink.Mesa25.apk',
+    'f36d7145da5188f83225aa97fc8422aa909308819e8fb2f4b97e1d253c48b1f5',
 )
 require_absent(
     "app/src/main/cpp/native_engine.cpp",
@@ -315,6 +341,9 @@ for field in (
     "fpsLimit",
     "movementJoystickEnabled",
     "lookJoystickEnabled",
+    "touchLookMode",
+    "virtualMouseEnabled",
+    "themeMode",
     "physicalMouseCapture",
     "hideTouchControlsWithExternalInput",
     "sustainedPerformanceMode",

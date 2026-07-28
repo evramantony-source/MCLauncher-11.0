@@ -39,6 +39,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -96,6 +97,7 @@ class GameActivity : ComponentActivity() {
         GLFW.initializeBridge(applicationContext)
         GLFW.setGrabListener { grabbing ->
             runOnUiThread {
+                GameInputBridge.syncPointerState(GLFW.cursorX, GLFW.cursorY, grabbing)
                 if (physicalMouseCapture && grabbing) {
                     runCatching { gameSurfaceView?.requestPointerCapture() }
                 } else {
@@ -119,11 +121,11 @@ class GameActivity : ComponentActivity() {
         val dataRoot = File(planPath).parentFile?.parentFile ?: filesDir
         val sessionLog = File(dataRoot, "logs/latest-session.log").apply {
             parentFile?.mkdirs()
-            writeText("MCLauncher 11.0 alpha01 session ${System.currentTimeMillis()}\n")
+            writeText("MCLauncher 11.0 alpha02 session ${System.currentTimeMillis()}\n")
         }
 
         setContent {
-            MCLauncherTheme {
+            MCLauncherTheme(themeMode = launcherSettings.themeMode) {
                 var surface by remember { mutableStateOf<Surface?>(null) }
                 var status by remember { mutableStateOf("Waiting for game surface") }
                 var running by remember { mutableStateOf(false) }
@@ -131,6 +133,7 @@ class GameActivity : ComponentActivity() {
                 var controlsVisible by remember { mutableStateOf(true) }
                 var gameMenuRequested by remember { mutableStateOf(false) }
                 val logs = remember { mutableStateListOf<String>() }
+                val pointerState by GameInputBridge.pointerState.collectAsState()
 
                 LaunchedEffect(externalInputDetected) {
                     if (externalInputDetected && hideTouchControlsWithExternalInput) controlsVisible = false
@@ -251,6 +254,7 @@ class GameActivity : ComponentActivity() {
                                 view.holder.addCallback(object : SurfaceHolder.Callback {
                                     override fun surfaceCreated(holder: SurfaceHolder) {
                                         surface = holder.surface
+                                        GameInputBridge.setSurfaceSize(view.width, view.height)
                                         if (NativeLaunchBridge.isAvailable) {
                                             runCatching { NativeLaunchBridge.nativeSetSurface(holder.surface) }
                                         }
@@ -265,6 +269,7 @@ class GameActivity : ComponentActivity() {
                                         height: Int
                                     ) {
                                         surface = holder.surface
+                                        GameInputBridge.setSurfaceSize(width, height)
                                         if (NativeLaunchBridge.isAvailable) {
                                             runCatching { NativeLaunchBridge.nativeSetSurface(holder.surface) }
                                         }
@@ -284,6 +289,7 @@ class GameActivity : ComponentActivity() {
                     GameTouchOverlay(
                         visible = running && !launchOverlayVisible && controlsVisible,
                         settings = launcherSettings,
+                        pointerState = pointerState,
                         onMenu = { gameMenuRequested = !gameMenuRequested },
                         onToggleVisibility = { controlsVisible = false }
                     )
@@ -417,7 +423,7 @@ class GameActivity : ComponentActivity() {
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
         if (event.isFromSource(InputDevice.SOURCE_MOUSE)) {
             externalInputDetected = true
-            if (physicalMouseCapture && event.actionMasked == MotionEvent.ACTION_DOWN) {
+            if (physicalMouseCapture && GLFW.isGrabbing() && event.actionMasked == MotionEvent.ACTION_DOWN) {
                 runCatching { gameSurfaceView?.requestPointerCapture() }
             }
             if (GameInputBridge.handlePointerButtonEvent(event)) return true

@@ -1,4 +1,4 @@
-# Build verification — MCLauncher 11.0 Alpha 01
+# Build verification — MCLauncher 11.0 Alpha 02
 
 ## Fast validation
 
@@ -6,7 +6,8 @@
 - Require a full pinned engine commit and all four runtime sources.
 - Reject the obsolete launcher-APK downloader.
 - Run Python vendoring tests plus app and core Kotlin/JVM tests.
-- Check that runtime signature verification, Surface/JVM launch, input and Android LWJGL mapping paths remain connected.
+- Check that runtime signature verification, Surface/JVM launch, raw keyboard, virtual cursor and Android LWJGL mapping paths remain connected.
+- Check theme, installed-content/icon and verified component-installer source paths.
 
 ## Standalone-APK validation
 
@@ -24,6 +25,6 @@ The workflow must:
 - reopen and validate the final APK payload;
 - generate the APK SHA-256 digest.
 
-## Final release proof
+## Device proof
 
-The Android SDK/NDK is not available in this workspace, so GitHub Actions performs the complete compile. A physical Android launch reaching Minecraft's main menu is still mandatory before calling the launcher device-proven.
+Alpha 01 reached Minecraft 1.21.11/Fabric's main menu and a playable world on a physical Android device. Alpha 02 still needs physical checks for touch menu navigation, swipe look, keyboard/mouse stability, controllers, content state/icons and one-tap renderer installation.

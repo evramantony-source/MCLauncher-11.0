@@ -37,8 +37,10 @@ import com.mclauncher.app.ui.components.PageHeader
 import com.mclauncher.model.GraphicsDriver
 import com.mclauncher.model.JavaVersion
 import com.mclauncher.model.LauncherSettings
+import com.mclauncher.model.LauncherThemeMode
 import com.mclauncher.model.PerformancePreset
 import com.mclauncher.model.Renderer
+import com.mclauncher.model.TouchLookMode
 import kotlin.math.roundToInt
 
 private val archiveMimeTypes = arrayOf(
@@ -82,6 +84,21 @@ fun SettingsScreen(
                     title = "Settings",
                     subtitle = "Engine, Java, graphics, accounts, performance, controls and diagnostics"
                 )
+            }
+
+            item {
+                SettingGroup("Appearance") {
+                    Text("Theme")
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        LauncherThemeMode.entries.forEach { mode ->
+                            FilterChip(
+                                selected = settings.themeMode == mode,
+                                onClick = { onUpdateSettings { it.copy(themeMode = mode) } },
+                                label = { Text(mode.displayName) }
+                            )
+                        }
+                    }
+                }
             }
 
             item {
@@ -179,7 +196,19 @@ fun SettingsScreen(
                         compatiblePackages
                             .take(20)
                             .forEach { item ->
-                                ComponentRow(item, state.engineOperation == null) { onInstallComponent(item) }
+                                val installed = when (item.type) {
+                                    ComponentPackageType.RUNTIME -> state.engineEnvironment?.runtimes?.any {
+                                        it.version == item.javaVersion && it.installed
+                                    } == true
+                                    ComponentPackageType.RENDERER -> state.engineEnvironment?.renderers?.any {
+                                        it.renderer == item.renderer && it.installed
+                                    } == true
+                                    ComponentPackageType.DRIVER -> state.engineEnvironment?.drivers?.any {
+                                        it.driver == item.driver && it.installed
+                                    } == true
+                                    ComponentPackageType.ENGINE -> state.engineEnvironment?.enginePack?.installed == true
+                                }
+                                ComponentRow(item, state.engineOperation == null, installed) { onInstallComponent(item) }
                             }
                     }
                 }
@@ -217,39 +246,92 @@ fun SettingsScreen(
 
             item {
                 SettingGroup("Renderer backend") {
-                    Renderer.entries.forEach { renderer ->
+                    val availableRenderers = Renderer.entries.filter { renderer ->
                         val status = state.engineEnvironment?.renderers?.firstOrNull { it.renderer == renderer }
-                        FilterChip(
-                            selected = settings.renderer == renderer,
-                            onClick = { onUpdateSettings { it.copy(renderer = renderer) } },
-                            enabled = renderer == Renderer.AUTO || status?.installed == true,
-                            label = {
-                                Text(
-                                    if (renderer == Renderer.AUTO || status?.installed == true) renderer.displayName
-                                    else "${renderer.displayName} · not installed"
-                                )
+                        val downloadable = state.componentCatalog?.packages?.any {
+                            it.type == ComponentPackageType.RENDERER && it.renderer == renderer
+                        } == true
+                        renderer == Renderer.AUTO || status?.installed == true || downloadable
+                    }
+                    availableRenderers.forEach { renderer ->
+                        val status = state.engineEnvironment?.renderers?.firstOrNull { it.renderer == renderer }
+                        val installer = state.componentCatalog?.packages?.firstOrNull {
+                            it.type == ComponentPackageType.RENDERER &&
+                                it.renderer == renderer &&
+                                (it.architecture == "universal" || it.architecture == Build.SUPPORTED_ABIS.firstOrNull())
+                        }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            FilterChip(
+                                selected = settings.renderer == renderer,
+                                onClick = { onUpdateSettings { it.copy(renderer = renderer) } },
+                                enabled = renderer == Renderer.AUTO || status?.installed == true,
+                                label = { Text(renderer.displayName) }
+                            )
+                            if (status?.installed == true) {
+                                Text("Ready", color = MaterialTheme.colorScheme.primary)
+                            } else if (renderer != Renderer.AUTO && installer != null) {
+                                Button(
+                                    onClick = { onInstallComponent(installer) },
+                                    enabled = state.engineOperation == null
+                                ) {
+                                    Text("Install")
+                                }
                             }
-                        )
+                        }
                         Text(renderer.description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
+                    Text(
+                        "MCLauncher shows backends that are already ready or have a verified one-tap package for this device.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             }
 
             item {
                 SettingGroup("Graphics driver") {
-                    GraphicsDriver.entries.forEach { driver ->
+                    val availableDrivers = GraphicsDriver.entries.filter { driver ->
                         val status = state.engineEnvironment?.drivers?.firstOrNull { it.driver == driver }
-                        FilterChip(
-                            selected = settings.graphicsDriver == driver,
-                            onClick = { onUpdateSettings { it.copy(graphicsDriver = driver) } },
-                            enabled = driver in listOf(GraphicsDriver.AUTO, GraphicsDriver.SYSTEM) || status?.installed == true,
-                            label = {
-                                Text(
-                                    if (driver in listOf(GraphicsDriver.AUTO, GraphicsDriver.SYSTEM) || status?.installed == true) driver.displayName
-                                    else "${driver.displayName} · not installed"
-                                )
+                        val downloadable = state.componentCatalog?.packages?.any {
+                            it.type == ComponentPackageType.DRIVER && it.driver == driver
+                        } == true
+                        driver in listOf(GraphicsDriver.AUTO, GraphicsDriver.SYSTEM) ||
+                            status?.installed == true || downloadable
+                    }
+                    availableDrivers.forEach { driver ->
+                        val status = state.engineEnvironment?.drivers?.firstOrNull { it.driver == driver }
+                        val installer = state.componentCatalog?.packages?.firstOrNull {
+                            it.type == ComponentPackageType.DRIVER &&
+                                it.driver == driver &&
+                                (it.architecture == "universal" || it.architecture == Build.SUPPORTED_ABIS.firstOrNull())
+                        }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            val ready = driver in listOf(GraphicsDriver.AUTO, GraphicsDriver.SYSTEM) || status?.installed == true
+                            FilterChip(
+                                selected = settings.graphicsDriver == driver,
+                                onClick = { onUpdateSettings { it.copy(graphicsDriver = driver) } },
+                                enabled = ready,
+                                label = { Text(driver.displayName) }
+                            )
+                            if (ready) {
+                                Text("Ready", color = MaterialTheme.colorScheme.primary)
+                            } else if (installer != null) {
+                                Button(
+                                    onClick = { onInstallComponent(installer) },
+                                    enabled = state.engineOperation == null
+                                ) {
+                                    Text("Install")
+                                }
                             }
-                        )
+                        }
                         Text(driver.description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
@@ -303,7 +385,13 @@ fun SettingsScreen(
                     OutlinedTextField(
                         value = settings.curseForgeApiKey,
                         onValueChange = { value -> onUpdateSettings { it.copy(curseForgeApiKey = value.trim()) } },
-                        label = { Text("CurseForge API key (optional)") },
+                        label = { Text("CurseForge API key") },
+                        supportingText = {
+                            Text(
+                                if (state.curseForgeAvailable) "CurseForge browsing is connected"
+                                else "Required by CurseForge's official API; Modrinth works without a key"
+                            )
+                        },
                         visualTransformation = PasswordVisualTransformation(),
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
@@ -318,7 +406,31 @@ fun SettingsScreen(
                         OutlinedButton(onClick = onOpenLogs, modifier = Modifier.weight(1f)) { Text("Logs and crashes") }
                     }
                     SwitchRow("Movement joystick", settings.movementJoystickEnabled) { checked -> onUpdateSettings { it.copy(movementJoystickEnabled = checked) } }
-                    SwitchRow("Look joystick", settings.lookJoystickEnabled) { checked -> onUpdateSettings { it.copy(lookJoystickEnabled = checked) } }
+                    Text("Touch look mode", style = MaterialTheme.typography.titleSmall)
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        TouchLookMode.entries.forEach { mode ->
+                            FilterChip(
+                                selected = settings.touchLookMode == mode,
+                                onClick = {
+                                    onUpdateSettings {
+                                        it.copy(
+                                            touchLookMode = mode,
+                                            lookJoystickEnabled = mode == TouchLookMode.JOYSTICK
+                                        )
+                                    }
+                                },
+                                label = { Text(mode.displayName) }
+                            )
+                        }
+                    }
+                    Text(
+                        "Swipe anywhere uses the right side of the screen like a normal mobile game. In menus it becomes a virtual mouse touchpad.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    SwitchRow("Show virtual mouse in Minecraft menus", settings.virtualMouseEnabled) { checked ->
+                        onUpdateSettings { it.copy(virtualMouseEnabled = checked) }
+                    }
                     SwitchRow("Capture physical mouse", settings.physicalMouseCapture) { checked -> onUpdateSettings { it.copy(physicalMouseCapture = checked) } }
                     SwitchRow("Hide touch controls after keyboard, mouse or gamepad input", settings.hideTouchControlsWithExternalInput) { checked ->
                         onUpdateSettings { it.copy(hideTouchControlsWithExternalInput = checked) }
@@ -376,7 +488,7 @@ fun SettingsScreen(
 }
 
 @Composable
-private fun ComponentRow(item: ComponentPackage, enabled: Boolean, onInstall: () -> Unit) {
+private fun ComponentRow(item: ComponentPackage, enabled: Boolean, installed: Boolean, onInstall: () -> Unit) {
     LauncherCard {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
@@ -388,7 +500,11 @@ private fun ComponentRow(item: ComponentPackage, enabled: Boolean, onInstall: ()
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-            Button(onClick = onInstall, enabled = enabled) { Text("Install") }
+            if (installed) {
+                Text("Installed", color = MaterialTheme.colorScheme.primary)
+            } else {
+                Button(onClick = onInstall, enabled = enabled) { Text("Install") }
+            }
         }
     }
 }

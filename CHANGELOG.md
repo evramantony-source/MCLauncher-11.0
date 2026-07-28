@@ -1,5 +1,18 @@
 # Changelog
 
+## 11.0.0-alpha02
+
+- Replaced the duplicated physical-keyboard event path with the pinned GLFW engine's raw Android key path and added mouse-generated Back/right-click handling.
+- Added a visible virtual cursor and touchpad-style menu navigation, including tap-to-click and long-press right click.
+- Made free swipe look the mobile default while retaining the optional look joystick.
+- Expanded the touch-control editor with add, duplicate, delete, label, action, raw key/mouse, visibility, toggle, size, position and opacity controls.
+- Added controller cursor navigation in menus while preserving in-world movement, camera, triggers and remappable buttons.
+- Added Modrinth and CurseForge project icons plus persistent per-instance `Installed` and `Installing` states.
+- Added a guided CurseForge API-key state and optional build-time key injection.
+- Added system, dark and light launcher themes.
+- Replaced dead renderer/driver choices with ready states and checksum-pinned one-tap installers for compatible OpenLTW, ANGLE and Zink packages.
+- Added compatibility tests for Alpha 01 content indexes and mobile-friendly settings defaults.
+
 ## 11.0.0-alpha01
 
 - Imported the MCLauncher 6.0 Beta 05 source baseline into the 11.0 development line.

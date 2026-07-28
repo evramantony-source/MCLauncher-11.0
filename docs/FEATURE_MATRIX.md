@@ -1,4 +1,4 @@
-# MCLauncher 11.0 Alpha 01 feature matrix
+# MCLauncher 11.0 Alpha 02 feature matrix
 
 | Area | Current status |
 |---|---|
@@ -7,14 +7,17 @@
 | Forge/NeoForge installer execution | Source implemented; device validation required |
 | Offline and Microsoft accounts | Source implemented |
 | Separate instances and favourite/recent ordering | Source implemented |
-| Modrinth and CurseForge content | Source implemented |
+| Modrinth content | Browsing/install/update, icons and installed state implemented |
+| CurseForge content | Browsing/install/update and icons implemented; official API key required |
 | Java 8/17/21/25 | CI packaging required |
 | Java 17/21/25 archive authenticity | RSA signature verification in CI |
 | Patched LWJGL/GLFW | Coordinate-mapped CI packaging required |
-| Android JVM/Surface engine | Source build in CI; device proof required |
+| Android JVM/Surface engine | Alpha 01 reached the Minecraft menu and a world; Alpha 02 regression test required |
 | MobileGlues default and GL4ES/OpenLTW fallback | Hash-pinned; exports and payload enforced by verifier |
 | Android JNA compatibility | Version-selected JNA 6/7 dispatch libraries |
-| Optional renderer/driver packs | Manifest-driven; missing saved choices fall back safely |
-| Touch, keyboard, mouse, controller and gyro | Source implemented; device proof required |
+| Optional renderer/driver packs | Manifest-driven plus verified one-tap packages; missing saved choices fall back safely |
+| Touch | Editable controls, swipe look, optional look stick and virtual menu mouse; device proof required |
+| Keyboard, mouse, controller and gyro | Raw keyboard path, absolute/relative mouse and menu/gamepad contexts implemented; device proof required |
+| Launcher theme | System, dark and light modes implemented |
 | FPS limit and performance settings | Source implemented |
 | Logs/crash diagnosis/screenshots | Source implemented |

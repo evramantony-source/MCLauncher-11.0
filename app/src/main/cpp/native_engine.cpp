@@ -52,6 +52,7 @@ using MojoSurfaceCreated = void (*)(JNIEnv*, jclass, jobject);
 using MojoSurfaceDestroyed = void (*)(JNIEnv*, jclass);
 using MojoSurfaceUpdated = void (*)(JNIEnv*, jclass);
 using MojoSendKey = void (*)(JNIEnv*, jclass, jint, jint, jint);
+using MojoSendRawKey = void (*)(JNIEnv*, jclass, jint, jint, jint, jchar);
 using MojoSendMouse = void (*)(JNIEnv*, jclass, jint, jint, jint);
 using MojoSendUnicode = void (*)(JNIEnv*, jclass, jstring, jint);
 using MojoSendScroll = void (*)(JNIEnv*, jclass, jdouble, jdouble);
@@ -61,6 +62,7 @@ MojoSurfaceCreated gMojoSurfaceCreated = nullptr;
 MojoSurfaceDestroyed gMojoSurfaceDestroyed = nullptr;
 MojoSurfaceUpdated gMojoSurfaceUpdated = nullptr;
 MojoSendKey gMojoSendKey = nullptr;
+MojoSendRawKey gMojoSendRawKey = nullptr;
 MojoSendMouse gMojoSendMouse = nullptr;
 MojoSendUnicode gMojoSendUnicode = nullptr;
 MojoSendScroll gMojoSendScroll = nullptr;
@@ -209,6 +211,8 @@ void initializeMojoGlfw(JNIEnv* env, const std::string& path, void* handle) {
         dlsym(handle, "Java_git_artdeell_dnbootstrap_glfw_GLFW_nativeSurfaceUpdated"));
     gMojoSendKey = reinterpret_cast<MojoSendKey>(
         dlsym(handle, "Java_git_artdeell_dnbootstrap_glfw_GLFW_sendKeyEvent"));
+    gMojoSendRawKey = reinterpret_cast<MojoSendRawKey>(
+        dlsym(handle, "Java_git_artdeell_dnbootstrap_glfw_GLFW_sendRawKeyEvent"));
     gMojoSendMouse = reinterpret_cast<MojoSendMouse>(
         dlsym(handle, "Java_git_artdeell_dnbootstrap_glfw_GLFW_sendMouseEvent"));
     gMojoSendUnicode = reinterpret_cast<MojoSendUnicode>(
@@ -217,7 +221,8 @@ void initializeMojoGlfw(JNIEnv* env, const std::string& path, void* handle) {
         dlsym(handle, "Java_git_artdeell_dnbootstrap_glfw_GLFW_sendScrollEvent"));
     gMojoSendMousePosition = reinterpret_cast<MojoSendMousePosition>(
         dlsym(handle, "Java_git_artdeell_dnbootstrap_glfw_GLFW_sendMousePosition0__DD"));
-    gMojoGlfwAvailable = gMojoInitialize && gMojoSurfaceCreated && gMojoSurfaceDestroyed && gMojoSendKey &&
+    gMojoGlfwAvailable = gMojoInitialize && gMojoSurfaceCreated && gMojoSurfaceDestroyed &&
+                         gMojoSendKey && gMojoSendRawKey &&
                          gMojoSendMouse && gMojoSendUnicode && gMojoSendScroll &&
                          gMojoSendMousePosition;
     if (gMojoGlfwAvailable) {
@@ -899,6 +904,27 @@ Java_com_mclauncher_app_engine_NativeLaunchBridge_nativeSendKey(
 }
 
 extern "C" JNIEXPORT void JNICALL
+Java_com_mclauncher_app_engine_NativeLaunchBridge_nativeSendRawKey(
+        JNIEnv* env, jobject, jint androidKey, jint glfwKey, jint action, jint modifiers, jint unicode) {
+    if (gMojoGlfwAvailable && gMojoSendRawKey != nullptr) {
+        gMojoSendRawKey(
+            env,
+            nullptr,
+            androidKey,
+            action,
+            modifiers,
+            static_cast<jchar>(unicode)
+        );
+        return;
+    }
+    if (gMojoGlfwAvailable && gMojoSendKey != nullptr) {
+        gMojoSendKey(env, nullptr, glfwKey, action, modifiers);
+        return;
+    }
+    pushInput(InputEvent{InputEventType::Key, glfwKey, action, modifiers});
+}
+
+extern "C" JNIEXPORT void JNICALL
 Java_com_mclauncher_app_engine_NativeLaunchBridge_nativeSendChar(
         JNIEnv* env, jobject, jint codePoint) {
     if (gMojoGlfwAvailable && gMojoSendUnicode != nullptr) {
@@ -968,6 +994,34 @@ Java_com_mclauncher_app_engine_NativeLaunchBridge_nativeSendCursorDelta(
     event.x = dx;
     event.y = dy;
     pushInput(event);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_mclauncher_app_engine_NativeLaunchBridge_nativeSendCursorPosition(
+        JNIEnv* env, jobject, jdouble x, jdouble y) {
+    double cursorX;
+    double cursorY;
+    {
+        std::lock_guard<std::mutex> cursorLock(gCursorMutex);
+        gForwardCursorX = std::clamp(x, 0.0, 1.0);
+        gForwardCursorY = std::clamp(y, 0.0, 1.0);
+        cursorX = gForwardCursorX;
+        cursorY = gForwardCursorY;
+    }
+    if (gMojoGlfwAvailable && gMojoSendMousePosition != nullptr) {
+        gMojoSendMousePosition(env, nullptr, cursorX, cursorY);
+        return;
+    }
+    if (gUpstreamAndroidJniInitialized && gCallbackSendCursorPos != nullptr) {
+        env->CallStaticVoidMethod(
+            gCallbackBridgeClass,
+            gCallbackSendCursorPos,
+            static_cast<jfloat>(cursorX),
+            static_cast<jfloat>(cursorY)
+        );
+        if (!env->ExceptionCheck()) return;
+        env->ExceptionClear();
+    }
 }
 
 extern "C" JNIEXPORT void JNICALL

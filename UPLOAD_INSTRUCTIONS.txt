@@ -5,7 +5,7 @@ To obtain an APK from a phone:
 2. Run “Build standalone MCLauncher 11 APK”.
 3. Select arm64-v8a for a modern 64-bit Android device.
 4. Wait for the validation and build jobs to pass.
-5. Download “MCLauncher-11.0-alpha01-arm64-v8a”.
-6. Extract and install “MCLauncher-11.0-alpha01-arm64-v8a.apk”.
+5. Download “MCLauncher-11.0-alpha02-arm64-v8a”.
+6. Extract and install “MCLauncher-11.0-alpha02-arm64-v8a.apk”.
 
 Never treat a failed or cancelled workflow as a usable build.

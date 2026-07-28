@@ -10,7 +10,7 @@ import com.mclauncher.app.MCLauncherApplication;
 
 /**
  * Legacy Android-side compatibility class for older patched LWJGL engines.
- * The self-contained Alpha 01 engine uses the dnbootstrap GLFW contract, while
+ * The self-contained Alpha 02 engine uses the dnbootstrap GLFW contract, while
  * this class keeps optional developer-imported Pojav-style engines usable.
  */
 @Keep

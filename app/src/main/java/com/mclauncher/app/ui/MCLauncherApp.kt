@@ -30,6 +30,7 @@ import com.mclauncher.app.ui.screens.InstanceDetailScreen
 import com.mclauncher.app.ui.screens.LibraryScreen
 import com.mclauncher.app.ui.screens.LogsScreen
 import com.mclauncher.app.ui.screens.SettingsScreen
+import com.mclauncher.app.ui.theme.MCLauncherTheme
 import kotlinx.coroutines.flow.collect
 
 @Composable
@@ -87,17 +88,18 @@ fun MCLauncherApp(launcherViewModel: LauncherViewModel = viewModel()) {
         launcherViewModel.clearMessage()
     }
 
-    LauncherShell(
-        currentRoute = currentRoute,
-        onNavigate = { destination ->
-            navController.navigate(destination.route) {
-                popUpTo(LauncherDestination.Home.route) { saveState = true }
-                launchSingleTop = true
-                restoreState = true
+    MCLauncherTheme(themeMode = state.snapshot.settings.themeMode) {
+        LauncherShell(
+            currentRoute = currentRoute,
+            onNavigate = { destination ->
+                navController.navigate(destination.route) {
+                    popUpTo(LauncherDestination.Home.route) { saveState = true }
+                    launchSingleTop = true
+                    restoreState = true
+                }
             }
-        }
-    ) {
-        NavHost(navController = navController, startDestination = LauncherDestination.Home.route) {
+        ) {
+            NavHost(navController = navController, startDestination = LauncherDestination.Home.route) {
             composable(LauncherDestination.Home.route) {
                 HomeScreen(
                     state = state,
@@ -124,8 +126,10 @@ fun MCLauncherApp(launcherViewModel: LauncherViewModel = viewModel()) {
                     onInstall = launcherViewModel::installVersion,
                     onLoadLoaderChoices = launcherViewModel::loadLoaderChoices,
                     onSearchContent = launcherViewModel::searchContent,
+                    onSelectContentInstance = launcherViewModel::selectContentInstance,
                     onInstallContent = launcherViewModel::installContent,
                     onInstallCurseForgeContent = launcherViewModel::installCurseForgeContent,
+                    onOpenSettings = { navController.navigate(LauncherDestination.Settings.route) },
                     snackbarHost = { SnackbarHost(snackbarHostState) }
                 )
             }
@@ -194,6 +198,7 @@ fun MCLauncherApp(launcherViewModel: LauncherViewModel = viewModel()) {
                     onOpenScreenshot = launcherViewModel::openScreenshot,
                     snackbarHost = { SnackbarHost(snackbarHostState) }
                 )
+            }
             }
         }
     }

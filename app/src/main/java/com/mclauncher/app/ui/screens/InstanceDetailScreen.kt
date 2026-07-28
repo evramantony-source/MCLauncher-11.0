@@ -7,8 +7,10 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.CheckCircle
@@ -38,7 +40,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
+import coil3.compose.AsyncImage
 import com.mclauncher.app.ui.LauncherUiState
 import com.mclauncher.app.ui.components.LauncherCard
 import com.mclauncher.minecraft.InstalledContent
@@ -249,6 +254,23 @@ private fun androidx.compose.foundation.lazy.LazyListScope.contentItems(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier
+                        .size(48.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                ) {
+                    Text(item.title.take(1).uppercase())
+                    if (!item.iconUrl.isNullOrBlank()) {
+                        AsyncImage(
+                            model = item.iconUrl,
+                            contentDescription = "${item.title} icon",
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop
+                        )
+                    }
+                }
                 Column(modifier = Modifier.weight(1f)) {
                     Text(item.title, style = MaterialTheme.typography.titleMedium)
                     Text("${item.contentType.displayName} • ${item.versionNumber}", color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -296,3 +318,5 @@ private fun DetailRow(label: String, value: String) {
         Text(value)
     }
 }
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box

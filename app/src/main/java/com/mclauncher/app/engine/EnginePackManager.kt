@@ -78,7 +78,7 @@ class EnginePackManager(
 
     /**
      * Legacy manual import path retained only for developer compatibility tests.
-     * Normal users receive the complete engine from the MCLauncher APK. Alpha 01
+     * Normal users receive the complete engine from the MCLauncher APK. Alpha 02
      * does not expose this path in the normal Settings screen.
      */
     suspend fun importLauncherBundle(
@@ -297,7 +297,15 @@ class EnginePackManager(
     }
 
     /** Imports one renderer or GLES/Vulkan driver plugin archive. */
-    suspend fun importGraphicsPack(uri: Uri): InstalledGraphicsPackManifest = withContext(Dispatchers.IO) {
+    suspend fun importGraphicsPack(
+        uri: Uri,
+        expectedRenderer: Renderer? = null,
+        expectedDriver: GraphicsDriver? = null,
+        packageName: String? = null,
+        packageVersion: String? = null,
+        sourceProject: String? = null,
+        packageLicense: String? = null
+    ): InstalledGraphicsPackManifest = withContext(Dispatchers.IO) {
         val archive = copyUriToCache(uri, "graphics-pack")
         val staging = File(layout.root, "staging/graphics-${UUID.randomUUID()}").apply { mkdirs() }
         try {
@@ -314,15 +322,30 @@ class EnginePackManager(
                 runCatching { json.decodeFromString(GraphicsPackManifest.serializer(), it.readText()) }
                     .getOrElse { error("Invalid mclauncher-graphics.json: ${it.message}") }
             }
-            val manifest = suppliedManifest ?: inferGraphicsIdentity(nativeFiles).let { inferred ->
+            val manifest = suppliedManifest ?: if (expectedRenderer != null || expectedDriver != null) {
+                val renderer = expectedRenderer
                 GraphicsPackManifest(
-                    id = inferred.id,
-                    name = inferred.name,
-                    kind = inferred.kind,
-                    renderer = inferred.renderer,
-                    driver = inferred.driver,
-                    pojavRenderer = inferred.pojavRenderer
+                    id = (renderer?.id ?: expectedDriver!!.id),
+                    name = packageName ?: renderer?.displayName ?: expectedDriver!!.displayName,
+                    version = packageVersion ?: "unknown",
+                    kind = if (renderer != null) GraphicsPackKind.RENDERER else GraphicsPackKind.DRIVER,
+                    renderer = renderer,
+                    driver = expectedDriver,
+                    pojavRenderer = renderer?.let(::defaultPojavRenderer),
+                    sourceProject = sourceProject,
+                    license = packageLicense
                 )
+            } else {
+                inferGraphicsIdentity(nativeFiles).let { inferred ->
+                    GraphicsPackManifest(
+                        id = inferred.id,
+                        name = inferred.name,
+                        kind = inferred.kind,
+                        renderer = inferred.renderer,
+                        driver = inferred.driver,
+                        pojavRenderer = inferred.pojavRenderer
+                    )
+                }
             }
             require(manifest.schemaVersion == 1) { "Unsupported graphics-pack schema ${manifest.schemaVersion}" }
             require(manifest.architecture == null || manifest.architecture == architecture) {
@@ -413,6 +436,20 @@ class EnginePackManager(
                 GraphicsIdentity("vulkan", "Native Vulkan", GraphicsPackKind.RENDERER, Renderer.VULKAN, null, "vulkan")
             else -> error("Could not identify this graphics pack. Add a mclauncher-graphics.json manifest.")
         }
+    }
+
+    private fun defaultPojavRenderer(renderer: Renderer): String = when (renderer) {
+        Renderer.MOBILE_GLUES -> "mobileglues"
+        Renderer.ANGLE -> "opengles3_desktopgl_angle_vulkan"
+        Renderer.OPEN_LTW -> "opengles3_ltw"
+        Renderer.NG_GL4ES -> "ng-gl4es"
+        Renderer.GL4ES -> "opengles3"
+        Renderer.ZINK -> "vulkan_zink"
+        Renderer.VIRGL -> "opengles3_virgl"
+        Renderer.VULKAN -> "vulkan"
+        Renderer.KRYPTON -> "krypton"
+        Renderer.CUSTOM -> error("A custom renderer package must provide pojavRenderer")
+        Renderer.AUTO -> error("Automatic is not a renderer package")
     }
 
     private fun inspectRuntime(version: JavaVersion): RuntimeStatus {

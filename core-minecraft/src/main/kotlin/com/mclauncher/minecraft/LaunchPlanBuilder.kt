@@ -240,7 +240,7 @@ class LaunchPlanBuilder(
         val classpathValue = placeholders.getValue("${'$'}{classpath}")
         output += "-Djava.class.path=$classpathValue"
         output += "-Dmclauncher.name=MCLauncher"
-        output += "-Dmclauncher.version=11.0.0-alpha01"
+        output += "-Dmclauncher.version=11.0.0-alpha02"
         output += "-Dmclauncher.fpsLimit=${settings.fpsLimit}"
         when (settings.performancePreset) {
             PerformancePreset.BATTERY -> {

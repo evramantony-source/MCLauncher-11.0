@@ -10,6 +10,7 @@ import android.os.Looper;
 import androidx.annotation.Keep;
 import androidx.annotation.Nullable;
 
+import com.mclauncher.app.engine.GameInputBridge;
 import com.mclauncher.app.engine.NativeLaunchBridge;
 
 import java.nio.ByteBuffer;
@@ -82,6 +83,7 @@ public final class GLFW {
     @Keep
     private static void receiveGrabState(boolean value) {
         grabbing = value;
+        GameInputBridge.INSTANCE.syncPointerState(cursorX, cursorY, grabbing);
         NativeLaunchBridge.INSTANCE.nativeSyncPointerState(cursorX, cursorY, grabbing);
         GrabListener listener = grabListener;
         if (listener != null) MAIN.post(() -> listener.onGrabChanged(value));
@@ -92,6 +94,7 @@ public final class GLFW {
     private static void receiveCursorPos(double x, double y) {
         cursorX = x;
         cursorY = y;
+        GameInputBridge.INSTANCE.syncPointerState(cursorX, cursorY, grabbing);
         NativeLaunchBridge.INSTANCE.nativeSyncPointerState(cursorX, cursorY, grabbing);
     }
 

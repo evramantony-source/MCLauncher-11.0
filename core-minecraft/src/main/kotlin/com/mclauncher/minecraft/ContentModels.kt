@@ -81,6 +81,7 @@ data class InstalledContent(
     val contentType: ContentType,
     val fileName: String,
     val title: String,
+    val iconUrl: String? = null,
     val versionNumber: String,
     val loader: String? = null,
     val gameVersion: String,

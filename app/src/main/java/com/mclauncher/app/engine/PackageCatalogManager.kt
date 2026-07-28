@@ -46,6 +46,48 @@ class PackageCatalogManager(
     private val downloader: HttpDownloader = HttpDownloader(),
     private val json: Json = Json { ignoreUnknownKeys = true }
 ) {
+    fun builtInCatalog(): ComponentCatalog = ComponentCatalog(
+        updatedAt = "2026-07-28",
+        packages = listOf(
+            ComponentPackage(
+                id = "openltw-2025-07-16",
+                name = "OpenLTW / LTW",
+                version = "2025.7.16",
+                type = ComponentPackageType.RENDERER,
+                architecture = "universal",
+                url = "https://github.com/ShirosakiMio/FCLRendererPlugin/releases/download/Renderer/LTW-2025.7.16.apk",
+                sha256 = "f36d7145da5188f83225aa97fc8422aa909308819e8fb2f4b97e1d253c48b1f5",
+                size = 2_680_542,
+                renderer = Renderer.OPEN_LTW,
+                sourceProject = "https://github.com/ShirosakiMio/FCLRendererPlugin"
+            ),
+            ComponentPackage(
+                id = "angle-renderer-arm64",
+                name = "ANGLE renderer",
+                version = "2025.01.22",
+                type = ComponentPackageType.RENDERER,
+                architecture = "arm64-v8a",
+                url = "https://github.com/ShirosakiMio/FCLRendererPlugin/releases/download/Renderer/ANGLE.Renderer.apk",
+                sha256 = "04e984363d3256e255c3d96aca68c264d3f800b9f4c7d093ab40eb3d4c042c2e",
+                size = 4_484_899,
+                renderer = Renderer.ANGLE,
+                sourceProject = "https://github.com/ShirosakiMio/FCLRendererPlugin"
+            ),
+            ComponentPackage(
+                id = "zink-mesa25-arm64",
+                name = "Zink Mesa 25",
+                version = "25",
+                type = ComponentPackageType.RENDERER,
+                architecture = "arm64-v8a",
+                url = "https://github.com/ShirosakiMio/FCLRendererPlugin/releases/download/Renderer/Zink.Mesa25.apk",
+                sha256 = "815f0e4a8437939bc0447ccace640bbb714b4173038f1d4d668be62dc18d1e30",
+                size = 5_263_088,
+                renderer = Renderer.ZINK,
+                sourceProject = "https://github.com/ShirosakiMio/FCLRendererPlugin"
+            )
+        )
+    )
+
     suspend fun load(url: String): ComponentCatalog {
         require(url.startsWith("https://")) { "Component catalog must use HTTPS" }
         val catalog = json.decodeFromString<ComponentCatalog>(downloader.readText(url))

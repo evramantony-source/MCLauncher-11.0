@@ -3,6 +3,7 @@ package com.mclauncher.app.ui.screens
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -17,6 +18,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ArrowBack
@@ -52,7 +54,31 @@ import com.mclauncher.model.ControlElement
 import com.mclauncher.model.ControllerBinding
 import com.mclauncher.model.DefaultControls
 import com.mclauncher.model.LauncherSettings
+import com.mclauncher.model.TouchLookMode
 import kotlin.math.roundToInt
+
+private data class ControlPreset(
+    val label: String,
+    val keyCode: Int? = null,
+    val mouseButton: Int? = null
+)
+
+private val controlPresets = listOf(
+    ControlPreset("Jump", keyCode = 32),
+    ControlPreset("Sneak", keyCode = 340),
+    ControlPreset("Sprint", keyCode = 341),
+    ControlPreset("Inventory", keyCode = 69),
+    ControlPreset("Chat", keyCode = 84),
+    ControlPreset("Drop", keyCode = 81),
+    ControlPreset("Swap hands", keyCode = 70),
+    ControlPreset("Escape", keyCode = 256),
+    ControlPreset("Player list", keyCode = 258),
+    ControlPreset("Debug F3", keyCode = 292),
+    ControlPreset("Perspective F5", keyCode = 294),
+    ControlPreset("Attack", mouseButton = 0),
+    ControlPreset("Use", mouseButton = 1),
+    ControlPreset("Pick block", mouseButton = 2)
+)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -103,6 +129,24 @@ fun ControlEditorScreen(
                             }
                         }
                     )
+                    Button(
+                        onClick = {
+                            val control = ControlElement(
+                                id = "custom-${System.currentTimeMillis()}",
+                                label = "Jump",
+                                keyCode = 32,
+                                x = 0.44f,
+                                y = 0.44f
+                            )
+                            onUpdateSettings { current ->
+                                current.copy(controlLayout = current.controlLayout + control)
+                            }
+                            selectedId = control.id
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Add control button")
+                    }
                 }
             }
 
@@ -110,6 +154,66 @@ fun ControlEditorScreen(
                 item {
                     LauncherCard(modifier = Modifier.fillMaxWidth()) {
                         Text("${control.label} properties", style = MaterialTheme.typography.titleLarge)
+                        OutlinedTextField(
+                            value = control.label,
+                            onValueChange = { value ->
+                                updateControl(settings, control.id, onUpdateSettings) {
+                                    it.copy(label = value.take(18))
+                                }
+                            },
+                            label = { Text("Button label") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Text("Action", style = MaterialTheme.typography.titleSmall)
+                        Row(
+                            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            controlPresets.forEach { preset ->
+                                FilterChip(
+                                    selected = control.keyCode == preset.keyCode &&
+                                        control.mouseButton == preset.mouseButton,
+                                    onClick = {
+                                        updateControl(settings, control.id, onUpdateSettings) {
+                                            it.copy(
+                                                label = preset.label.take(18),
+                                                keyCode = preset.keyCode,
+                                                mouseButton = preset.mouseButton
+                                            )
+                                        }
+                                    },
+                                    label = { Text(preset.label) }
+                                )
+                            }
+                        }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            OutlinedTextField(
+                                value = control.keyCode?.toString().orEmpty(),
+                                onValueChange = { text ->
+                                    updateControl(settings, control.id, onUpdateSettings) {
+                                        it.copy(keyCode = text.toIntOrNull(), mouseButton = null)
+                                    }
+                                },
+                                label = { Text("GLFW key") },
+                                singleLine = true,
+                                modifier = Modifier.weight(1f)
+                            )
+                            OutlinedTextField(
+                                value = control.mouseButton?.toString().orEmpty(),
+                                onValueChange = { text ->
+                                    updateControl(settings, control.id, onUpdateSettings) {
+                                        it.copy(mouseButton = text.toIntOrNull(), keyCode = null)
+                                    }
+                                },
+                                label = { Text("Mouse button") },
+                                singleLine = true,
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
                         SettingSlider("Width", control.width, 0.06f..0.30f) { value -> updateControl(settings, control.id, onUpdateSettings) { it.copy(width = value) } }
                         SettingSlider("Height", control.height, 0.05f..0.22f) { value -> updateControl(settings, control.id, onUpdateSettings) { it.copy(height = value) } }
                         SettingSlider("Opacity", control.opacity, 0.15f..1f) { value -> updateControl(settings, control.id, onUpdateSettings) { it.copy(opacity = value) } }
@@ -135,6 +239,35 @@ fun ControlEditorScreen(
                                 onCheckedChange = { checked -> updateControl(settings, control.id, onUpdateSettings) { it.copy(toggle = checked) } }
                             )
                         }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            OutlinedButton(
+                                onClick = {
+                                    val duplicate = control.copy(
+                                        id = "custom-${System.currentTimeMillis()}",
+                                        label = (control.label + " 2").take(18),
+                                        x = (control.x + 0.04f).coerceAtMost(0.88f),
+                                        y = (control.y + 0.04f).coerceAtMost(0.88f)
+                                    )
+                                    onUpdateSettings { current ->
+                                        current.copy(controlLayout = current.controlLayout + duplicate)
+                                    }
+                                    selectedId = duplicate.id
+                                },
+                                modifier = Modifier.weight(1f)
+                            ) { Text("Duplicate") }
+                            OutlinedButton(
+                                onClick = {
+                                    onUpdateSettings { current ->
+                                        current.copy(controlLayout = current.controlLayout.filterNot { it.id == control.id })
+                                    }
+                                    selectedId = settings.controlLayout.firstOrNull { it.id != control.id }?.id
+                                },
+                                modifier = Modifier.weight(1f)
+                            ) { Text("Delete") }
+                        }
                     }
                 }
             }
@@ -145,6 +278,23 @@ fun ControlEditorScreen(
                     SettingSlider("Scale", settings.controlScale, 0.6f..1.6f) { value -> onUpdateSettings { it.copy(controlScale = value) } }
                     SettingSlider("Opacity", settings.controlOpacity, 0.2f..1f) { value -> onUpdateSettings { it.copy(controlOpacity = value) } }
                     SettingSlider("Look sensitivity", settings.lookSensitivity, 0.25f..3f) { value -> onUpdateSettings { it.copy(lookSensitivity = value) } }
+                    Text("Touch look mode", style = MaterialTheme.typography.titleSmall)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        TouchLookMode.entries.forEach { mode ->
+                            FilterChip(
+                                selected = settings.touchLookMode == mode,
+                                onClick = {
+                                    onUpdateSettings {
+                                        it.copy(
+                                            touchLookMode = mode,
+                                            lookJoystickEnabled = mode == TouchLookMode.JOYSTICK
+                                        )
+                                    }
+                                },
+                                label = { Text(mode.displayName) }
+                            )
+                        }
+                    }
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,

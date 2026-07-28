@@ -9,10 +9,23 @@
 - [x] Verify Java 17/21/25 runtime signatures with the pinned engine certificate.
 - [x] Reject unsafe vendored paths and incomplete payloads.
 - [x] Run source, Python and JVM tests on pull requests.
-- [ ] Obtain a fully green standalone-APK workflow.
-- [ ] Install the artifact on the Redmi Pad Pro.
-- [ ] Reach the vanilla Minecraft main menu.
-- [ ] Verify world rendering, audio, touch, keyboard, mouse and controller input.
+- [x] Obtain a fully green standalone-APK workflow.
+- [x] Install the artifact on the Android test device.
+- [x] Reach the Minecraft 1.21.11/Fabric main menu.
+- [x] Verify world rendering and stable touch play.
+
+## Alpha 02 — input and content usability
+
+- [x] Add virtual-mouse menu navigation and a visible cursor.
+- [x] Make swipe look the default and retain the optional look joystick.
+- [x] Match the pinned engine's raw physical-keyboard event path.
+- [x] Add contextual physical mouse and controller menu input.
+- [x] Expand the editable touch-control layout and actions.
+- [x] Add project icons and per-instance installed/installing state.
+- [x] Add system, dark and light themes.
+- [x] Add verified one-tap renderer packages and hide dead placeholders.
+- [ ] Pass the Alpha 02 CI build.
+- [ ] Verify menu, keyboard, mouse, controller, content and renderer behavior on-device.
 
 ## After main-menu confirmation
 

@@ -6,18 +6,15 @@ Beta 04 separates the Minecraft renderer from the optional Android graphics-driv
 
 The CI build packages a hash-pinned MobileGlues release for every supported ABI, plus the compatible GL4ES/OpenLTW fallback produced by the pinned engine source. Automatic mode prefers MobileGlues and the System driver. The native bridge configures the renderer before loading GLFW and deliberately avoids preloading unselected backends, preventing GL4ES/Mesa/ANGLE symbol collisions.
 
-Additional renderer entries remain available only when a compatible `mclauncher-graphics.json` pack is present:
+Additional renderer entries are shown only when already usable or when MCLauncher has
+a checksum-pinned, architecture-compatible one-tap package. Alpha 02 includes direct
+upstream installers for compatible OpenLTW, ANGLE and Zink releases. Advanced users
+can still import a compatible `mclauncher-graphics.json` pack.
 
-- OpenLTW/LTW
-- NG-GL4ES
-- Zink/Mesa
-- ANGLE
-- MobileGlues
-- VirGL legacy override
-- Native Vulkan
-- Krypton or custom backends
-
-An unavailable explicit backend is marked **not installed**. If an older saved setting points to a missing pack, the launch resolver safely falls back to the first installed backend instead of blocking Minecraft startup.
+Unsupported placeholders are hidden instead of filling Settings with disabled
+“not installed” entries. If an older saved setting points to a missing pack, the
+launch resolver safely falls back to the first installed backend instead of blocking
+Minecraft startup.
 
 ## Driver layers
 

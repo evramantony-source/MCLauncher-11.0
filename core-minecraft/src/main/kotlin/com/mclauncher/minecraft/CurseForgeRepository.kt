@@ -118,6 +118,7 @@ class CurseForgeRepository(
             contentType = contentType,
             fileName = target.name,
             title = mod.name,
+            iconUrl = mod.logo?.thumbnailUrl ?: mod.logo?.url,
             versionNumber = file.displayName,
             loader = instance.loader.id,
             gameVersion = gameVersion,

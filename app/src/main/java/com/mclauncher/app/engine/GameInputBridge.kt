@@ -4,7 +4,17 @@ import android.view.InputDevice
 import android.view.KeyEvent
 import android.view.MotionEvent
 import com.mclauncher.model.ControllerBinding
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlin.math.abs
+
+data class GamePointerState(
+    val x: Float = 0.5f,
+    val y: Float = 0.5f,
+    val grabbed: Boolean = false
+)
 
 /**
  * Unified GLFW input boundary for touch controls, physical keyboards, mice and controllers.
@@ -15,6 +25,11 @@ object GameInputBridge {
     @Volatile private var controllerBindings: Map<Int, ControllerBinding> = emptyMap()
     @Volatile private var lookSensitivity: Float = 1f
     @Volatile private var gamepadDeadZone: Float = 0.18f
+    @Volatile private var surfaceWidth: Int = 1
+    @Volatile private var surfaceHeight: Int = 1
+
+    private val _pointerState = MutableStateFlow(GamePointerState())
+    val pointerState: StateFlow<GamePointerState> = _pointerState.asStateFlow()
 
     private val pressedKeys = mutableSetOf<Int>()
     private val pressedMouseButtons = mutableSetOf<Int>()
@@ -27,6 +42,19 @@ object GameInputBridge {
         controllerBindings = bindings.associateBy(ControllerBinding::androidKeyCode)
         lookSensitivity = sensitivity.coerceIn(0.1f, 4f)
         gamepadDeadZone = controllerDeadZone.coerceIn(0.05f, 0.60f)
+    }
+
+    fun setSurfaceSize(width: Int, height: Int) {
+        surfaceWidth = width.coerceAtLeast(1)
+        surfaceHeight = height.coerceAtLeast(1)
+    }
+
+    fun syncPointerState(x: Double, y: Double, grabbed: Boolean) {
+        _pointerState.value = GamePointerState(
+            x = x.toFloat().coerceIn(0f, 1f),
+            y = y.toFloat().coerceIn(0f, 1f),
+            grabbed = grabbed
+        )
     }
 
     const val ACTION_RELEASE = 0
@@ -95,8 +123,25 @@ object GameInputBridge {
     fun cursorDelta(dx: Float, dy: Float, applySensitivity: Boolean = true) {
         if (NativeLaunchBridge.isAvailable && (dx != 0f || dy != 0f)) {
             val multiplier = if (applySensitivity) lookSensitivity else 1f
-            NativeLaunchBridge.nativeSendCursorDelta(dx * multiplier, dy * multiplier)
+            val scaledX = dx * multiplier
+            val scaledY = dy * multiplier
+            _pointerState.update { current ->
+                if (current.grabbed) current
+                else current.copy(
+                    x = (current.x + scaledX / surfaceWidth).coerceIn(0f, 1f),
+                    y = (current.y + scaledY / surfaceHeight).coerceIn(0f, 1f)
+                )
+            }
+            NativeLaunchBridge.nativeSendCursorDelta(scaledX, scaledY)
         }
+    }
+
+    fun cursorPosition(x: Float, y: Float) {
+        if (!NativeLaunchBridge.isAvailable) return
+        val normalizedX = (x / surfaceWidth).coerceIn(0f, 1f)
+        val normalizedY = (y / surfaceHeight).coerceIn(0f, 1f)
+        _pointerState.update { it.copy(x = normalizedX, y = normalizedY) }
+        NativeLaunchBridge.nativeSendCursorPosition(normalizedX.toDouble(), normalizedY.toDouble())
     }
 
     fun scroll(dx: Float, dy: Float) {
@@ -116,22 +161,66 @@ object GameInputBridge {
     fun releaseMovement() = movementAxes(0f, 0f)
 
     fun handleAndroidKey(event: KeyEvent): Boolean {
-        controllerBindings[event.keyCode]?.let { binding ->
+        val mouseEvent = event.isFromSource(InputDevice.SOURCE_MOUSE) ||
+            event.isFromSource(InputDevice.SOURCE_MOUSE_RELATIVE)
+        if (mouseEvent && event.keyCode == KeyEvent.KEYCODE_BACK) {
+            val pressed = when (event.action) {
+                KeyEvent.ACTION_DOWN -> true
+                KeyEvent.ACTION_UP -> false
+                else -> return true
+            }
+            mouseButton(MOUSE_RIGHT, pressed)
+            return true
+        }
+
+        val controllerEvent = event.isFromSource(InputDevice.SOURCE_GAMEPAD) ||
+            event.isFromSource(InputDevice.SOURCE_JOYSTICK)
+        if (controllerEvent && !pointerState.value.grabbed) {
+            val pressed = event.action == KeyEvent.ACTION_DOWN
+            if (event.action !in listOf(KeyEvent.ACTION_DOWN, KeyEvent.ACTION_UP)) return false
+            when (event.keyCode) {
+                KeyEvent.KEYCODE_BUTTON_A -> mouseButton(MOUSE_LEFT, pressed)
+                KeyEvent.KEYCODE_BUTTON_B -> key(256, pressed)
+                KeyEvent.KEYCODE_BUTTON_START -> key(256, pressed)
+                else -> Unit
+            }
+            if (event.keyCode in setOf(
+                    KeyEvent.KEYCODE_BUTTON_A,
+                    KeyEvent.KEYCODE_BUTTON_B,
+                    KeyEvent.KEYCODE_BUTTON_START
+                )
+            ) return true
+        }
+        if (controllerEvent) controllerBindings[event.keyCode]?.let { binding ->
             val pressed = event.action == KeyEvent.ACTION_DOWN
             if (event.action !in listOf(KeyEvent.ACTION_DOWN, KeyEvent.ACTION_UP)) return false
             binding.glfwKeyCode?.let { key(it, pressed, repeat = event.repeatCount > 0) }
             binding.mouseButton?.let { mouseButton(it, pressed) }
             return true
         }
-        val glfw = AndroidGlfwKeyMapper.map(event.keyCode) ?: return false
+
+        if (event.keyCode == KeyEvent.KEYCODE_UNKNOWN) return true
+        if (event.keyCode == KeyEvent.KEYCODE_VOLUME_DOWN || event.keyCode == KeyEvent.KEYCODE_VOLUME_UP) return false
+        if (event.action == KeyEvent.ACTION_MULTIPLE) return true
+        if (event.repeatCount != 0) return true
+        if (event.action == KeyEvent.ACTION_UP && event.flags and KeyEvent.FLAG_CANCELED != 0) return true
+        val glfw = AndroidGlfwKeyMapper.map(event.keyCode) ?: -1
         val modifiers = AndroidGlfwKeyMapper.modifiers(event)
-        when (event.action) {
-            KeyEvent.ACTION_DOWN -> key(glfw, pressed = true, modifiers = modifiers, repeat = event.repeatCount > 0)
-            KeyEvent.ACTION_UP -> key(glfw, pressed = false, modifiers = modifiers)
+        val pressed = when (event.action) {
+            KeyEvent.ACTION_DOWN -> true
+            KeyEvent.ACTION_UP -> false
             else -> return false
         }
-        if (event.action == KeyEvent.ACTION_DOWN && event.unicodeChar != 0 && !event.isCtrlPressed && !event.isAltPressed) {
-            character(event.unicodeChar)
+        synchronized(pressedKeys) {
+            if (glfw >= 0) {
+                if (pressed) pressedKeys += glfw else pressedKeys -= glfw
+            }
+        }
+        val unicode = if (pressed) event.getUnicodeChar(event.metaState) else 0
+        if (NativeLaunchBridge.isAvailable) {
+            // Follow the pinned GLFW engine's physical-keyboard path exactly. Sending
+            // a separately translated GLFW event and Unicode event can race its queue.
+            NativeLaunchBridge.nativeSendRawKey(event.keyCode, glfw, if (pressed) ACTION_PRESS else ACTION_RELEASE, modifiers, unicode)
         }
         return true
     }
@@ -162,6 +251,8 @@ object GameInputBridge {
                     val relativeY = event.getAxisValue(MotionEvent.AXIS_RELATIVE_Y)
                     if (relativeX != 0f || relativeY != 0f) {
                         cursorDelta(relativeX, relativeY)
+                    } else if (!pointerState.value.grabbed) {
+                        cursorPosition(event.x, event.y)
                     } else {
                         val previousX = lastMouseX
                         val previousY = lastMouseY
@@ -180,12 +271,21 @@ object GameInputBridge {
         if (event.isFromSource(InputDevice.SOURCE_JOYSTICK) && event.actionMasked == MotionEvent.ACTION_MOVE) {
             val leftX = filteredAxis(event, MotionEvent.AXIS_X)
             val leftY = filteredAxis(event, MotionEvent.AXIS_Y)
-            movementAxes(leftX, leftY)
 
             val rightX = bestAxis(event, MotionEvent.AXIS_Z, MotionEvent.AXIS_RX)
             val rightY = bestAxis(event, MotionEvent.AXIS_RZ, MotionEvent.AXIS_RY)
-            if (abs(rightX) > gamepadDeadZone || abs(rightY) > gamepadDeadZone) {
-                cursorDelta(rightX * 16f, rightY * 16f)
+            if (pointerState.value.grabbed) {
+                movementAxes(leftX, leftY)
+                if (abs(rightX) > gamepadDeadZone || abs(rightY) > gamepadDeadZone) {
+                    cursorDelta(rightX * 16f, rightY * 16f)
+                }
+            } else {
+                releaseMovement()
+                val cursorX = if (abs(rightX) > gamepadDeadZone) rightX else leftX
+                val cursorY = if (abs(rightY) > gamepadDeadZone) rightY else leftY
+                if (abs(cursorX) > gamepadDeadZone || abs(cursorY) > gamepadDeadZone) {
+                    cursorDelta(cursorX * 18f, cursorY * 18f, applySensitivity = false)
+                }
             }
 
             val hatX = event.getAxisValue(MotionEvent.AXIS_HAT_X)

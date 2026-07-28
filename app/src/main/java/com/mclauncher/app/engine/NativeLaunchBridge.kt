@@ -41,9 +41,11 @@ object NativeLaunchBridge {
     external fun nativeDrainLogs(): String?
 
     external fun nativeSendKey(key: Int, action: Int, modifiers: Int)
+    external fun nativeSendRawKey(androidKey: Int, glfwKey: Int, action: Int, modifiers: Int, unicode: Int)
     external fun nativeSendChar(codePoint: Int)
     external fun nativeSendMouseButton(button: Int, action: Int, modifiers: Int)
     external fun nativeSendCursorDelta(dx: Float, dy: Float)
+    external fun nativeSendCursorPosition(x: Double, y: Double)
     external fun nativeSyncPointerState(x: Double, y: Double, grabbing: Boolean)
     external fun nativeSendScroll(dx: Float, dy: Float)
     external fun nativeSendGamepadAxis(axis: Int, value: Float)
