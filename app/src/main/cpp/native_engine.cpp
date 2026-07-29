@@ -69,6 +69,8 @@ MojoSendScroll gMojoSendScroll = nullptr;
 MojoSendMousePosition gMojoSendMousePosition = nullptr;
 bool gMojoGlfwAvailable = false;
 bool gMojoSurfaceAttached = false;
+std::atomic<bool> gLoggedMouseButtonInput{false};
+std::atomic<bool> gLoggedAbsolutePointerInput{false};
 
 std::atomic<bool> gLaunchRunning{false};
 std::atomic<bool> gPipeReaderRunning{false};
@@ -961,6 +963,9 @@ Java_com_mclauncher_app_engine_NativeLaunchBridge_nativeSendChar(
 extern "C" JNIEXPORT void JNICALL
 Java_com_mclauncher_app_engine_NativeLaunchBridge_nativeSendMouseButton(
         JNIEnv* env, jobject, jint button, jint action, jint modifiers) {
+    if (!gLoggedMouseButtonInput.exchange(true)) {
+        pushLog("First Android mouse-button event reached the native GLFW bridge");
+    }
     if (gMojoGlfwAvailable && gMojoSendMouse != nullptr) {
         gMojoSendMouse(env, nullptr, button, action, modifiers);
         return;
@@ -1012,6 +1017,9 @@ Java_com_mclauncher_app_engine_NativeLaunchBridge_nativeSendCursorDelta(
 extern "C" JNIEXPORT void JNICALL
 Java_com_mclauncher_app_engine_NativeLaunchBridge_nativeSendCursorPosition(
         JNIEnv* env, jobject, jdouble x, jdouble y) {
+    if (!gLoggedAbsolutePointerInput.exchange(true)) {
+        pushLog("First absolute Android pointer event reached the native GLFW bridge");
+    }
     double cursorX;
     double cursorY;
     {

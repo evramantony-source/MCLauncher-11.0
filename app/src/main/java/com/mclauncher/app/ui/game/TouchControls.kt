@@ -1,5 +1,7 @@
 package com.mclauncher.app.ui.game
 
+import android.view.MotionEvent
+import android.view.ViewConfiguration
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.Canvas
@@ -27,6 +29,7 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -37,10 +40,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.pointerInteropFilter
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.mclauncher.app.engine.GameInputBridge
@@ -62,6 +69,9 @@ fun GameTouchOverlay(
 ) {
     if (!visible) return
     val toggles = remember { mutableStateMapOf<String, Boolean>() }
+    var forceVirtualMouse by remember { mutableStateOf(false) }
+    val virtualMouseActive = settings.virtualMouseEnabled &&
+        (!pointerState.grabbed || forceVirtualMouse)
 
     DisposableEffect(Unit) {
         onDispose {
@@ -74,7 +84,7 @@ fun GameTouchOverlay(
         val joystickDiameter = shortSide * settings.joystickSize.coerceIn(0.14f, 0.34f)
 
         when {
-            !pointerState.grabbed && settings.virtualMouseEnabled -> {
+            virtualMouseActive -> {
                 MenuTouchSurface(modifier = Modifier.fillMaxSize())
             }
             pointerState.grabbed && settings.touchLookMode == TouchLookMode.JOYSTICK -> {
@@ -98,7 +108,7 @@ fun GameTouchOverlay(
             }
         }
 
-        if (pointerState.grabbed && settings.movementJoystickEnabled) {
+        if (pointerState.grabbed && !virtualMouseActive && settings.movementJoystickEnabled) {
             MovementJoystick(
                 deadZone = settings.joystickDeadZone,
                 modifier = Modifier
@@ -108,7 +118,7 @@ fun GameTouchOverlay(
             )
         }
 
-        if (pointerState.grabbed) {
+        if (pointerState.grabbed && !virtualMouseActive) {
             settings.controlLayout.filter(ControlElement::visible).forEach { control ->
                 val width = maxWidth * (control.width * settings.controlScale).coerceIn(0.04f, 0.35f)
                 val height = maxHeight * (control.height * settings.controlScale).coerceIn(0.04f, 0.30f)
@@ -128,7 +138,7 @@ fun GameTouchOverlay(
             }
         }
 
-        if (settings.virtualMouseEnabled && !pointerState.grabbed) {
+        if (virtualMouseActive) {
             VirtualMouseCursor(
                 modifier = Modifier
                     .offset(
@@ -144,6 +154,11 @@ fun GameTouchOverlay(
             verticalAlignment = Alignment.CenterVertically
         ) {
             KeyboardButton()
+            if (settings.virtualMouseEnabled && pointerState.grabbed) {
+                OverlayButton(if (forceVirtualMouse) "Look" else "Mouse") {
+                    forceVirtualMouse = !forceVirtualMouse
+                }
+            }
             OverlayButton("Menu") {
                 tapKey(256)
                 onMenu()
@@ -329,33 +344,73 @@ private fun LookPad(
  * pointer is predictable on a touchscreen and guarantees that the cursor move is
  * delivered before the click. In-game camera movement remains relative in LookPad.
  */
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 private fun MenuTouchSurface(modifier: Modifier = Modifier) {
+    var touchSize by remember { mutableStateOf(IntSize.Zero) }
+    val touchSlop = LocalViewConfiguration.current.touchSlop
+    val gesture = remember { MenuGestureState() }
+
+    fun moveCursor(x: Float, y: Float) {
+        GameInputBridge.cursorPositionNormalized(
+            x = x / touchSize.width.coerceAtLeast(1),
+            y = y / touchSize.height.coerceAtLeast(1)
+        )
+    }
+
     Box(
         modifier = modifier
-            .pointerInput(Unit) {
-                detectDragGestures(
-                    onDragStart = { position ->
-                        GameInputBridge.cursorPosition(position.x, position.y)
+            .onSizeChanged { touchSize = it }
+            .pointerInteropFilter { event ->
+                when (event.actionMasked) {
+                    MotionEvent.ACTION_DOWN -> {
+                        gesture.downTime = event.eventTime
+                        gesture.downX = event.x
+                        gesture.downY = event.y
+                        gesture.moved = false
+                        moveCursor(event.x, event.y)
+                        true
                     }
-                ) { change, _ ->
-                    change.consume()
-                    GameInputBridge.cursorPosition(change.position.x, change.position.y)
+                    MotionEvent.ACTION_MOVE -> {
+                        if (hypot(event.x - gesture.downX, event.y - gesture.downY) > touchSlop) {
+                            gesture.moved = true
+                        }
+                        moveCursor(event.x, event.y)
+                        true
+                    }
+                    MotionEvent.ACTION_UP -> {
+                        moveCursor(event.x, event.y)
+                        val longPress = !gesture.moved &&
+                            event.eventTime - gesture.downTime >= ViewConfiguration.getLongPressTimeout()
+                        if (!gesture.moved) {
+                            tapMouse(
+                                if (longPress) GameInputBridge.MOUSE_RIGHT
+                                else GameInputBridge.MOUSE_LEFT
+                            )
+                        }
+                        gesture.reset()
+                        true
+                    }
+                    MotionEvent.ACTION_CANCEL -> {
+                        gesture.reset()
+                        true
+                    }
+                    else -> true
                 }
             }
-            .pointerInput(Unit) {
-                detectTapGestures(
-                    onTap = { position ->
-                        GameInputBridge.cursorPosition(position.x, position.y)
-                        tapMouse(GameInputBridge.MOUSE_LEFT)
-                    },
-                    onLongPress = { position ->
-                        GameInputBridge.cursorPosition(position.x, position.y)
-                        tapMouse(GameInputBridge.MOUSE_RIGHT)
-                    }
-                )
-            }
     )
+}
+
+private class MenuGestureState {
+    var downTime: Long = 0L
+    var downX: Float = 0f
+    var downY: Float = 0f
+    var moved: Boolean = false
+
+    fun reset() {
+        downTime = 0L
+        moved = false
+    }
 }
 
 @Composable

@@ -322,7 +322,7 @@ class EnginePackManager(
                 runCatching { json.decodeFromString(GraphicsPackManifest.serializer(), it.readText()) }
                     .getOrElse { error("Invalid mclauncher-graphics.json: ${it.message}") }
             }
-            val manifest = suppliedManifest ?: if (expectedRenderer != null || expectedDriver != null) {
+            val manifest = if (expectedRenderer != null || expectedDriver != null) {
                 val renderer = expectedRenderer
                 GraphicsPackManifest(
                     id = (renderer?.id ?: expectedDriver!!.id),
@@ -335,6 +335,8 @@ class EnginePackManager(
                     sourceProject = sourceProject,
                     license = packageLicense
                 )
+            } else if (suppliedManifest != null) {
+                suppliedManifest
             } else {
                 inferGraphicsIdentity(nativeFiles).let { inferred ->
                     GraphicsPackManifest(

@@ -9,10 +9,9 @@ import java.io.File
 /**
  * Resolves a renderer plugin and its optional GLES/Vulkan driver layer.
  *
- * Preset values are conservative fallbacks. A pack's mclauncher-graphics.json
- * is authoritative and may override the native renderer token, preload order,
- * and environment variables. Beta 04 ships a verified default renderer in the
- * APK and keeps manifest-driven developer overrides available.
+ * Built-in renderer IDs define their native renderer token; a package manifest
+ * can add preload order and environment variables but cannot silently change
+ * OpenLTW into ANGLE or another backend. Custom packs remain manifest-driven.
  */
 class GraphicsRegistry(
     private val layout: MinecraftLayout,
@@ -245,13 +244,14 @@ class GraphicsRegistry(
         driverManifest?.environment?.let(environment::putAll)
         val expandedEnvironment = environment.mapValues { (_, value) -> value.replace("${'$'}{cache}", cacheDirectory.absolutePath) }
 
-        val pojavRenderer = when (renderer) {
-            // Older example manifests used a generic opengles2 token for these
-            // backends, which makes the native bridge select GL4ES by mistake.
-            Renderer.MOBILE_GLUES -> "mobileglues"
-            Renderer.NG_GL4ES -> "ng-gl4es"
-            Renderer.KRYPTON -> "krypton"
-            else -> rendererManifest?.pojavRenderer ?: rendererPreset.pojavRenderer
+        // Known renderer IDs have a fixed native ABI. Do not let a stale or
+        // misidentified third-party manifest turn OpenLTW into ANGLE (or any other
+        // backend). Only CUSTOM deliberately delegates its token to the manifest.
+        val pojavRenderer = if (renderer == Renderer.CUSTOM) {
+            rendererManifest?.pojavRenderer
+                ?: error("A custom renderer manifest must provide pojavRenderer")
+        } else {
+            rendererPreset.pojavRenderer
         }
 
         return ResolvedGraphicsStack(

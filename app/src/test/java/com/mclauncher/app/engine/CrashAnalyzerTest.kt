@@ -65,6 +65,16 @@ class CrashAnalyzerTest {
     }
 
     @Test
+    fun staleOpenLtwManifestGetsSpecificDiagnosis() {
+        val result = CrashAnalyzer.analyzeText(
+            "java.lang.IllegalStateException: No Android OpenGL library matched " +
+                "OpenLTW / LTW (MCLAUNCHER_RENDERER_TOKEN=opengles3_desktopgl_angle_vulkan)"
+        )
+
+        assertEquals("Renderer package metadata mismatch", result?.title)
+    }
+
+    @Test
     fun jnaVersionSelectsMatchingAndroidNativeAbi() {
         assertEquals(
             "jna-7",

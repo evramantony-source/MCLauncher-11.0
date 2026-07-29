@@ -43,12 +43,17 @@ object CrashAnalyzer {
                     "JNA native mismatch",
                     "Update MCLauncher so it can select the Android JNA native matching this Minecraft version."
                 )
+            "no android opengl library matched" in text ->
+                CrashDiagnosis(
+                    "Renderer package metadata mismatch",
+                    "Update MCLauncher and reinstall the selected renderer so its native library and renderer identity are repaired."
+                )
             "sodium" in text &&
                 ("it appears that you are using pojavlauncher" in text ||
                     "sodium-postlaunchchecks" in text && "pojav_renderer" in text) ->
                 CrashDiagnosis(
                     "Sodium blocked the Android launch",
-                    "This desktop Sodium build rejected the Android renderer marker. Use MCLauncher Alpha 03 or disable Sodium and Iris if this still appears."
+                    "This desktop Sodium build rejected the Android renderer marker. Update MCLauncher or disable Sodium and Iris if this still appears."
                 )
             "unsatisfiedlinkerror" in text || "no lwjgl" in text || "could not load library" in text ->
                 CrashDiagnosis("Native library problem", "Reinstall the matching engine pack and renderer for your device ABI.")

@@ -1,5 +1,15 @@
 # Changelog
 
+## 11.0.0-alpha04
+
+- Fixed OpenLTW/LTW launch preparation by keeping each built-in renderer's native token authoritative instead of accepting stale ANGLE metadata from an imported package.
+- Made curated renderer and driver packages inherit their verified catalogue identity while retaining manifest-defined identities for manual custom packs.
+- Replaced competing Compose tap/drag recognizers with one normalized Android touch stream for reliable menu cursor movement, left click and long-press right click.
+- Added a visible `Mouse`/`Look` fallback toggle so the virtual mouse can be forced on when a mod or game screen reports the wrong GLFW cursor-grab state.
+- Added first-pointer and first-mouse-button native diagnostics to exported session logs.
+- Added per-instance Java, renderer, graphics-driver, RAM, performance, FPS, resolution, render-scale and JVM-argument settings with safe global inheritance.
+- Added a specific renderer-package metadata diagnosis instead of reporting an unrelated renderer incompatibility.
+
 ## 11.0.0-alpha03
 
 - Replaced the limited right-side menu touchpad with full-screen direct-touch cursor positioning, tap-to-click and long-press right click.

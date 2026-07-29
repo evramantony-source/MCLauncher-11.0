@@ -1,4 +1,4 @@
-# Build verification — MCLauncher 11.0 Alpha 03
+# Build verification — MCLauncher 11.0 Alpha 04
 
 ## Fast validation
 
@@ -6,8 +6,9 @@
 - Require a full pinned engine commit and all four runtime sources.
 - Reject the obsolete launcher-APK downloader.
 - Run Python vendoring tests plus app and core Kotlin/JVM tests.
-- Check that runtime signature verification, Surface/JVM launch, raw keyboard, virtual cursor and Android LWJGL mapping paths remain connected.
+- Check that runtime signature verification, Surface/JVM launch, raw keyboard, normalized virtual cursor and Android LWJGL mapping paths remain connected.
 - Check theme, installed-content/icon and verified component-installer source paths.
+- Check canonical built-in renderer identity and per-instance launch-setting paths.
 
 ## Standalone-APK validation
 
@@ -27,4 +28,4 @@ The workflow must:
 
 ## Device proof
 
-Alpha 01 reached Minecraft 1.21.11/Fabric's main menu and a playable world on a physical Android device. Alpha 02 reached the game with mods disabled, while the device log identified Sodium's renderer-marker block and a failed virtual-menu-mouse UX. Alpha 03 requires focused checks for direct-touch menu navigation, Sodium/Iris startup, swipe look, external input, content state/icons and one-tap renderer installation.
+Alpha 01 reached Minecraft 1.21.11/Fabric's main menu and a playable world on a physical Android device. Alpha 02 reached the game with mods disabled, while the device log identified Sodium's renderer-marker block. Alpha 03 confirmed that fix but exposed stale OpenLTW package metadata and a failed virtual-menu-mouse UX. Alpha 04 requires focused checks for OpenLTW startup, direct-touch menu navigation, swipe look, external input and per-instance settings.

@@ -1,4 +1,4 @@
-# Engine integration status — 11.0 Alpha 03
+# Engine integration status — 11.0 Alpha 04
 
 ## Build-time path
 
@@ -17,14 +17,14 @@
 2. Extract universal and ABI layers for Java 8, 17, 21 and 25.
 3. Resolve the Minecraft version's exact LWJGL coordinates through the Android substitution mapping.
 4. Extract the matching ABI classifier natives.
-5. Prefer MobileGlues, or configure the selected compatible graphics pack, before GLFW initialization.
+5. Prefer MobileGlues, or configure the selected compatible graphics pack with its canonical built-in identity, before GLFW initialization.
 6. Overlay MojoLauncher's `libawt_xawt.so` stub into the selected runtime while preserving OpenJDK's real `libawt_headless.so`.
 7. Disable Android native heap pointer tagging for the compatibility process because the embedded OpenJDK/desktop-native stack contains code that truncates top-byte tags before deallocation.
 8. Attach the Android Surface and launch in-process through the pinned MojoLauncher `JNI_CreateJavaVM` engine and its Android linker/native-library compatibility bridge.
-9. Forward swipe/touch controls, raw Android keyboard events, absolute/relative
+9. Forward normalized menu touch, swipe/touch controls, raw Android keyboard events, absolute/relative
    mouse input, context-aware controllers and gyroscope input.
 
 There is no installed-app dependency on another launcher. Alpha 01 reached
 Minecraft's main menu and a world on a physical device, and Alpha 02 reached the
-game with mods disabled. CI plus Alpha 03 direct-touch, Sodium/Iris and external-
-input regression tests remain release gates.
+game with mods disabled. CI plus Alpha 04 OpenLTW, direct-touch and external-input
+regression tests remain release gates.

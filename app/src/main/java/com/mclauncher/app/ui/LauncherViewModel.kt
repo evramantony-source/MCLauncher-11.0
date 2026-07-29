@@ -665,6 +665,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
             val instance = snapshot.instances.firstOrNull { it.id == instanceId }
             if (instance == null) return@launch _state.update { it.copy(message = "Instance not found") }
             if (!instance.installed) return@launch _state.update { it.copy(message = "Finish installing this instance first") }
+            val effectiveSettings = instance.launchSettings.applyTo(snapshot.settings)
             val account = _state.value.selectedAccount
                 ?: return@launch _state.update { it.copy(message = "Add or select an account before playing") }
             if (BuildConfig.PUBLIC_ALPHA_SIGNER && account.type == AccountType.MICROSOFT) {
@@ -695,7 +696,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                 val plan = launchPlanBuilder.build(
                     instance = instance,
                     account = account,
-                    settings = snapshot.settings,
+                    settings = effectiveSettings,
                     authSession = authSession,
                     architecture = architecture
                 )

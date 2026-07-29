@@ -190,6 +190,57 @@ data class LauncherSettings(
     val controllerBindings: List<ControllerBinding> = DefaultControls.controllerBindings()
 )
 
+/**
+ * Optional launch-only overrides stored with one Minecraft instance.
+ *
+ * Existing instances and newly created instances inherit global launcher settings
+ * until the user enables this block. Nullable values keep state migrations safe and
+ * allow newly added global settings to remain authoritative by default.
+ */
+@Serializable
+data class InstanceLaunchSettings(
+    val enabled: Boolean = false,
+    val renderer: Renderer? = null,
+    val graphicsDriver: GraphicsDriver? = null,
+    val memoryMb: Int? = null,
+    val fpsLimit: Int? = null,
+    val width: Int? = null,
+    val height: Int? = null,
+    val resolutionScale: Float? = null,
+    val customJvmArgs: String? = null,
+    val performancePreset: PerformancePreset? = null
+) {
+    fun applyTo(global: LauncherSettings): LauncherSettings {
+        if (!enabled) return global
+        return global.copy(
+            renderer = renderer ?: global.renderer,
+            graphicsDriver = graphicsDriver ?: global.graphicsDriver,
+            memoryMb = (memoryMb ?: global.memoryMb).coerceIn(768, 6144),
+            fpsLimit = (fpsLimit ?: global.fpsLimit).coerceIn(20, 260),
+            width = (width ?: global.width).coerceIn(640, 2560),
+            height = (height ?: global.height).coerceIn(360, 1600),
+            resolutionScale = (resolutionScale ?: global.resolutionScale).coerceIn(0.50f, 1.00f),
+            customJvmArgs = customJvmArgs ?: global.customJvmArgs,
+            performancePreset = performancePreset ?: global.performancePreset
+        )
+    }
+
+    companion object {
+        fun fromGlobal(global: LauncherSettings): InstanceLaunchSettings = InstanceLaunchSettings(
+            enabled = true,
+            renderer = global.renderer,
+            graphicsDriver = global.graphicsDriver,
+            memoryMb = global.memoryMb,
+            fpsLimit = global.fpsLimit,
+            width = global.width,
+            height = global.height,
+            resolutionScale = global.resolutionScale,
+            customJvmArgs = global.customJvmArgs,
+            performancePreset = global.performancePreset
+        )
+    }
+}
+
 @Serializable
 data class MinecraftInstance(
     val id: String,
@@ -203,7 +254,8 @@ data class MinecraftInstance(
     val lastPlayedAtEpochMs: Long? = null,
     val installed: Boolean = false,
     val favorite: Boolean = false,
-    val iconPath: String? = null
+    val iconPath: String? = null,
+    val launchSettings: InstanceLaunchSettings = InstanceLaunchSettings()
 )
 
 @Serializable

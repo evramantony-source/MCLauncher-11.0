@@ -139,8 +139,8 @@ if not re.fullmatch(r"[0-9a-f]{40}", str(mobileglues.get("sourceCommit", ""))):
 
 require_contains(
     "app/build.gradle.kts",
-    'versionName = "11.0.0-alpha03"',
-    'versionCode = 13',
+    'versionName = "11.0.0-alpha04"',
+    'versionCode = 14',
     'mclauncherAbi',
     'abiFilters += targetAbi',
     'CURSEFORGE_API_KEY',
@@ -153,7 +153,7 @@ require_contains(
     "scripts/source_sanity.py",
     'assembleNoruntimeDebug',
     'assembleDebug -PmclauncherAbi=',
-    'MCLauncher-11.0-alpha03-',
+    'MCLauncher-11.0-alpha04-',
     "pull_request:",
     "mclauncher-alpha-debug.jks.b64",
     "CURSEFORGE_API_KEY",
@@ -230,6 +230,7 @@ require_contains(
     "app/src/main/java/com/mclauncher/app/ui/LauncherViewModel.kt",
     "lastPlayRequestAt",
     "Minecraft is already being prepared",
+    "instance.launchSettings.applyTo",
 )
 require_contains(
     "app/src/main/java/com/mclauncher/app/engine/NativeLaunchBridge.kt",
@@ -257,6 +258,9 @@ require_contains(
     'LookPad',
     'VirtualMouseCursor',
     'virtualMouseEnabled',
+    'pointerInteropFilter',
+    'cursorPositionNormalized',
+    'forceVirtualMouse',
 )
 require_contains(
     "app/src/main/java/com/mclauncher/app/ui/screens/SettingsScreen.kt",
@@ -273,6 +277,7 @@ require_contains(
     'AndroidGlfwKeyMapper',
     'nativeSendRawKey',
     'cursorPosition',
+    'cursorPositionNormalized',
 )
 require_contains(
     "app/src/main/cpp/native_engine.cpp",
@@ -286,6 +291,8 @@ require_contains(
     'Java_net_kdt_pojavlaunch_utils_jre_JavaRunner_nativeSetupExit',
     'libmobileglues.so',
     'getenv("LIBGL_ES")',
+    'First Android mouse-button event reached the native GLFW bridge',
+    'First absolute Android pointer event reached the native GLFW bridge',
 )
 require_contains(
     "app/src/main/java/com/mclauncher/app/ui/screens/DiscoverScreen.kt",
@@ -319,13 +326,29 @@ require_contains(
     "app/src/main/java/com/mclauncher/app/engine/CrashAnalyzer.kt",
     '"OpenGL renderer too old"',
     '"Sodium blocked the Android launch"',
+    '"Renderer package metadata mismatch"',
     '"invalid session"',
 )
 require_contains(
     "app/src/main/java/com/mclauncher/app/ui/game/TouchControls.kt",
     "MenuTouchSurface",
-    "GameInputBridge.cursorPosition(position.x, position.y)",
-    "pointerState.grabbed && settings.movementJoystickEnabled",
+    "GameInputBridge.cursorPositionNormalized",
+    "pointerState.grabbed && !virtualMouseActive && settings.movementJoystickEnabled",
+)
+require_contains(
+    "app/src/main/java/com/mclauncher/app/engine/GraphicsRegistry.kt",
+    "Only CUSTOM deliberately delegates its token to the manifest",
+    "rendererPreset.pojavRenderer",
+)
+require_contains(
+    "core-model/src/main/kotlin/com/mclauncher/model/LauncherModels.kt",
+    "data class InstanceLaunchSettings",
+    "val launchSettings: InstanceLaunchSettings",
+)
+require_contains(
+    "app/src/main/java/com/mclauncher/app/ui/screens/InstanceDetailScreen.kt",
+    "InstanceSection.SETTINGS",
+    'Text("Use global launch settings"',
 )
 require_absent(
     "app/src/main/java/com/mclauncher/app/engine/CrashAnalyzer.kt",

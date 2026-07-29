@@ -4,6 +4,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -30,6 +32,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -49,10 +52,15 @@ import coil3.compose.AsyncImage
 import com.mclauncher.app.ui.LauncherUiState
 import com.mclauncher.app.ui.components.LauncherCard
 import com.mclauncher.minecraft.InstalledContent
+import com.mclauncher.model.GraphicsDriver
+import com.mclauncher.model.InstanceLaunchSettings
+import com.mclauncher.model.JavaVersion
 import com.mclauncher.model.MinecraftInstance
+import com.mclauncher.model.PerformancePreset
+import com.mclauncher.model.Renderer
 import java.io.File
 
-private enum class InstanceSection { OVERVIEW, CONTENT, SCREENSHOTS }
+private enum class InstanceSection { OVERVIEW, SETTINGS, CONTENT, SCREENSHOTS }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -118,6 +126,7 @@ fun InstanceDetailScreen(
 
             when (section) {
                 InstanceSection.OVERVIEW -> overviewItems(instance, state, onPlay, onDelete, onUpdateInstance)
+                InstanceSection.SETTINGS -> settingsItems(instance, state, onUpdateInstance)
                 InstanceSection.CONTENT -> contentItems(instance.id, state.installedContent, onUpdateContent, onToggleContent, onRemoveContent)
                 InstanceSection.SCREENSHOTS -> screenshotItems(screenshots, onOpenScreenshot)
             }
@@ -132,6 +141,8 @@ private fun androidx.compose.foundation.lazy.LazyListScope.overviewItems(
     onDelete: (String) -> Unit,
     onUpdateInstance: (String, (MinecraftInstance) -> MinecraftInstance) -> Unit
 ) {
+    val effectiveSettings = instance.launchSettings.applyTo(state.snapshot.settings)
+
     item {
         LauncherCard(modifier = Modifier.fillMaxWidth()) {
             Row(
@@ -166,9 +177,12 @@ private fun androidx.compose.foundation.lazy.LazyListScope.overviewItems(
             DetailRow("Loader", instance.loader.displayName + (instance.loaderVersion?.let { " $it" } ?: ""))
             DetailRow("Java runtime", "Java ${instance.javaVersion.major}")
             DetailRow("Account", state.selectedAccount?.username ?: "No account selected")
-            DetailRow("Renderer", state.snapshot.settings.renderer.displayName)
-            DetailRow("Graphics driver", state.snapshot.settings.graphicsDriver.displayName)
-            DetailRow("Memory", "${state.snapshot.settings.memoryMb} MB")
+            DetailRow("Settings", if (instance.launchSettings.enabled) "Per-instance" else "Global defaults")
+            DetailRow("Renderer", effectiveSettings.renderer.displayName)
+            DetailRow("Graphics driver", effectiveSettings.graphicsDriver.displayName)
+            DetailRow("Memory", "${effectiveSettings.memoryMb} MB")
+            DetailRow("Resolution", "${effectiveSettings.width}×${effectiveSettings.height} · ${(effectiveSettings.resolutionScale * 100).toInt()}%")
+            DetailRow("FPS limit", effectiveSettings.fpsLimit.toString())
             Row(
                 modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -212,6 +226,225 @@ private fun androidx.compose.foundation.lazy.LazyListScope.overviewItems(
                 Icon(Icons.Rounded.Delete, contentDescription = null)
                 Text("Remove instance", modifier = Modifier.padding(start = 6.dp))
             }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+private fun androidx.compose.foundation.lazy.LazyListScope.settingsItems(
+    instance: MinecraftInstance,
+    state: LauncherUiState,
+    onUpdateInstance: (String, (MinecraftInstance) -> MinecraftInstance) -> Unit
+) {
+    val global = state.snapshot.settings
+    val overrides = instance.launchSettings
+    val effective = overrides.applyTo(global)
+
+    fun updateOverrides(transform: (InstanceLaunchSettings) -> InstanceLaunchSettings) {
+        onUpdateInstance(instance.id) { current ->
+            current.copy(launchSettings = transform(current.launchSettings))
+        }
+    }
+
+    item {
+        LauncherCard(modifier = Modifier.fillMaxWidth()) {
+            Text("Java runtime", style = MaterialTheme.typography.titleLarge)
+            Text(
+                "Java is stored with the instance because different Minecraft versions require different runtimes.",
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            val installedJava = state.engineEnvironment?.runtimes
+                ?.filter { it.installed }
+                ?.map { it.version }
+                .orEmpty()
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                JavaVersion.entries
+                    .filter { it == instance.javaVersion || it in installedJava }
+                    .forEach { version ->
+                        FilterChip(
+                            selected = instance.javaVersion == version,
+                            onClick = {
+                                onUpdateInstance(instance.id) { current ->
+                                    current.copy(javaVersion = version)
+                                }
+                            },
+                            label = { Text("Java ${version.major}") }
+                        )
+                    }
+            }
+        }
+    }
+
+    item {
+        LauncherCard(modifier = Modifier.fillMaxWidth()) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Use global launch settings", style = MaterialTheme.typography.titleLarge)
+                    Text(
+                        if (overrides.enabled) {
+                            "This instance has independent launch settings."
+                        } else {
+                            "Renderer, driver, RAM, FPS and resolution follow Settings."
+                        },
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Switch(
+                    checked = !overrides.enabled,
+                    onCheckedChange = { useGlobal ->
+                        onUpdateInstance(instance.id) { current ->
+                            current.copy(
+                                launchSettings = if (useGlobal) {
+                                    InstanceLaunchSettings()
+                                } else {
+                                    InstanceLaunchSettings.fromGlobal(global)
+                                }
+                            )
+                        }
+                    }
+                )
+            }
+        }
+    }
+
+    if (!overrides.enabled) return
+
+    item {
+        LauncherCard(modifier = Modifier.fillMaxWidth()) {
+            Text("Graphics", style = MaterialTheme.typography.titleLarge)
+            Text("Renderer", style = MaterialTheme.typography.titleSmall)
+            val availableRenderers = Renderer.entries.filter { renderer ->
+                renderer == Renderer.AUTO ||
+                    renderer == effective.renderer ||
+                    state.engineEnvironment?.renderers?.firstOrNull { it.renderer == renderer }?.installed == true
+            }
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                availableRenderers.forEach { renderer ->
+                    FilterChip(
+                        selected = effective.renderer == renderer,
+                        onClick = { updateOverrides { it.copy(renderer = renderer) } },
+                        label = { Text(renderer.displayName) }
+                    )
+                }
+            }
+
+            Text("Graphics driver", style = MaterialTheme.typography.titleSmall)
+            val availableDrivers = GraphicsDriver.entries.filter { driver ->
+                driver in listOf(GraphicsDriver.AUTO, GraphicsDriver.SYSTEM) ||
+                    driver == effective.graphicsDriver ||
+                    state.engineEnvironment?.drivers?.firstOrNull { it.driver == driver }?.installed == true
+            }
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                availableDrivers.forEach { driver ->
+                    FilterChip(
+                        selected = effective.graphicsDriver == driver,
+                        onClick = { updateOverrides { it.copy(graphicsDriver = driver) } },
+                        label = { Text(driver.displayName) }
+                    )
+                }
+            }
+        }
+    }
+
+    item {
+        LauncherCard(modifier = Modifier.fillMaxWidth()) {
+            Text("Performance", style = MaterialTheme.typography.titleLarge)
+            Text("Memory · ${effective.memoryMb} MB", style = MaterialTheme.typography.titleSmall)
+            val memoryOptions = (listOf(1024, 1536, 2048, 3072, 3584, 4096, 5120) + effective.memoryMb)
+                .distinct()
+                .sorted()
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                memoryOptions.forEach { memory ->
+                    FilterChip(
+                        selected = effective.memoryMb == memory,
+                        onClick = { updateOverrides { it.copy(memoryMb = memory) } },
+                        label = { Text("${memory} MB") }
+                    )
+                }
+            }
+
+            Text("Performance preset", style = MaterialTheme.typography.titleSmall)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                PerformancePreset.entries.forEach { preset ->
+                    FilterChip(
+                        selected = effective.performancePreset == preset,
+                        onClick = { updateOverrides { it.copy(performancePreset = preset) } },
+                        label = { Text(preset.displayName) }
+                    )
+                }
+            }
+
+            Text("FPS limit", style = MaterialTheme.typography.titleSmall)
+            val fpsOptions = (listOf(30, 60, 90, 120, 260) + effective.fpsLimit).distinct().sorted()
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                fpsOptions.forEach { fps ->
+                    FilterChip(
+                        selected = effective.fpsLimit == fps,
+                        onClick = { updateOverrides { it.copy(fpsLimit = fps) } },
+                        label = { Text(if (fps >= 260) "Unlimited" else fps.toString()) }
+                    )
+                }
+            }
+        }
+    }
+
+    item {
+        LauncherCard(modifier = Modifier.fillMaxWidth()) {
+            Text("Resolution", style = MaterialTheme.typography.titleLarge)
+            val resolutionOptions = (
+                listOf(960 to 540, 1280 to 720, 1600 to 900, 1920 to 1080) +
+                    (effective.width to effective.height)
+                ).distinct()
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                resolutionOptions.forEach { (width, height) ->
+                    FilterChip(
+                        selected = effective.width == width && effective.height == height,
+                        onClick = {
+                            updateOverrides {
+                                it.copy(width = width, height = height)
+                            }
+                        },
+                        label = { Text("${width}×$height") }
+                    )
+                }
+            }
+
+            Text("Render scale", style = MaterialTheme.typography.titleSmall)
+            val scaleOptions = (listOf(0.50f, 0.67f, 0.75f, 0.85f, 1.00f) + effective.resolutionScale)
+                .distinct()
+                .sorted()
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                scaleOptions.forEach { scale ->
+                    FilterChip(
+                        selected = kotlin.math.abs(effective.resolutionScale - scale) < 0.001f,
+                        onClick = { updateOverrides { it.copy(resolutionScale = scale) } },
+                        label = { Text("${(scale * 100).toInt()}%") }
+                    )
+                }
+            }
+            Text(
+                "Effective game window: " +
+                    "${(effective.width * effective.resolutionScale).toInt()}×" +
+                    "${(effective.height * effective.resolutionScale).toInt()}",
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+
+    item {
+        LauncherCard(modifier = Modifier.fillMaxWidth()) {
+            Text("Advanced JVM arguments", style = MaterialTheme.typography.titleLarge)
+            OutlinedTextField(
+                value = effective.customJvmArgs,
+                onValueChange = { value -> updateOverrides { it.copy(customJvmArgs = value) } },
+                label = { Text("Arguments for this instance") },
+                supportingText = { Text("Leave blank unless a modpack or runtime specifically requires an argument.") },
+                modifier = Modifier.fillMaxWidth()
+            )
         }
     }
 }

@@ -141,9 +141,21 @@ object GameInputBridge {
     }
 
     fun cursorPosition(x: Float, y: Float) {
+        cursorPositionNormalized(
+            x = x / surfaceWidth,
+            y = y / surfaceHeight
+        )
+    }
+
+    /**
+     * Sends an absolute menu pointer without depending on SurfaceView pixels.
+     * Compose and Android views can have different coordinate spaces under
+     * immersive-mode insets, so touchscreen overlays should call this directly.
+     */
+    fun cursorPositionNormalized(x: Float, y: Float) {
         if (!NativeLaunchBridge.isAvailable) return
-        val normalizedX = (x / surfaceWidth).coerceIn(0f, 1f)
-        val normalizedY = (y / surfaceHeight).coerceIn(0f, 1f)
+        val normalizedX = x.coerceIn(0f, 1f)
+        val normalizedY = y.coerceIn(0f, 1f)
         _pointerState.update { it.copy(x = normalizedX, y = normalizedY) }
         GLFW.cursorX = normalizedX.toDouble()
         GLFW.cursorY = normalizedY.toDouble()

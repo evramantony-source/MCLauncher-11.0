@@ -375,7 +375,8 @@ class NativeEngineCoordinator(
         return tokens.firstNotNullOfOrNull { token ->
             libraries.firstOrNull { it.name.contains(token, ignoreCase = true) }
         } ?: error(
-            "No Android OpenGL library matched POJAV_RENDERER=${graphics.pojavRenderer}"
+            "No Android OpenGL library matched ${graphics.renderer.displayName} " +
+                "(MCLAUNCHER_RENDERER_TOKEN=${graphics.pojavRenderer})"
         )
     }
 
