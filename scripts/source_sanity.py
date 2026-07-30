@@ -146,8 +146,8 @@ if openltw.get("patch") != "vendor/patches/ltw-minecraft-26.2.patch":
 
 require_contains(
     "app/build.gradle.kts",
-    'versionName = "11.0.0-alpha07"',
-    'versionCode = 17',
+    'versionName = "11.0.0-alpha08"',
+    'versionCode = 18',
     'mclauncherAbi',
     'abiFilters += targetAbi',
     'CURSEFORGE_API_KEY',
@@ -160,7 +160,8 @@ require_contains(
     "scripts/source_sanity.py",
     'assembleNoruntimeDebug',
     'assembleDebug -PmclauncherAbi=',
-    'MCLauncher-11.0-alpha07-',
+    'MCLauncher-11.0-alpha08-',
+    'mojo-pointer-click-position.patch',
     "Build pinned OpenLTW with Minecraft 26.2 compatibility",
     "--ltw-aar",
     "pull_request:",
@@ -176,7 +177,14 @@ require_contains(
     'No Android LWJGL substitution is defined',
     'prepareAndroidNatives',
     'applyMinecraftOptions',
-    '-Dmclauncher.version=11.0.0-alpha07',
+    '-Dmclauncher.version=11.0.0-alpha08',
+)
+require_contains(
+    "vendor/patches/mojo-pointer-click-position.patch",
+    "cursor_x",
+    "cursor_y",
+    "_glfwInputCursorPos",
+    "_glfwInputMouseClick",
 )
 require_contains(
     "app/src/main/java/com/mclauncher/app/engine/NativeEngineCoordinator.kt",

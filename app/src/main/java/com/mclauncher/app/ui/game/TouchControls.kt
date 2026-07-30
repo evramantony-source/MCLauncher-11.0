@@ -140,8 +140,8 @@ fun GameTouchOverlay(
             VirtualMouseCursor(
                 modifier = Modifier
                     .offset(
-                        x = maxWidth * pointerState.x.coerceIn(0f, 0.97f),
-                        y = maxHeight * pointerState.y.coerceIn(0f, 0.95f)
+                        x = maxWidth * pointerState.x.coerceIn(0f, 1f),
+                        y = maxHeight * pointerState.y.coerceIn(0f, 1f)
                     )
                     .size(28.dp)
             )
@@ -341,7 +341,9 @@ private fun LookPad(
 private fun VirtualMouseCursor(modifier: Modifier = Modifier) {
     Canvas(modifier = modifier) {
         val cursor = Path().apply {
-            moveTo(size.width * 0.08f, size.height * 0.04f)
+            // The native cursor hotspot is the normalized coordinate itself.
+            // Keep the visible arrow's hotspot at (0, 0) as well.
+            moveTo(0f, 0f)
             lineTo(size.width * 0.82f, size.height * 0.58f)
             lineTo(size.width * 0.50f, size.height * 0.64f)
             lineTo(size.width * 0.68f, size.height * 0.94f)

@@ -1,5 +1,11 @@
 # Changelog
 
+## 11.0.0-alpha08
+
+- Made every queued GLFW mouse press carry the cursor position that was visible when the press happened, preventing a tap from activating a stale, far-away menu target.
+- Unified Activity touch and SurfaceView bounds in screen coordinates so immersive-mode and transient system-bar offsets cannot skew the virtual pointer.
+- Aligned the drawn arrow hotspot exactly with the coordinate sent to Minecraft, including at the screen edges.
+
 ## 11.0.0-alpha07
 
 - Serialized bundled-engine restoration so startup inspection, Repair and Play cannot delete or count the engine payload concurrently.

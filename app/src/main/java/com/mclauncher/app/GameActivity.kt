@@ -124,7 +124,7 @@ class GameActivity : ComponentActivity() {
         val dataRoot = File(planPath).parentFile?.parentFile ?: filesDir
         val sessionLog = File(dataRoot, "logs/latest-session.log").apply {
             parentFile?.mkdirs()
-            writeText("MCLauncher 11.0 alpha07 session ${System.currentTimeMillis()}\n")
+            writeText("MCLauncher 11.0 alpha08 session ${System.currentTimeMillis()}\n")
         }
 
         setContent {
@@ -440,9 +440,18 @@ class GameActivity : ComponentActivity() {
         ) {
             val view = gameSurfaceView
             if (view != null && view.width > 0 && view.height > 0) {
+                // MotionEvent coordinates reaching Activity.dispatchTouchEvent can
+                // use the decor-window origin while SurfaceView moves through
+                // edge-to-edge/system-bar transitions. Convert both to screen
+                // coordinates before normalizing so the drawn cursor and GLFW hit
+                // target share one rectangle.
                 val location = IntArray(2)
-                view.getLocationInWindow(location)
-                val localY = event.y - location[1]
+                view.getLocationOnScreen(location)
+                val eventToScreenX = event.rawX - event.x
+                val eventToScreenY = event.rawY - event.y
+                val surfaceLeftInEventSpace = location[0] - eventToScreenX
+                val surfaceTopInEventSpace = location[1] - eventToScreenY
+                val localY = event.y - surfaceTopInEventSpace
                 val topControlExclusion = 60f * resources.displayMetrics.density
                 val startsOnOverlayControls =
                     event.actionMasked == MotionEvent.ACTION_DOWN &&
@@ -451,8 +460,8 @@ class GameActivity : ComponentActivity() {
                     !startsOnOverlayControls &&
                     GameInputBridge.handleVirtualMouseTouch(
                         event = event,
-                        surfaceLeft = location[0].toFloat(),
-                        surfaceTop = location[1].toFloat(),
+                        surfaceLeft = surfaceLeftInEventSpace,
+                        surfaceTop = surfaceTopInEventSpace,
                         width = view.width,
                         height = view.height,
                         touchSlop = ViewConfiguration.get(this).scaledTouchSlop.toFloat()

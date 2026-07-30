@@ -1,0 +1,46 @@
+diff --git a/glfw/src/android_input_queue.h b/glfw/src/android_input_queue.h
+--- a/glfw/src/android_input_queue.h
++++ b/glfw/src/android_input_queue.h
+@@ -12,7 +12,7 @@ typedef struct {
+     int32_t type;
+     union {
+         struct { int32_t glfw_code, code, state, mods; jchar codepoint; } k;
+-        struct { int32_t button, state, mods; } m;
++        struct { int32_t button, state, mods; double cursor_x, cursor_y; } m;
+         struct { int32_t length, mods; jchar *codepoints; } u;
+         struct { double xscroll, yscroll; } s;
+     };
+diff --git a/glfw/src/android_window.c b/glfw/src/android_window.c
+--- a/glfw/src/android_window.c
++++ b/glfw/src/android_window.c
+@@ -236,6 +236,8 @@ static int translate_android_action_button(int32_t actionButton) {
+ 
+ extern void _glfwUpdateJoystickConnectSate(void);
+ 
++static void computeCursorPos();
++
+ static void android_dequeue_event(input_event_t* evp) {
+     input_event_t event = *evp;
+     if(surfaceOwner == NULL) return;
+@@ -247,6 +249,10 @@ static void android_dequeue_event(input_event_t* evp) {
+             if(event.k.codepoint != 0) _glfwInputChar(surfaceOwner, event.k.codepoint, event.k.mods, true);
+             break;
+         case GLFW_ANDROID_EVENT_TYPE_MOUSE_BUTTONS:
++            cursor_unscaled.x = event.m.cursor_x;
++            cursor_unscaled.y = event.m.cursor_y;
++            computeCursorPos();
++            _glfwInputCursorPos(surfaceOwner, _glfw.android.xcursor, _glfw.android.ycursor);
+             _glfwInputMouseClick(surfaceOwner, event.m.button, event.m.state, event.m.mods);
+             break;
+         case GLFW_ANDROID_EVENT_TYPE_UNICODE_CHARS:
+@@ -1398,7 +1402,9 @@ Java_git_artdeell_dnbootstrap_glfw_GLFW_sendMouseEvent(JNIEnv *env, jclass clazz
+             .type = GLFW_ANDROID_EVENT_TYPE_MOUSE_BUTTONS,
+             .m.button = glfw_mouse_key,
+             .m.state = state,
+-            .m.mods = mods
++            .m.mods = mods,
++            .m.cursor_x = cursor_unscaled.x,
++            .m.cursor_y = cursor_unscaled.y
+     };
+     android_send_event(&event);
+ }

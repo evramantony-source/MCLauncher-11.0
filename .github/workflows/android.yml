@@ -131,6 +131,7 @@ jobs:
         shell: bash
         run: |
           git apply "$GITHUB_WORKSPACE/vendor/patches/mojo-single-destroy.patch"
+          git apply "$GITHUB_WORKSPACE/vendor/patches/mojo-pointer-click-position.patch"
           chmod +x gradlew
           ./gradlew --no-daemon :app_pojavlauncher:assembleNoruntimeDebug
 
@@ -138,7 +139,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .engine-cache
-          key: mclauncher-engine-${{ runner.os }}-${{ env.TARGET_ABI }}-${{ hashFiles('vendor/engine-lock.json') }}
+          key: mclauncher-engine-${{ runner.os }}-${{ env.TARGET_ABI }}-${{ hashFiles('vendor/engine-lock.json', 'vendor/patches/*.patch') }}
 
       - name: Vendor engine, renderers, Java runtimes and patched LWJGL
         shell: bash
@@ -176,7 +177,7 @@ jobs:
         shell: bash
         run: |
           APK=app/build/outputs/apk/debug/app-debug.apk
-          OUT=app/build/outputs/apk/debug/MCLauncher-11.0-alpha07-${TARGET_ABI}.apk
+          OUT=app/build/outputs/apk/debug/MCLauncher-11.0-alpha08-${TARGET_ABI}.apk
           test -f "$APK"
           cp "$APK" "$OUT"
           unzip -t "$OUT" >/dev/null
@@ -191,10 +192,10 @@ jobs:
       - name: Upload standalone APK
         uses: actions/upload-artifact@v4
         with:
-          name: MCLauncher-11.0-alpha07-${{ env.TARGET_ABI }}
+          name: MCLauncher-11.0-alpha08-${{ env.TARGET_ABI }}
           retention-days: 14
           path: |
-            app/build/outputs/apk/debug/MCLauncher-11.0-alpha07-${{ env.TARGET_ABI }}.apk
-            app/build/outputs/apk/debug/MCLauncher-11.0-alpha07-${{ env.TARGET_ABI }}.apk.sha256
+            app/build/outputs/apk/debug/MCLauncher-11.0-alpha08-${{ env.TARGET_ABI }}.apk
+            app/build/outputs/apk/debug/MCLauncher-11.0-alpha08-${{ env.TARGET_ABI }}.apk.sha256
             app/src/main/assets/bundled_engine/bundle-manifest.json
           if-no-files-found: error
