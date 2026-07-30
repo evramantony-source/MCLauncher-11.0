@@ -8,6 +8,8 @@ import com.mclauncher.model.GraphicsDriver
 import com.mclauncher.model.JavaVersion
 import com.mclauncher.model.Renderer
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
@@ -22,12 +24,23 @@ class EnginePackManager(
     private val json: Json = Json { prettyPrint = true; ignoreUnknownKeys = true }
 ) {
     private val bundledEngineManager = BundledEngineManager(context, layout)
+    private val environmentMutex = Mutex()
 
     val architecture: String
         get() = Build.SUPPORTED_ABIS.firstOrNull() ?: "arm64-v8a"
 
     suspend fun inspect(): EngineEnvironmentState = withContext(Dispatchers.IO) {
-        val bundledInstallError = runCatching { bundledEngineManager.installIfNeeded() }.exceptionOrNull()
+        environmentMutex.withLock {
+            inspectLocked(installIfNeeded = true)
+        }
+    }
+
+    private suspend fun inspectLocked(installIfNeeded: Boolean): EngineEnvironmentState {
+        val bundledInstallError = if (installIfNeeded) {
+            runCatching { bundledEngineManager.installIfNeeded() }.exceptionOrNull()
+        } else {
+            null
+        }
         val runtimes = JavaVersion.entries.map(::inspectRuntime)
         val jars = layout.engineJarsDirectory.walkTopDown().count { it.isFile && it.extension.equals("jar", true) }
         val natives = layout.engineNativeDirectory(architecture).walkFiles("so").count()
@@ -39,7 +52,7 @@ class EnginePackManager(
             .all { File(nativeRoot, it).isFile }
         val completeRuntimeSet = runtimes.all(RuntimeStatus::installed)
         val completePayload = bundledInstallError == null && jars > 0 && exactEnginePresent && renderers > 0 && completeRuntimeSet
-        EngineEnvironmentState(
+        return EngineEnvironmentState(
             nativeBridgeAvailable = NativeLaunchBridge.isAvailable,
             nativeBridgeDetail = if (NativeLaunchBridge.isAvailable) {
                 "Built-in JNI invocation engine is available"
@@ -71,9 +84,11 @@ class EnginePackManager(
     suspend fun installBundledEngine(
         force: Boolean = false,
         onProgress: (String) -> Unit = {}
-    ): EngineEnvironmentState {
-        bundledEngineManager.installIfNeeded(force, onProgress)
-        return inspect()
+    ): EngineEnvironmentState = withContext(Dispatchers.IO) {
+        environmentMutex.withLock {
+            bundledEngineManager.installIfNeeded(force, onProgress)
+            inspectLocked(installIfNeeded = false)
+        }
     }
 
     /**

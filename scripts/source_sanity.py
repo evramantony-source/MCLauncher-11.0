@@ -146,8 +146,8 @@ if openltw.get("patch") != "vendor/patches/ltw-minecraft-26.2.patch":
 
 require_contains(
     "app/build.gradle.kts",
-    'versionName = "11.0.0-alpha06"',
-    'versionCode = 16',
+    'versionName = "11.0.0-alpha07"',
+    'versionCode = 17',
     'mclauncherAbi',
     'abiFilters += targetAbi',
     'CURSEFORGE_API_KEY',
@@ -160,7 +160,7 @@ require_contains(
     "scripts/source_sanity.py",
     'assembleNoruntimeDebug',
     'assembleDebug -PmclauncherAbi=',
-    'MCLauncher-11.0-alpha06-',
+    'MCLauncher-11.0-alpha07-',
     "Build pinned OpenLTW with Minecraft 26.2 compatibility",
     "--ltw-aar",
     "pull_request:",
@@ -176,7 +176,7 @@ require_contains(
     'No Android LWJGL substitution is defined',
     'prepareAndroidNatives',
     'applyMinecraftOptions',
-    '-Dmclauncher.version=11.0.0-alpha06',
+    '-Dmclauncher.version=11.0.0-alpha07',
 )
 require_contains(
     "app/src/main/java/com/mclauncher/app/engine/NativeEngineCoordinator.kt",
@@ -241,6 +241,34 @@ require_contains(
     "lastPlayRequestAt",
     "Minecraft is already being prepared",
     "instance.launchSettings.applyTo",
+    'engineOperation = "Checking bundled Minecraft engine"',
+    "val engine = runCatching { enginePackManager.inspect() }",
+    "message = engine.enginePack.detail",
+)
+require_absent(
+    "app/src/main/java/com/mclauncher/app/ui/LauncherViewModel.kt",
+    "_state.value.engineEnvironment ?: enginePackManager.inspect()",
+    "The APK is missing its bundled Android LWJGL engine",
+)
+require_contains(
+    "app/src/main/java/com/mclauncher/app/engine/BundledEngineManager.kt",
+    "private val installMutex = Mutex()",
+    "installMutex.withLock",
+)
+require_contains(
+    "app/src/main/java/com/mclauncher/app/engine/EnginePackManager.kt",
+    "private val environmentMutex = Mutex()",
+    "environmentMutex.withLock",
+    "inspectLocked(installIfNeeded = false)",
+)
+require_contains(
+    "app/src/main/java/com/mclauncher/app/ui/screens/LibraryScreen.kt",
+    "state.engineOperation?.let",
+    "instance.installed && state.engineOperation == null",
+)
+require_contains(
+    "app/src/main/java/com/mclauncher/app/ui/screens/HomeScreen.kt",
+    "featured.installed && state.engineOperation == null",
 )
 require_contains(
     "app/src/main/java/com/mclauncher/app/engine/NativeLaunchBridge.kt",

@@ -5,6 +5,8 @@ import android.os.Build
 import com.mclauncher.minecraft.MinecraftLayout
 import com.mclauncher.model.JavaVersion
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
@@ -21,81 +23,85 @@ class BundledEngineManager(
     private val context: Context,
     private val layout: MinecraftLayout
 ) {
+    private val installMutex = Mutex()
+
     private val architecture: String
         get() = Build.SUPPORTED_ABIS.firstOrNull() ?: "arm64-v8a"
 
     suspend fun installIfNeeded(
         force: Boolean = false,
         progress: (String) -> Unit = {}
-    ) = withContext(Dispatchers.IO) {
-        val version = readAssetText("bundled_engine/bundle-version.txt")?.trim()
-            ?: error("This APK was built without the bundled engine payload")
-        val marker = File(layout.engineDirectory, ".bundled-engine-$architecture.version")
-        if (!force && marker.isFile && marker.readText().trim() == version && basicPayloadPresent()) {
-            return@withContext
-        }
-
-        progress("Installing MCLauncher's bundled engine")
-        layout.ensureBaseDirectories()
-        // Replace the payload atomically enough for first-run repair and remove stale
-        // libraries from older beta builds that could otherwise win native lookup.
-        layout.engineJarsDirectory.deleteRecursively()
-        layout.engineNativeDirectory(architecture).deleteRecursively()
-        layout.engineRendererRootDirectory(architecture).deleteRecursively()
-        layout.engineDriverRootDirectory(architecture).deleteRecursively()
-        copyAssetTree("bundled_engine/common/jars", layout.engineJarsDirectory)
-        copyAssetTree("bundled_engine/$architecture/natives", layout.engineNativeDirectory(architecture))
-        copyAssetTree("bundled_engine/$architecture/renderers", layout.engineRendererRootDirectory(architecture))
-        copyAssetTree("bundled_engine/$architecture/drivers", layout.engineDriverRootDirectory(architecture))
-
-        JavaVersion.entries.forEach { javaVersion ->
-            val runtimeAssets = listOf(
-                "bundled_engine/common/runtimes/java-${javaVersion.major}",
-                "bundled_engine/$architecture/runtimes/java-${javaVersion.major}"
-            ).flatMap { root ->
-                listAssetFiles(root)
-                    .filter { it.endsWith(".tar.xz", true) || it.endsWith(".tar.gz", true) || it.endsWith(".tgz", true) }
-                    .sorted()
+    ) = installMutex.withLock {
+        withContext(Dispatchers.IO) {
+            val version = readAssetText("bundled_engine/bundle-version.txt")?.trim()
+                ?: error("This APK was built without the bundled engine payload")
+            val marker = File(layout.engineDirectory, ".bundled-engine-$architecture.version")
+            if (!force && marker.isFile && marker.readText().trim() == version && basicPayloadPresent()) {
+                return@withContext
             }
-            if (runtimeAssets.isEmpty()) return@forEach
 
-            progress("Installing bundled Java ${javaVersion.major}")
-            val staging = File(layout.root, "staging/bundled-java-${javaVersion.major}-$architecture").apply {
-                deleteRecursively()
-                mkdirs()
-            }
-            val archives = mutableListOf<File>()
-            try {
-                runtimeAssets.forEachIndexed { index, assetPath ->
-                    val extension = when {
-                        assetPath.endsWith(".tar.xz", true) -> ".tar.xz"
-                        assetPath.endsWith(".tgz", true) -> ".tgz"
-                        else -> ".tar.gz"
-                    }
-                    val archive = File(context.cacheDir, "mclauncher-java-${javaVersion.major}-$architecture-$index$extension")
-                    context.assets.open(assetPath).use { input ->
-                        FileOutputStream(archive).use(input::copyTo)
-                    }
-                    archives += archive
-                    ArchiveExtractor.extract(archive, staging)
+            progress("Installing MCLauncher's bundled engine")
+            layout.ensureBaseDirectories()
+            // Replace the payload under one install lock so Play and
+            // background inspection cannot observe half-copied engine directories.
+            layout.engineJarsDirectory.deleteRecursively()
+            layout.engineNativeDirectory(architecture).deleteRecursively()
+            layout.engineRendererRootDirectory(architecture).deleteRecursively()
+            layout.engineDriverRootDirectory(architecture).deleteRecursively()
+            copyAssetTree("bundled_engine/common/jars", layout.engineJarsDirectory)
+            copyAssetTree("bundled_engine/$architecture/natives", layout.engineNativeDirectory(architecture))
+            copyAssetTree("bundled_engine/$architecture/renderers", layout.engineRendererRootDirectory(architecture))
+            copyAssetTree("bundled_engine/$architecture/drivers", layout.engineDriverRootDirectory(architecture))
+
+            JavaVersion.entries.forEach { javaVersion ->
+                val runtimeAssets = listOf(
+                    "bundled_engine/common/runtimes/java-${javaVersion.major}",
+                    "bundled_engine/$architecture/runtimes/java-${javaVersion.major}"
+                ).flatMap { root ->
+                    listAssetFiles(root)
+                        .filter { it.endsWith(".tar.xz", true) || it.endsWith(".tar.gz", true) || it.endsWith(".tgz", true) }
+                        .sorted()
                 }
+                if (runtimeAssets.isEmpty()) return@forEach
 
-                val javaHome = findJavaHome(staging)
-                    ?: error("Bundled Java ${javaVersion.major} is invalid: bin/java or libjvm.so is missing")
-                val target = layout.runtimeHome(javaVersion.major, architecture)
-                replaceDirectory(javaHome, target)
-                prepareRuntimePermissions(target)
-            } finally {
-                archives.forEach(File::delete)
-                staging.deleteRecursively()
+                progress("Installing bundled Java ${javaVersion.major}")
+                val staging = File(layout.root, "staging/bundled-java-${javaVersion.major}-$architecture").apply {
+                    deleteRecursively()
+                    mkdirs()
+                }
+                val archives = mutableListOf<File>()
+                try {
+                    runtimeAssets.forEachIndexed { index, assetPath ->
+                        val extension = when {
+                            assetPath.endsWith(".tar.xz", true) -> ".tar.xz"
+                            assetPath.endsWith(".tgz", true) -> ".tgz"
+                            else -> ".tar.gz"
+                        }
+                        val archive = File(context.cacheDir, "mclauncher-java-${javaVersion.major}-$architecture-$index$extension")
+                        context.assets.open(assetPath).use { input ->
+                            FileOutputStream(archive).use(input::copyTo)
+                        }
+                        archives += archive
+                        ArchiveExtractor.extract(archive, staging)
+                    }
+
+                    val javaHome = findJavaHome(staging)
+                        ?: error("Bundled Java ${javaVersion.major} is invalid: bin/java or libjvm.so is missing")
+                    val target = layout.runtimeHome(javaVersion.major, architecture)
+                    replaceDirectory(javaHome, target)
+                    prepareRuntimePermissions(target)
+                } finally {
+                    archives.forEach(File::delete)
+                    staging.deleteRecursively()
+                }
             }
-        }
 
-        require(basicPayloadPresent()) {
-            "The APK does not contain a complete $architecture launch engine. Re-run the Build Android APK workflow."
+            require(basicPayloadPresent()) {
+                "The APK does not contain a complete $architecture launch engine. Re-run the Build Android APK workflow."
+            }
+            marker.parentFile?.mkdirs()
+            marker.writeText(version)
         }
-        marker.parentFile?.mkdirs()
-        marker.writeText(version)
     }
 
     fun packagedPayloadAvailable(): Boolean =

@@ -137,10 +137,20 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun refreshEngineEnvironment() {
+        val operation = "Preparing bundled Minecraft engine"
+        val ownsOperation = _state.value.engineOperation == null
+        if (ownsOperation) _state.update { it.copy(engineOperation = operation) }
         viewModelScope.launch {
             runCatching { enginePackManager.inspect() }
                 .onSuccess { environment -> _state.update { it.copy(engineEnvironment = environment) } }
                 .onFailure { error -> _state.update { it.copy(message = "Engine inspection failed: ${error.message}") } }
+            if (ownsOperation) {
+                _state.update { current ->
+                    current.copy(
+                        engineOperation = current.engineOperation.takeUnless { it == operation }
+                    )
+                }
+            }
         }
     }
 
@@ -654,6 +664,10 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun play(instanceId: String) {
+        _state.value.engineOperation?.let { operation ->
+            _state.update { it.copy(message = "Please wait: $operation") }
+            return
+        }
         val now = SystemClock.elapsedRealtime()
         if (now - lastPlayRequestAt < 2_500L) {
             _state.update { it.copy(message = "Minecraft is already being prepared") }
@@ -675,14 +689,23 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
             }
 
             val architecture = Build.SUPPORTED_ABIS.firstOrNull() ?: "arm64-v8a"
-            val engine = runCatching { _state.value.engineEnvironment ?: enginePackManager.inspect() }.getOrElse { error ->
-                _state.update { it.copy(message = "Cannot inspect the launch engine: ${error.message}") }
+            _state.update { it.copy(engineOperation = "Checking bundled Minecraft engine") }
+            val engine = runCatching { enginePackManager.inspect() }.getOrElse { error ->
+                _state.update {
+                    it.copy(
+                        engineOperation = null,
+                        message = "Cannot inspect the launch engine: ${error.message}"
+                    )
+                }
                 return@launch
             }
+            _state.update { it.copy(engineEnvironment = engine, engineOperation = null) }
             if (engine.runtimes.firstOrNull { it.version == instance.javaVersion }?.installed != true) {
                 return@launch _state.update { it.copy(message = "Bundled Java ${instance.javaVersion.major} is missing for $architecture. Rebuild or repair the bundled engine.") }
             }
-            if (!engine.enginePack.installed) return@launch _state.update { it.copy(message = "The APK is missing its bundled Android LWJGL engine") }
+            if (!engine.enginePack.installed) {
+                return@launch _state.update { it.copy(message = engine.enginePack.detail) }
+            }
             if (!engine.nativeBridgeAvailable) return@launch _state.update { it.copy(message = "The built-in native launch engine is unavailable") }
 
             _state.update { it.copy(message = "Preparing launch plan") }
@@ -709,7 +732,9 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                 }))
                 _state.update { it.copy(message = null) }
                 eventChannel.send(LauncherEvent.OpenGame(file, closeLauncher = !current.settings.keepLauncherOpen))
-            }.onFailure { error -> _state.update { it.copy(message = "Cannot launch: ${error.message}") } }
+            }.onFailure { error ->
+                _state.update { it.copy(engineOperation = null, message = "Cannot launch: ${error.message}") }
+            }
         }
     }
 

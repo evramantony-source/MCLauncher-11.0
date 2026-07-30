@@ -18,6 +18,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -58,6 +59,19 @@ fun LibraryScreen(
                 )
             }
 
+            state.engineOperation?.let { operation ->
+                item {
+                    LauncherCard(modifier = Modifier.fillMaxWidth()) {
+                        Text(operation, style = MaterialTheme.typography.titleMedium)
+                        LinearProgressIndicator(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 10.dp)
+                        )
+                    }
+                }
+            }
+
             if (state.orderedInstances.isEmpty()) {
                 item {
                     LauncherCard(modifier = Modifier.fillMaxWidth()) {
@@ -93,7 +107,7 @@ fun LibraryScreen(
                         }
                         Button(
                             onClick = { onPlay(instance.id) },
-                            enabled = instance.installed
+                            enabled = instance.installed && state.engineOperation == null
                         ) {
                             Icon(Icons.Rounded.PlayArrow, contentDescription = null)
                             Text("Play", modifier = Modifier.padding(start = 4.dp))

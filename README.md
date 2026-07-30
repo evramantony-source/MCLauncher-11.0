@@ -46,8 +46,8 @@ The large generated runtime/native payload belongs in the APK artifact, not in G
 1. Open **Actions → Build standalone MCLauncher 11 APK**.
 2. Select **Run workflow**.
 3. Keep `arm64-v8a` for modern Android phones and tablets.
-4. Download the `MCLauncher-11.0-alpha06-arm64-v8a` artifact.
-5. Extract it and install `MCLauncher-11.0-alpha06-arm64-v8a.apk`.
+4. Download the `MCLauncher-11.0-alpha07-arm64-v8a` artifact.
+5. Extract it and install `MCLauncher-11.0-alpha07-arm64-v8a.apk`.
 6. Follow `docs/FIRST_DEVICE_TEST.md`.
 
 Pull requests and pushes to `main` run the default arm64 build automatically.

@@ -94,7 +94,7 @@ fun HomeScreen(
                         if (featured != null) {
                             Button(
                                 onClick = { onPlay(featured.id) },
-                                enabled = featured.installed
+                                enabled = featured.installed && state.engineOperation == null
                             ) {
                                 Icon(Icons.Rounded.PlayArrow, contentDescription = null)
                                 Text("Play", modifier = Modifier.padding(start = 8.dp))
@@ -156,7 +156,8 @@ fun HomeScreen(
                         Icon(Icons.Rounded.Storage, contentDescription = null)
                         Text("Engine", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 8.dp))
                         Text(
-                            if (NativeLaunchBridge.isAvailable) "Native bridge loaded" else "Native engine pending",
+                            state.engineOperation
+                                ?: if (NativeLaunchBridge.isAvailable) "Native bridge loaded" else "Native engine pending",
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(vertical = 8.dp)
                         )

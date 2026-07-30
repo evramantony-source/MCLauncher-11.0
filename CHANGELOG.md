@@ -1,5 +1,12 @@
 # Changelog
 
+## 11.0.0-alpha07
+
+- Serialized bundled-engine restoration so startup inspection, Repair and Play cannot delete or count the engine payload concurrently.
+- Disabled Play while a new APK bundle version is being restored and exposed that restoration state in Library and Home.
+- Made Play perform a fresh serialized engine inspection instead of reusing a stale failed startup result.
+- Replaced the misleading generic “APK is missing” toast with the exact engine inspection failure when restoration genuinely fails.
+
 ## 11.0.0-alpha06
 
 - Stopped the Activity-wide virtual-mouse stream from intercepting launcher-owned game-menu and launch-overlay buttons.
