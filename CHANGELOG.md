@@ -1,5 +1,12 @@
 # Changelog
 
+## 11.0.0-alpha06
+
+- Stopped the Activity-wide virtual-mouse stream from intercepting launcher-owned game-menu and launch-overlay buttons.
+- Suspended game touch controls while the launcher game menu is open so touch ownership changes cleanly in both directions.
+- Matched the upstream Android GLFW click contract by holding virtual mouse presses for 33 milliseconds before release.
+- Applied the same timed click path to look-pad double taps and long presses.
+
 ## 11.0.0-alpha05
 
 - Rebuilt OpenLTW from the pinned current upstream source and added direct `glGetFloatv`/`glGetBooleanv` exports required by Minecraft 26.2's OpenGL startup path.

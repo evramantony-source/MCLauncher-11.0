@@ -40,6 +40,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
@@ -71,6 +72,7 @@ class GameActivity : ComponentActivity() {
     private var physicalMouseCapture: Boolean = true
     private var hideTouchControlsWithExternalInput: Boolean = false
     private var gameSurfaceView: SurfaceView? = null
+    @Volatile private var launcherOverlayOwnsTouch: Boolean = true
     private var externalInputDetected by mutableStateOf(false)
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -122,7 +124,7 @@ class GameActivity : ComponentActivity() {
         val dataRoot = File(planPath).parentFile?.parentFile ?: filesDir
         val sessionLog = File(dataRoot, "logs/latest-session.log").apply {
             parentFile?.mkdirs()
-            writeText("MCLauncher 11.0 alpha05 session ${System.currentTimeMillis()}\n")
+            writeText("MCLauncher 11.0 alpha06 session ${System.currentTimeMillis()}\n")
         }
 
         setContent {
@@ -135,6 +137,10 @@ class GameActivity : ComponentActivity() {
                 var gameMenuRequested by remember { mutableStateOf(false) }
                 val logs = remember { mutableStateListOf<String>() }
                 val pointerState by GameInputBridge.pointerState.collectAsState()
+
+                SideEffect {
+                    launcherOverlayOwnsTouch = launchOverlayVisible || gameMenuRequested
+                }
 
                 LaunchedEffect(externalInputDetected) {
                     if (externalInputDetected && hideTouchControlsWithExternalInput) controlsVisible = false
@@ -288,7 +294,10 @@ class GameActivity : ComponentActivity() {
                     )
 
                     GameTouchOverlay(
-                        visible = running && !launchOverlayVisible && controlsVisible,
+                        visible = running &&
+                            !launchOverlayVisible &&
+                            !gameMenuRequested &&
+                            controlsVisible,
                         settings = launcherSettings,
                         pointerState = pointerState,
                         onMenu = { gameMenuRequested = !gameMenuRequested },
@@ -424,7 +433,11 @@ class GameActivity : ComponentActivity() {
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
         val touchSource = event.isFromSource(InputDevice.SOURCE_TOUCHSCREEN) ||
             event.isFromSource(InputDevice.SOURCE_STYLUS)
-        if (touchSource && GameInputBridge.isVirtualMouseCaptureEnabled()) {
+        if (
+            touchSource &&
+            !launcherOverlayOwnsTouch &&
+            GameInputBridge.isVirtualMouseCaptureEnabled()
+        ) {
             val view = gameSurfaceView
             if (view != null && view.width > 0 && view.height > 0) {
                 val location = IntArray(2)
@@ -470,6 +483,7 @@ class GameActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
+        launcherOverlayOwnsTouch = true
         gyroInputController?.stop()
         GameInputBridge.releaseAll()
         GLFW.setGrabListener(null)

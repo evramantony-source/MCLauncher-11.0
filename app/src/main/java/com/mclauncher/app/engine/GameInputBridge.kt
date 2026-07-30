@@ -1,5 +1,7 @@
 package com.mclauncher.app.engine
 
+import android.os.Handler
+import android.os.Looper
 import android.view.InputDevice
 import android.view.KeyEvent
 import android.view.MotionEvent
@@ -31,11 +33,14 @@ object GameInputBridge {
     @Volatile private var surfaceHeight: Int = 1
     @Volatile private var virtualMouseCaptureEnabled: Boolean = false
 
+    private const val VIRTUAL_MOUSE_CLICK_HOLD_MILLIS = 33L
+    private val mainHandler = Handler(Looper.getMainLooper())
     private val _pointerState = MutableStateFlow(GamePointerState())
     val pointerState: StateFlow<GamePointerState> = _pointerState.asStateFlow()
 
     private val pressedKeys = mutableSetOf<Int>()
     private val pressedMouseButtons = mutableSetOf<Int>()
+    private val pendingClickReleases = mutableMapOf<Int, Runnable>()
     private var lastMouseX: Float? = null
     private var lastMouseY: Float? = null
     private var lastTriggerLeft = false
@@ -133,6 +138,43 @@ object GameInputBridge {
         if (changed && NativeLaunchBridge.isAvailable) {
             NativeLaunchBridge.nativeSendMouseButton(button, if (pressed) ACTION_PRESS else ACTION_RELEASE, modifiers)
         }
+    }
+
+    /**
+     * Sends a complete click with one rendered-frame of hold time.
+     *
+     * Mojo/GLFW drains pointer movement before queued button input. Keeping the
+     * button pressed briefly lets Minecraft observe both states on separate
+     * event polls instead of collapsing an instantaneous press and release.
+     */
+    fun clickMouseButton(button: Int, modifiers: Int = 0) {
+        if (!NativeLaunchBridge.isAvailable) return
+
+        val previousRelease = synchronized(pendingClickReleases) {
+            pendingClickReleases.remove(button)
+        }
+        if (previousRelease != null) {
+            mainHandler.removeCallbacks(previousRelease)
+            mouseButton(button, false, modifiers)
+        }
+
+        mouseButton(button, true, modifiers)
+        lateinit var release: Runnable
+        release = Runnable {
+            val ownsRelease = synchronized(pendingClickReleases) {
+                if (pendingClickReleases[button] === release) {
+                    pendingClickReleases.remove(button)
+                    true
+                } else {
+                    false
+                }
+            }
+            if (ownsRelease) mouseButton(button, false, modifiers)
+        }
+        synchronized(pendingClickReleases) {
+            pendingClickReleases[button] = release
+        }
+        mainHandler.postDelayed(release, VIRTUAL_MOUSE_CLICK_HOLD_MILLIS)
     }
 
     fun cursorDelta(dx: Float, dy: Float, applySensitivity: Boolean = true) {
@@ -432,8 +474,7 @@ object GameInputBridge {
                 }
                 resetVirtualTouch()
                 if (shouldClick) {
-                    mouseButton(button, true)
-                    mouseButton(button, false)
+                    clickMouseButton(button)
                 }
                 active
             }
@@ -465,6 +506,10 @@ object GameInputBridge {
     }
 
     fun releaseAll() {
+        val pendingReleases = synchronized(pendingClickReleases) {
+            pendingClickReleases.values.toList().also { pendingClickReleases.clear() }
+        }
+        pendingReleases.forEach(mainHandler::removeCallbacks)
         synchronized(pressedKeys) { pressedKeys.toList() }.forEach { setKeyState(it, false) }
         synchronized(pressedMouseButtons) { pressedMouseButtons.toList() }.forEach { setMouseButtonState(it, false) }
         lastTriggerLeft = false

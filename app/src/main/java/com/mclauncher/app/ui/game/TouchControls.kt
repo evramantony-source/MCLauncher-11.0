@@ -410,6 +410,5 @@ private fun tapKey(key: Int) {
 }
 
 private fun tapMouse(button: Int) {
-    GameInputBridge.mouseButton(button, true)
-    GameInputBridge.mouseButton(button, false)
+    GameInputBridge.clickMouseButton(button)
 }
