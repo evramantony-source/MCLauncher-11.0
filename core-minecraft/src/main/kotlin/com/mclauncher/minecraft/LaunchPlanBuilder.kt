@@ -7,6 +7,7 @@ import com.mclauncher.model.MinecraftGraphicsApi
 import com.mclauncher.model.MinecraftInstance
 import com.mclauncher.model.OfflineAccount
 import com.mclauncher.model.PerformancePreset
+import com.mclauncher.model.Renderer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
