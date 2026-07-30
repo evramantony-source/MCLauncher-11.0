@@ -31,6 +31,15 @@
     "manifest": "app_pojavlauncher/src/main/assets/substitutions.json"
   },
   "renderers": {
+    "openLTW": {
+      "version": "2026.07.13-mclauncher1",
+      "repository": "https://github.com/MojoLauncher/LTW.git",
+      "sourceRepository": "https://github.com/MojoLauncher/LTW",
+      "commit": "986e246ec7ae13394bd4ef0f8baceb05ccb5be60",
+      "license": "LGPL-3.0",
+      "licenseSha256": "e3a994d82e644b03a792a930f574002658412f62407f5fee083f2555c5f23118",
+      "patch": "vendor/patches/ltw-minecraft-26.2.patch"
+    },
     "mobileGlues": {
       "version": "1.3.5",
       "releaseUrl": "https://github.com/MobileGL-Dev/MobileGlues-release/releases/download/V1.3.5/MobileGlues_1.3.5.apk",

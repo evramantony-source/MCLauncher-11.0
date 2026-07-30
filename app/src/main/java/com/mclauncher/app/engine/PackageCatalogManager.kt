@@ -47,20 +47,8 @@ class PackageCatalogManager(
     private val json: Json = Json { ignoreUnknownKeys = true }
 ) {
     fun builtInCatalog(): ComponentCatalog = ComponentCatalog(
-        updatedAt = "2026-07-28",
+        updatedAt = "2026-07-30",
         packages = listOf(
-            ComponentPackage(
-                id = "openltw-2025-07-16",
-                name = "OpenLTW / LTW",
-                version = "2025.7.16",
-                type = ComponentPackageType.RENDERER,
-                architecture = "universal",
-                url = "https://github.com/ShirosakiMio/FCLRendererPlugin/releases/download/Renderer/LTW-2025.7.16.apk",
-                sha256 = "f36d7145da5188f83225aa97fc8422aa909308819e8fb2f4b97e1d253c48b1f5",
-                size = 2_680_542,
-                renderer = Renderer.OPEN_LTW,
-                sourceProject = "https://github.com/ShirosakiMio/FCLRendererPlugin"
-            ),
             ComponentPackage(
                 id = "angle-renderer-arm64",
                 name = "ANGLE renderer",

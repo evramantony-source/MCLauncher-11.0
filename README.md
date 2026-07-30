@@ -1,4 +1,4 @@
-# MCLauncher 11.0 Alpha 04
+# MCLauncher 11.0 Alpha 05
 
 MCLauncher is an independent Android launcher for Minecraft: Java Edition. It has a responsive Material 3 interface and its own instance, account, download, content, settings and game-screen code. It reuses third-party Android launch-engine components only where required to start the Java game.
 
@@ -17,10 +17,11 @@ MCLauncher is an independent Android launcher for Minecraft: Java Edition. It ha
 - ABI-specific Android LWJGL substitutions and native classifiers.
 - Android Surface/JVM bridge, editable touch controls, swipe look, virtual menu mouse, physical keyboard/mouse, controller and gyroscope input.
 - System, dark and light launcher themes.
-- Hash-pinned MobileGlues 1.3.5 default renderer, GL4ES/OpenLTW fallbacks and optional manifest-driven renderer packs.
+- Hash-pinned MobileGlues 1.3.5 default renderer, a current source-built OpenLTW compatibility renderer, GL4ES fallback and optional manifest-driven renderer packs.
+- Global and per-instance Minecraft 26.2+ graphics-API selection.
 - Verified one-tap installers for selected compatible renderer packages.
 
-Alpha 01 reached the Minecraft main menu and a playable world on a physical Android device. Alpha 02 also reached Minecraft with mods disabled, proving its engine and MobileGlues path. Alpha 03 fixed Sodium's launcher-marker block but exposed an OpenLTW identity mismatch and an unusable menu mouse. Alpha 04 addresses those two paths and requires a focused device retest.
+Alpha 01 reached the Minecraft main menu and a playable world on a physical Android device. Alpha 02 also reached Minecraft with mods disabled, proving its engine and MobileGlues path. Alpha 03 fixed Sodium's launcher-marker block. Alpha 04 reached OpenLTW initialization on Minecraft 26.2 and exposed a missing `glGetFloatv` export plus an unreliable Compose menu-touch path. Alpha 05 directly addresses those two measured failures and requires a focused device retest.
 
 CurseForge's official REST API requires an `x-api-key`. A private build can inject
 `CURSEFORGE_API_KEY`, or the user can enter a key in Settings. Modrinth requires no key.
@@ -30,12 +31,13 @@ CurseForge's official REST API requires an `x-api-key`. A private build can inje
 The installed application does not download or install another launcher APK. GitHub Actions:
 
 1. Checks out the exact LGPL engine revision in `vendor/engine-lock.json`.
-2. Builds the Android engine and GLFW from source.
-3. Extracts only the selected ABI's required native libraries and fallback renderer.
-4. Downloads the hash-pinned MobileGlues and Android JNA payloads, Java 8/17/21/25, and the exact patched LWJGL files.
-5. Verifies Java 17/21/25 runtime archives against MojoLauncher's RSA signing certificate.
-6. Verifies archive formats, hashes, ELF files, classifier JARs, support JARs and notices.
-7. Compiles an ABI-specific APK, reopens it, and verifies the embedded payload.
+2. Builds the Android engine, GLFW and pinned OpenLTW source.
+3. Applies and verifies the narrow Minecraft 26.2 OpenLTW compatibility patch.
+4. Extracts only the selected ABI's required native libraries and renderers.
+5. Downloads the hash-pinned MobileGlues and Android JNA payloads, Java 8/17/21/25, and the exact patched LWJGL files.
+6. Verifies Java 17/21/25 runtime archives against MojoLauncher's RSA signing certificate.
+7. Verifies archive formats, hashes, ELF symbols, classifier JARs, support JARs and notices.
+8. Compiles an ABI-specific APK, reopens it, and verifies the embedded payload.
 
 The large generated runtime/native payload belongs in the APK artifact, not in Git history.
 
@@ -44,15 +46,15 @@ The large generated runtime/native payload belongs in the APK artifact, not in G
 1. Open **Actions → Build standalone MCLauncher 11 APK**.
 2. Select **Run workflow**.
 3. Keep `arm64-v8a` for modern Android phones and tablets.
-4. Download the `MCLauncher-11.0-alpha04-arm64-v8a` artifact.
-5. Extract it and install `MCLauncher-11.0-alpha04-arm64-v8a.apk`.
+4. Download the `MCLauncher-11.0-alpha05-arm64-v8a` artifact.
+5. Extract it and install `MCLauncher-11.0-alpha05-arm64-v8a.apk`.
 6. Follow `docs/FIRST_DEVICE_TEST.md`.
 
 Pull requests and pushes to `main` run the default arm64 build automatically.
 
 ## Proof still required
 
-A green workflow proves that the project compiled and the expected payload is present in the APK. It does not prove compatibility with every Minecraft version, mod, GPU or Android firmware. Alpha 04 must pass direct-touch menu navigation, OpenLTW startup, keyboard/mouse stability and per-instance-setting checks on the target device.
+A green workflow proves that the project compiled and the expected payload is present in the APK. It does not prove compatibility with every Minecraft version, mod, GPU or Android firmware. Alpha 05 must pass Activity-level direct-touch menu navigation, patched OpenLTW 26.2 startup, keyboard/mouse stability, graphics-API selection and per-instance-setting checks on the target device.
 
 ## Legal
 

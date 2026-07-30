@@ -49,7 +49,8 @@ class NativeEngineCoordinator(
         sessionLog?.appendText(
             "Resolved graphics renderer=${graphics.renderer.id} " +
                 "(requested=${plan.renderer.id}), driver=${graphics.driver.id} " +
-                "(requested=${plan.graphicsDriver.id})\n"
+                "(requested=${plan.graphicsDriver.id}), Minecraft API=" +
+                plan.minecraftGraphicsApi.optionsValue + "\n"
         )
 
         val environment = LinkedHashMap(plan.environment)
@@ -166,6 +167,7 @@ class NativeEngineCoordinator(
         putSystemProperty(jvmArguments, "org.lwjgl.system.allocator", "system")
         putSystemProperty(jvmArguments, "mclauncher.renderer", graphics.renderer.id)
         putSystemProperty(jvmArguments, "mclauncher.graphicsDriver", graphics.driver.id)
+        putSystemProperty(jvmArguments, "mclauncher.graphicsApi", plan.minecraftGraphicsApi.optionsValue)
         if (selectedCacioJars.isNotEmpty()) {
             putSystemProperty(jvmArguments, "java.awt.headless", "false")
             putSystemProperty(jvmArguments, "cacio.managed.screensize", "${plan.windowWidth}x${plan.windowHeight}")

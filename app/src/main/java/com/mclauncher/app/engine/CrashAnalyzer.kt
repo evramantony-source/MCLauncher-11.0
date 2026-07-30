@@ -32,6 +32,12 @@ object CrashAnalyzer {
                 CrashDiagnosis("Old JVM launcher blocked", "This build tried to execute Java from Android app storage. Update MCLauncher to the in-process JVM build.")
             "outofmemoryerror" in text || "could not reserve enough space" in text ->
                 CrashDiagnosis("Not enough memory", "Lower allocated RAM, close other apps, or use a lighter modpack.")
+            ("renderer=openltw" in text || "libltw.so" in text) &&
+                ("gl11c.nglgetfloatv" in text || "glgetfloatv" in text) ->
+                CrashDiagnosis(
+                    "OpenLTW needs the 26.2 compatibility build",
+                    "Repair the bundled engine after updating MCLauncher. The older LTW package does not export the OpenGL query used by Minecraft 26.2."
+                )
             "no context is current or a function that is not available" in text ||
                 "nglgensamplers" in text ->
                 CrashDiagnosis(

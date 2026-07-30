@@ -8,8 +8,10 @@
         android:allowBackup="true"
         android:allowNativeHeapPointerTagging="false"
         android:hardwareAccelerated="true"
+        android:icon="@mipmap/ic_launcher"
         android:largeHeap="true"
         android:label="MCLauncher 11.0"
+        android:roundIcon="@mipmap/ic_launcher"
         android:supportsRtl="true"
         android:theme="@style/Theme.MCLauncher">
 

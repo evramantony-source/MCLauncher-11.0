@@ -10,7 +10,11 @@ The standalone APK build uses third-party components including:
 - Patched LWJGL artifacts and native classifiers — their upstream licences and source records from the pinned substitution manifest.
 - MobileGlues — LGPL-2.1; official release binary, exact source commit, release hash and licence are pinned in `vendor/engine-lock.json`.
 - Java Native Access (JNA) Android dispatch library — Apache-2.0 or LGPL-2.1-or-later; the official AAR, version and hash are pinned in `vendor/engine-lock.json`.
-- GL4ES and/or OpenLTW plus any packaged graphics dependencies — their respective upstream licences.
+- OpenLTW — built from the commit pinned in `vendor/engine-lock.json`, licensed
+  under LGPL-3.0, with MCLauncher's narrow Minecraft 26.2 compatibility patch
+  recorded in `vendor/patches/ltw-minecraft-26.2.patch`.
+- GL4ES and any other packaged graphics dependencies — their respective
+  upstream licences.
 - OpenAL Soft and other engine-native dependencies — their respective upstream licences.
 - AndroidX, Jetpack Compose, Kotlin, kotlinx, Apache Commons Compress and XZ for Java — their respective upstream terms.
 

@@ -172,18 +172,34 @@ class GraphicsRegistry(
     )
 
     fun rendererStatuses(): List<RendererStatus> = Renderer.entries.map { renderer ->
-        if (renderer == Renderer.AUTO) {
-            val installed = rendererPresets.any { it.renderer != Renderer.CUSTOM && rendererLibraries(it.renderer, it).isNotEmpty() } ||
-                rendererLibraries(Renderer.CUSTOM, preset(Renderer.CUSTOM)).isNotEmpty()
-            RendererStatus(renderer, installed, rendererRoot().soFiles().size, if (installed) "At least one compatible renderer is installed" else "No renderer pack installed")
-        } else {
-            val libraries = rendererLibraries(renderer, preset(renderer))
-            RendererStatus(
+        when (renderer) {
+            Renderer.AUTO -> {
+                val installed = rendererPresets.any {
+                    it.renderer !in setOf(Renderer.CUSTOM, Renderer.VULKAN) &&
+                        rendererLibraries(it.renderer, it).isNotEmpty()
+                } || rendererLibraries(Renderer.CUSTOM, preset(Renderer.CUSTOM)).isNotEmpty()
+                RendererStatus(
+                    renderer,
+                    installed,
+                    rendererRoot().soFiles().size,
+                    if (installed) "At least one compatible renderer is installed" else "No renderer pack installed"
+                )
+            }
+            Renderer.VULKAN -> RendererStatus(
                 renderer = renderer,
-                installed = libraries.isNotEmpty(),
-                libraryCount = libraries.size,
-                detail = if (libraries.isNotEmpty()) "${libraries.size} native libraries detected" else "Import a ${renderer.displayName} pack"
+                installed = true,
+                libraryCount = 0,
+                detail = "Uses Android's Vulkan loader with Minecraft 26.2+"
             )
+            else -> {
+                val libraries = rendererLibraries(renderer, preset(renderer))
+                RendererStatus(
+                    renderer = renderer,
+                    installed = libraries.isNotEmpty(),
+                    libraryCount = libraries.size,
+                    detail = if (libraries.isNotEmpty()) "${libraries.size} native libraries detected" else "Import a ${renderer.displayName} pack"
+                )
+            }
         }
     }
 
@@ -203,6 +219,9 @@ class GraphicsRegistry(
     }
 
     fun resolve(requestedRenderer: Renderer, requestedDriver: GraphicsDriver, cacheDirectory: File): ResolvedGraphicsStack {
+        if (requestedRenderer == Renderer.VULKAN) {
+            return resolveNativeVulkan(requestedDriver, cacheDirectory)
+        }
         val renderer = requestedRenderer
             .takeUnless { it == Renderer.AUTO }
             ?.takeIf { rendererLibraries(it, preset(it)).isNotEmpty() }
@@ -262,6 +281,53 @@ class GraphicsRegistry(
             preloadTokens = (rendererPreset.preloadTokens + driverPreset.preloadTokens +
                 rendererManifest.orEmptyPreload() + driverManifest.orEmptyPreload()).distinct(),
             environment = expandedEnvironment
+        )
+    }
+
+    /**
+     * Minecraft 26.2 owns the Vulkan renderer itself. Unlike Zink or ANGLE, it
+     * does not need an imported renderer entry library; Android supplies the
+     * Vulkan loader and an optional driver pack only contributes an ICD.
+     */
+    private fun resolveNativeVulkan(
+        requestedDriver: GraphicsDriver,
+        cacheDirectory: File
+    ): ResolvedGraphicsStack {
+        val rendererPreset = preset(Renderer.VULKAN)
+        val driver = requestedDriver
+            .takeUnless { it == GraphicsDriver.AUTO }
+            ?.takeIf {
+                it == GraphicsDriver.SYSTEM ||
+                    driverLibraries(it, driverPreset(it)).isNotEmpty()
+            }
+            ?: chooseAutomaticDriver(Renderer.VULKAN)
+        val driverPreset = driverPreset(driver)
+        val driverDirectory = if (driver == GraphicsDriver.SYSTEM) null else driverDirectory(driver)
+        if (driver != GraphicsDriver.SYSTEM) {
+            require(driverDirectory != null && driverLibraries(driver, driverPreset).isNotEmpty()) {
+                "${driver.displayName} is selected, but its driver pack is not installed for $architecture"
+            }
+        }
+        val driverManifest = driverDirectory?.let(::readManifest)
+        val environment = linkedMapOf<String, String>().apply {
+            putAll(rendererPreset.environment)
+            putAll(driverPreset.environment)
+            driverManifest?.environment?.let { putAll(it) }
+        }.mapValues { (_, value) ->
+            value.replace("${'$'}{cache}", cacheDirectory.absolutePath)
+        }
+
+        return ResolvedGraphicsStack(
+            renderer = Renderer.VULKAN,
+            driver = driver,
+            pojavRenderer = rendererPreset.pojavRenderer,
+            searchDirectories = listOfNotNull(driverDirectory),
+            preloadTokens = (
+                rendererPreset.preloadTokens +
+                    driverPreset.preloadTokens +
+                    driverManifest.orEmptyPreload()
+                ).distinct(),
+            environment = environment
         )
     }
 

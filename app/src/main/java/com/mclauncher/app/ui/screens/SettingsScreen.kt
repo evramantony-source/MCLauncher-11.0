@@ -38,6 +38,7 @@ import com.mclauncher.model.GraphicsDriver
 import com.mclauncher.model.JavaVersion
 import com.mclauncher.model.LauncherSettings
 import com.mclauncher.model.LauncherThemeMode
+import com.mclauncher.model.MinecraftGraphicsApi
 import com.mclauncher.model.PerformancePreset
 import com.mclauncher.model.Renderer
 import com.mclauncher.model.TouchLookMode
@@ -245,13 +246,36 @@ fun SettingsScreen(
             }
 
             item {
+                SettingGroup("Minecraft 26.2+ graphics API") {
+                    MinecraftGraphicsApi.entries.forEach { api ->
+                        FilterChip(
+                            selected = settings.minecraftGraphicsApi == api,
+                            onClick = { onUpdateSettings { it.copy(minecraftGraphicsApi = api) } },
+                            label = { Text(api.displayName) }
+                        )
+                        Text(
+                            api.description,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Text(
+                        "Older Minecraft versions ignore this setting. Vulkan support still depends on the device GPU and Android driver.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            item {
                 SettingGroup("Renderer backend") {
                     val availableRenderers = Renderer.entries.filter { renderer ->
                         val status = state.engineEnvironment?.renderers?.firstOrNull { it.renderer == renderer }
                         val downloadable = state.componentCatalog?.packages?.any {
                             it.type == ComponentPackageType.RENDERER && it.renderer == renderer
                         } == true
-                        renderer == Renderer.AUTO || status?.installed == true || downloadable
+                        renderer != Renderer.VULKAN &&
+                            (renderer == Renderer.AUTO || status?.installed == true || downloadable)
                     }
                     availableRenderers.forEach { renderer ->
                         val status = state.engineEnvironment?.renderers?.firstOrNull { it.renderer == renderer }

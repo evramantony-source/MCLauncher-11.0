@@ -2,6 +2,7 @@ package com.mclauncher.minecraft
 
 import com.mclauncher.model.GraphicsDriver
 import com.mclauncher.model.JavaVersion
+import com.mclauncher.model.MinecraftGraphicsApi
 import com.mclauncher.model.Renderer
 import kotlinx.serialization.Serializable
 
@@ -19,6 +20,7 @@ data class LaunchPlan(
     val environment: Map<String, String>,
     val renderer: Renderer,
     val graphicsDriver: GraphicsDriver = GraphicsDriver.AUTO,
+    val minecraftGraphicsApi: MinecraftGraphicsApi = MinecraftGraphicsApi.DEFAULT,
     val windowWidth: Int = 1280,
     val windowHeight: Int = 720,
     val createdAtEpochMs: Long = System.currentTimeMillis()

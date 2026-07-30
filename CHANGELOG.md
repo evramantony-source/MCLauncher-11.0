@@ -1,5 +1,15 @@
 # Changelog
 
+## 11.0.0-alpha05
+
+- Rebuilt OpenLTW from the pinned current upstream source and added direct `glGetFloatv`/`glGetBooleanv` exports required by Minecraft 26.2's OpenGL startup path.
+- Removed the obsolete 2025 OpenLTW one-tap package so it cannot replace the fixed bundled renderer.
+- Moved virtual-menu-mouse touch capture into the Activity dispatch path, ahead of Compose hit-testing, while preserving the top Mouse/Look/Keyboard controls.
+- Added global and per-instance `Default`, `Prefer OpenGL` and experimental `Prefer Vulkan` choices for Minecraft 26.2 and newer.
+- Writes Minecraft's real `preferredGraphicsBackend` instance option and keeps the selected OpenGL renderer ready for Vulkan fallback.
+- Added an original purple-and-emerald MCLauncher app icon and matching Home-screen branding.
+- Added targeted LTW 26.2, graphics-API, version-capability and native-Vulkan tests and diagnostics.
+
 ## 11.0.0-alpha04
 
 - Fixed OpenLTW/LTW launch preparation by keeping each built-in renderer's native token authoritative instead of accepting stale ANGLE metadata from an imported package.

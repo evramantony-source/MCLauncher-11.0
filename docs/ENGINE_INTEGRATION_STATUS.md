@@ -1,4 +1,4 @@
-# Engine integration status — 11.0 Alpha 04
+# Engine integration status — 11.0 Alpha 05
 
 ## Build-time path
 
@@ -26,5 +26,5 @@
 
 There is no installed-app dependency on another launcher. Alpha 01 reached
 Minecraft's main menu and a world on a physical device, and Alpha 02 reached the
-game with mods disabled. CI plus Alpha 04 OpenLTW, direct-touch and external-input
+game with mods disabled. CI plus Alpha 05 patched OpenLTW, Activity-level direct-touch and external-input
 regression tests remain release gates.

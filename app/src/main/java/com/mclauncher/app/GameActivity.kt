@@ -12,6 +12,7 @@ import android.view.Surface
 import android.view.SurfaceHolder
 import android.view.SurfaceView
 import android.view.View
+import android.view.ViewConfiguration
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -121,7 +122,7 @@ class GameActivity : ComponentActivity() {
         val dataRoot = File(planPath).parentFile?.parentFile ?: filesDir
         val sessionLog = File(dataRoot, "logs/latest-session.log").apply {
             parentFile?.mkdirs()
-            writeText("MCLauncher 11.0 alpha04 session ${System.currentTimeMillis()}\n")
+            writeText("MCLauncher 11.0 alpha05 session ${System.currentTimeMillis()}\n")
         }
 
         setContent {
@@ -421,6 +422,33 @@ class GameActivity : ComponentActivity() {
     }
 
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
+        val touchSource = event.isFromSource(InputDevice.SOURCE_TOUCHSCREEN) ||
+            event.isFromSource(InputDevice.SOURCE_STYLUS)
+        if (touchSource && GameInputBridge.isVirtualMouseCaptureEnabled()) {
+            val view = gameSurfaceView
+            if (view != null && view.width > 0 && view.height > 0) {
+                val location = IntArray(2)
+                view.getLocationInWindow(location)
+                val localY = event.y - location[1]
+                val topControlExclusion = 60f * resources.displayMetrics.density
+                val startsOnOverlayControls =
+                    event.actionMasked == MotionEvent.ACTION_DOWN &&
+                        localY in 0f..topControlExclusion
+                if (
+                    !startsOnOverlayControls &&
+                    GameInputBridge.handleVirtualMouseTouch(
+                        event = event,
+                        surfaceLeft = location[0].toFloat(),
+                        surfaceTop = location[1].toFloat(),
+                        width = view.width,
+                        height = view.height,
+                        touchSlop = ViewConfiguration.get(this).scaledTouchSlop.toFloat()
+                    )
+                ) {
+                    return true
+                }
+            }
+        }
         if (event.isFromSource(InputDevice.SOURCE_MOUSE)) {
             externalInputDetected = true
             if (physicalMouseCapture && GLFW.isGrabbing() && event.actionMasked == MotionEvent.ACTION_DOWN) {

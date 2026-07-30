@@ -1,4 +1,4 @@
-# MCLauncher 11.0 Alpha 04 feature matrix
+# MCLauncher 11.0 Alpha 05 feature matrix
 
 | Area | Current status |
 |---|---|
@@ -12,7 +12,7 @@
 | Java 8/17/21/25 | CI packaging required |
 | Java 17/21/25 archive authenticity | RSA signature verification in CI |
 | Patched LWJGL/GLFW | Coordinate-mapped CI packaging required |
-| Android JVM/Surface engine | Alpha 01 reached the Minecraft menu/world; Alpha 02 reached Minecraft with mods disabled; Alpha 04 regression test required |
+| Android JVM/Surface engine | Alpha 01 reached the Minecraft menu/world; Alpha 02 reached Minecraft with mods disabled; Alpha 05 patched-OpenLTW regression test required |
 | MobileGlues default and GL4ES/OpenLTW fallback | Hash-pinned; exports and payload enforced by verifier |
 | Android JNA compatibility | Version-selected JNA 6/7 dispatch libraries |
 | Optional renderer/driver packs | Manifest-driven custom packs plus verified one-tap packages with canonical built-in identity; missing saved choices fall back safely |

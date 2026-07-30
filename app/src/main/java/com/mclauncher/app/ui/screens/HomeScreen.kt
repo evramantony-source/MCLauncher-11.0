@@ -7,7 +7,10 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AccountCircle
 import androidx.compose.material.icons.rounded.Download
@@ -23,11 +26,13 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
+import com.mclauncher.app.R
 import com.mclauncher.app.engine.NativeLaunchBridge
 import com.mclauncher.app.ui.LauncherUiState
 import com.mclauncher.app.ui.components.LauncherCard
-import com.mclauncher.app.ui.components.PageHeader
 
 @Composable
 fun HomeScreen(
@@ -49,10 +54,28 @@ fun HomeScreen(
             verticalArrangement = Arrangement.spacedBy(18.dp)
         ) {
             item {
-                PageHeader(
-                    title = "MCLauncher",
-                    subtitle = "Your Java Edition library on Android"
-                )
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    Image(
+                        painter = painterResource(R.drawable.mclauncher_logo),
+                        contentDescription = "MCLauncher logo",
+                        modifier = Modifier
+                            .size(64.dp)
+                            .clip(RoundedCornerShape(18.dp))
+                    )
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Text("MCLauncher", style = MaterialTheme.typography.headlineMedium)
+                        Text(
+                            "Your Java Edition library on Android",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
             }
 
             item {

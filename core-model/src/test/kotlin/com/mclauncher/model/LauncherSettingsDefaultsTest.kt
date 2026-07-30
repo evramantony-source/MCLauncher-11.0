@@ -43,6 +43,7 @@ class LauncherSettingsDefaultsTest {
         val global = LauncherSettings(
             renderer = Renderer.MOBILE_GLUES,
             graphicsDriver = GraphicsDriver.SYSTEM,
+            minecraftGraphicsApi = MinecraftGraphicsApi.DEFAULT,
             memoryMb = 2048,
             width = 1280,
             height = 720,
@@ -51,6 +52,7 @@ class LauncherSettingsDefaultsTest {
         val effective = InstanceLaunchSettings(
             enabled = true,
             renderer = Renderer.OPEN_LTW,
+            minecraftGraphicsApi = MinecraftGraphicsApi.OPENGL,
             memoryMb = 3584,
             width = 1600,
             height = 900
@@ -61,6 +63,7 @@ class LauncherSettingsDefaultsTest {
         assertEquals(1600, effective.width)
         assertEquals(900, effective.height)
         assertEquals(GraphicsDriver.SYSTEM, effective.graphicsDriver)
+        assertEquals(MinecraftGraphicsApi.OPENGL, effective.minecraftGraphicsApi)
         assertEquals(LauncherThemeMode.LIGHT, effective.themeMode)
     }
 }

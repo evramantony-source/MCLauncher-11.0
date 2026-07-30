@@ -56,6 +56,36 @@ enum class TouchLookMode(val displayName: String) {
 }
 
 /**
+ * Minecraft's own renderer-backend preference, introduced in Java Edition 26.2.
+ *
+ * This is deliberately separate from [Renderer]: OpenLTW, MobileGlues and GL4ES
+ * translate Minecraft's OpenGL path, while this value tells Minecraft whether it
+ * should start that OpenGL path or its native Vulkan path.
+ */
+@Serializable
+enum class MinecraftGraphicsApi(
+    val optionsValue: String,
+    val displayName: String,
+    val description: String
+) {
+    DEFAULT(
+        "default",
+        "Default",
+        "Use Minecraft's current default and fallback behavior"
+    ),
+    OPENGL(
+        "opengl",
+        "Prefer OpenGL",
+        "Use the selected Android OpenGL renderer without probing Vulkan after a startup failure"
+    ),
+    VULKAN(
+        "vulkan",
+        "Prefer Vulkan (experimental)",
+        "Use Minecraft 26.2's experimental native Vulkan backend"
+    )
+}
+
+/**
  * Desktop-OpenGL/Vulkan compatibility backends understood by the launcher.
  * Alpha 02 embeds a verified default backend in the APK and keeps manifest-driven
  * overrides for advanced testing because each backend has separate ABI/GPU rules.
@@ -155,6 +185,7 @@ data class LauncherSettings(
     val selectedJava: JavaVersion = JavaVersion.JAVA_21,
     val renderer: Renderer = Renderer.AUTO,
     val graphicsDriver: GraphicsDriver = GraphicsDriver.AUTO,
+    val minecraftGraphicsApi: MinecraftGraphicsApi = MinecraftGraphicsApi.DEFAULT,
     val themeMode: LauncherThemeMode = LauncherThemeMode.SYSTEM,
     val memoryMb: Int = 2048,
     val width: Int = 1280,
@@ -202,6 +233,7 @@ data class InstanceLaunchSettings(
     val enabled: Boolean = false,
     val renderer: Renderer? = null,
     val graphicsDriver: GraphicsDriver? = null,
+    val minecraftGraphicsApi: MinecraftGraphicsApi? = null,
     val memoryMb: Int? = null,
     val fpsLimit: Int? = null,
     val width: Int? = null,
@@ -215,6 +247,7 @@ data class InstanceLaunchSettings(
         return global.copy(
             renderer = renderer ?: global.renderer,
             graphicsDriver = graphicsDriver ?: global.graphicsDriver,
+            minecraftGraphicsApi = minecraftGraphicsApi ?: global.minecraftGraphicsApi,
             memoryMb = (memoryMb ?: global.memoryMb).coerceIn(768, 6144),
             fpsLimit = (fpsLimit ?: global.fpsLimit).coerceIn(20, 260),
             width = (width ?: global.width).coerceIn(640, 2560),
@@ -230,6 +263,7 @@ data class InstanceLaunchSettings(
             enabled = true,
             renderer = global.renderer,
             graphicsDriver = global.graphicsDriver,
+            minecraftGraphicsApi = global.minecraftGraphicsApi,
             memoryMb = global.memoryMb,
             fpsLimit = global.fpsLimit,
             width = global.width,

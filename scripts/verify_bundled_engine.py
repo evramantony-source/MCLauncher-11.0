@@ -239,6 +239,28 @@ def main() -> int:
                 if has_magic(mobile_library, ELF_MAGIC) and not contains_bytes(mobile_library, symbol):
                     errors.append(f"{abi}: MobileGlues is missing required symbol {symbol.decode()}")
 
+        openltw_records = [
+            entry for entry in renderer_records
+            if entry.get("abi") == abi and entry.get("id") == "openltw"
+        ]
+        if len(openltw_records) != 1:
+            errors.append(f"{abi}: exactly one pinned OpenLTW renderer pack is required")
+        else:
+            openltw_pack = root / abi / "renderers/openltw"
+            openltw_library = openltw_pack / "libltw.so"
+            if not has_magic(openltw_library, ELF_MAGIC):
+                errors.append(f"{abi}: OpenLTW ELF is missing or invalid")
+            for symbol in (b"glGetFloatv", b"glGetBooleanv"):
+                if has_magic(openltw_library, ELF_MAGIC) and not contains_bytes(openltw_library, symbol):
+                    errors.append(
+                        f"{abi}: patched OpenLTW is missing required symbol {symbol.decode()}"
+                    )
+            if (
+                is_nonempty(openltw_library)
+                and openltw_records[0].get("librarySha256") != sha256(openltw_library)
+            ):
+                errors.append(f"{abi}: OpenLTW library digest does not match")
+
         default_renderers = [
             entry for entry in renderer_records
             if entry.get("abi") == abi and entry.get("id") in {"mobileglues", "gl4es", "openltw"}
@@ -277,6 +299,8 @@ def main() -> int:
         errors.append("GLFW license notice is missing")
     if not any("mobileglues" in path.name.lower() and is_nonempty(path) for path in license_paths):
         errors.append("MobileGlues license notice is missing")
+    if not any("openltw" in path.name.lower() and is_nonempty(path) for path in license_paths):
+        errors.append("OpenLTW license notice is missing")
     if not any("jna" in path.name.lower() and is_nonempty(path) for path in license_paths):
         errors.append("JNA license notice is missing")
 

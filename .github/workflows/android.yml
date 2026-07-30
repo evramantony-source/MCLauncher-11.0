@@ -88,8 +88,31 @@ jobs:
             "build-tools;35.0.0" \
             "build-tools;36.0.0" \
             "ndk;27.0.12077973" \
+            "ndk;28.2.13676358" \
             "ndk;29.0.14206865" \
             "cmake;3.22.1"
+
+      - name: Build pinned OpenLTW with Minecraft 26.2 compatibility
+        shell: bash
+        run: |
+          LTW_COMMIT="$(python3 -c 'import json; print(json.load(open("vendor/engine-lock.json"))["renderers"]["openLTW"]["commit"])')"
+          rm -rf .vendor-build/LTW
+          mkdir -p .vendor-build
+          git clone --filter=blob:none --no-checkout https://github.com/MojoLauncher/LTW.git .vendor-build/LTW
+          cd .vendor-build/LTW
+          git fetch --depth 1 origin "$LTW_COMMIT"
+          git checkout --detach "$LTW_COMMIT"
+          test "$(git rev-parse HEAD)" = "$LTW_COMMIT"
+          git apply "$GITHUB_WORKSPACE/vendor/patches/ltw-minecraft-26.2.patch"
+          chmod +x gradlew
+          ./gradlew --no-daemon :ltw:assembleRelease
+          AAR=ltw/build/outputs/aar/ltw-release.aar
+          test -f "$AAR"
+          VERIFY_DIR="$(mktemp -d)"
+          unzip -q "$AAR" 'jni/arm64-v8a/libltw.so' -d "$VERIFY_DIR"
+          readelf -Ws "$VERIFY_DIR/jni/arm64-v8a/libltw.so" | grep -q ' glGetFloatv$'
+          readelf -Ws "$VERIFY_DIR/jni/arm64-v8a/libltw.so" | grep -q ' glGetBooleanv$'
+          rm -rf "$VERIFY_DIR"
 
       - name: Check out pinned launch-engine source
         shell: bash
@@ -125,6 +148,8 @@ jobs:
           python3 scripts/vendor_engine.py \
             --mojo-root .vendor-build/MojoLauncher \
             --mojo-apk "$MOJO_APK" \
+            --ltw-root .vendor-build/LTW \
+            --ltw-aar .vendor-build/LTW/ltw/build/outputs/aar/ltw-release.aar \
             --abis "$TARGET_ABI"
           python3 scripts/verify_bundled_engine.py --abis "$TARGET_ABI"
 
@@ -151,7 +176,7 @@ jobs:
         shell: bash
         run: |
           APK=app/build/outputs/apk/debug/app-debug.apk
-          OUT=app/build/outputs/apk/debug/MCLauncher-11.0-alpha04-${TARGET_ABI}.apk
+          OUT=app/build/outputs/apk/debug/MCLauncher-11.0-alpha05-${TARGET_ABI}.apk
           test -f "$APK"
           cp "$APK" "$OUT"
           unzip -t "$OUT" >/dev/null
@@ -166,10 +191,10 @@ jobs:
       - name: Upload standalone APK
         uses: actions/upload-artifact@v4
         with:
-          name: MCLauncher-11.0-alpha04-${{ env.TARGET_ABI }}
+          name: MCLauncher-11.0-alpha05-${{ env.TARGET_ABI }}
           retention-days: 14
           path: |
-            app/build/outputs/apk/debug/MCLauncher-11.0-alpha04-${{ env.TARGET_ABI }}.apk
-            app/build/outputs/apk/debug/MCLauncher-11.0-alpha04-${{ env.TARGET_ABI }}.apk.sha256
+            app/build/outputs/apk/debug/MCLauncher-11.0-alpha05-${{ env.TARGET_ABI }}.apk
+            app/build/outputs/apk/debug/MCLauncher-11.0-alpha05-${{ env.TARGET_ABI }}.apk.sha256
             app/src/main/assets/bundled_engine/bundle-manifest.json
           if-no-files-found: error

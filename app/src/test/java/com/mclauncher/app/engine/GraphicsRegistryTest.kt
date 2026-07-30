@@ -10,6 +10,28 @@ import kotlin.test.assertEquals
 
 class GraphicsRegistryTest {
     @Test
+    fun nativeVulkanUsesAndroidLoaderWithoutRendererPack() {
+        val root = Files.createTempDirectory("mclauncher-vulkan-test").toFile()
+        try {
+            val resolved = GraphicsRegistry(
+                MinecraftLayout(root),
+                "arm64-v8a"
+            ).resolve(
+                requestedRenderer = Renderer.VULKAN,
+                requestedDriver = GraphicsDriver.SYSTEM,
+                cacheDirectory = File(root, "cache").apply { mkdirs() }
+            )
+
+            assertEquals(Renderer.VULKAN, resolved.renderer)
+            assertEquals(GraphicsDriver.SYSTEM, resolved.driver)
+            assertEquals("vulkan", resolved.pojavRenderer)
+            assertEquals(emptyList(), resolved.searchDirectories)
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
     fun knownOpenLtwRendererIgnoresStaleAngleToken() {
         val root = Files.createTempDirectory("mclauncher-graphics-test").toFile()
         try {

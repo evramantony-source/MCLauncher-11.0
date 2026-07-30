@@ -1,4 +1,4 @@
-# Build verification — MCLauncher 11.0 Alpha 04
+# Build verification — MCLauncher 11.0 Alpha 05
 
 ## Fast validation
 
@@ -16,7 +16,8 @@ The workflow must:
 
 - build the pinned Android engine source;
 - extract valid `libpojavexec.so`, `libpojavexec_awt.so` and `libglfw.so` files;
-- package MobileGlues with the modern OpenGL sampler exports plus a GL4ES/OpenLTW fallback;
+- build pinned OpenLTW and verify its Minecraft 26.2 OpenGL query exports;
+- package MobileGlues, patched OpenLTW and a GL4ES fallback;
 - package version-matched Android JNA 6 and 7 native dispatch libraries;
 - package universal and ABI layers for Java 8, 17, 21 and 25;
 - verify Java 17/21/25 archives against the pinned RSA certificate;
@@ -28,4 +29,4 @@ The workflow must:
 
 ## Device proof
 
-Alpha 01 reached Minecraft 1.21.11/Fabric's main menu and a playable world on a physical Android device. Alpha 02 reached the game with mods disabled, while the device log identified Sodium's renderer-marker block. Alpha 03 confirmed that fix but exposed stale OpenLTW package metadata and a failed virtual-menu-mouse UX. Alpha 04 requires focused checks for OpenLTW startup, direct-touch menu navigation, swipe look, external input and per-instance settings.
+Alpha 01 reached Minecraft 1.21.11/Fabric's main menu and a playable world on a physical Android device. Alpha 02 reached the game with mods disabled, while the device log identified Sodium's renderer-marker block. Alpha 03 confirmed that fix. Alpha 04 reached OpenLTW on 26.2 and then failed at the missing `glGetFloatv` export; its Compose menu-touch path also emitted no native pointer markers in the supplied trace. Alpha 05 requires focused checks for patched OpenLTW startup, Activity-level menu navigation, swipe look, external input, the 26.2 graphics-API selector and per-instance settings.

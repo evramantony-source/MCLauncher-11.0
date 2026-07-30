@@ -124,6 +124,7 @@ for major in (8, 17, 21, 25):
     if not source:
         errors.append(f"vendor/engine-lock.json: Java {major} source is missing")
 mobileglues = lock.get("renderers", {}).get("mobileGlues", {})
+openltw = lock.get("renderers", {}).get("openLTW", {})
 jna = lock.get("nativeCompatibility", {}).get("jna", {})
 for label, document, digest_keys in (
     ("MobileGlues", mobileglues, ("releaseSha256", "licenseSha256")),
@@ -136,11 +137,17 @@ for label, document, digest_keys in (
             errors.append(f"vendor/engine-lock.json: {label} {key} must be SHA-256")
 if not re.fullmatch(r"[0-9a-f]{40}", str(mobileglues.get("sourceCommit", ""))):
     errors.append("vendor/engine-lock.json: MobileGlues source commit must be a full SHA")
+if not re.fullmatch(r"[0-9a-f]{40}", str(openltw.get("commit", ""))):
+    errors.append("vendor/engine-lock.json: OpenLTW source commit must be a full SHA")
+if not re.fullmatch(r"[0-9a-f]{64}", str(openltw.get("licenseSha256", ""))):
+    errors.append("vendor/engine-lock.json: OpenLTW licenseSha256 must be SHA-256")
+if openltw.get("patch") != "vendor/patches/ltw-minecraft-26.2.patch":
+    errors.append("vendor/engine-lock.json: OpenLTW compatibility patch is not pinned")
 
 require_contains(
     "app/build.gradle.kts",
-    'versionName = "11.0.0-alpha04"',
-    'versionCode = 14',
+    'versionName = "11.0.0-alpha05"',
+    'versionCode = 15',
     'mclauncherAbi',
     'abiFilters += targetAbi',
     'CURSEFORGE_API_KEY',
@@ -153,7 +160,9 @@ require_contains(
     "scripts/source_sanity.py",
     'assembleNoruntimeDebug',
     'assembleDebug -PmclauncherAbi=',
-    'MCLauncher-11.0-alpha04-',
+    'MCLauncher-11.0-alpha05-',
+    "Build pinned OpenLTW with Minecraft 26.2 compatibility",
+    "--ltw-aar",
     "pull_request:",
     "mclauncher-alpha-debug.jks.b64",
     "CURSEFORGE_API_KEY",
@@ -248,6 +257,7 @@ require_contains(
     "parse_signature_bundle",
     "mojo-runtime-signing-cert.pem",
     "vendor_mobileglues",
+    "vendor_openltw",
     "vendor_jna_dispatch",
     "bundle_version",
 )
@@ -258,9 +268,8 @@ require_contains(
     'LookPad',
     'VirtualMouseCursor',
     'virtualMouseEnabled',
-    'pointerInteropFilter',
-    'cursorPositionNormalized',
     'forceVirtualMouse',
+    'setVirtualMouseCaptureEnabled',
 )
 require_contains(
     "app/src/main/java/com/mclauncher/app/ui/screens/SettingsScreen.kt",
@@ -278,6 +287,14 @@ require_contains(
     'nativeSendRawKey',
     'cursorPosition',
     'cursorPositionNormalized',
+    'handleVirtualMouseTouch',
+    'virtualMouseCaptureEnabled',
+)
+require_contains(
+    "app/src/main/java/com/mclauncher/app/GameActivity.kt",
+    "GameInputBridge.handleVirtualMouseTouch",
+    "topControlExclusion",
+    "SOURCE_TOUCHSCREEN",
 )
 require_contains(
     "app/src/main/cpp/native_engine.cpp",
@@ -303,9 +320,12 @@ require_contains(
 )
 require_contains(
     "app/src/main/java/com/mclauncher/app/engine/PackageCatalogManager.kt",
-    'LTW-2025.7.16.apk',
     'ANGLE.Renderer.apk',
     'Zink.Mesa25.apk',
+)
+require_absent(
+    "app/src/main/java/com/mclauncher/app/engine/PackageCatalogManager.kt",
+    'LTW-2025.7.16.apk',
     'f36d7145da5188f83225aa97fc8422aa909308819e8fb2f4b97e1d253c48b1f5',
 )
 require_absent(
@@ -331,8 +351,7 @@ require_contains(
 )
 require_contains(
     "app/src/main/java/com/mclauncher/app/ui/game/TouchControls.kt",
-    "MenuTouchSurface",
-    "GameInputBridge.cursorPositionNormalized",
+    "GameInputBridge.setVirtualMouseCaptureEnabled",
     "pointerState.grabbed && !virtualMouseActive && settings.movementJoystickEnabled",
 )
 require_contains(
@@ -344,11 +363,30 @@ require_contains(
     "core-model/src/main/kotlin/com/mclauncher/model/LauncherModels.kt",
     "data class InstanceLaunchSettings",
     "val launchSettings: InstanceLaunchSettings",
+    "enum class MinecraftGraphicsApi",
+    "val minecraftGraphicsApi:",
 )
 require_contains(
     "app/src/main/java/com/mclauncher/app/ui/screens/InstanceDetailScreen.kt",
     "InstanceSection.SETTINGS",
     'Text("Use global launch settings"',
+    'Text("Minecraft graphics API"',
+)
+require_contains(
+    "core-minecraft/src/main/kotlin/com/mclauncher/minecraft/LaunchPlanBuilder.kt",
+    '"preferredGraphicsBackend"',
+    "MinecraftVersionCapabilities.supportsGraphicsApi",
+    "minecraftGraphicsApi.optionsValue",
+)
+require_contains(
+    "app/src/main/AndroidManifest.xml",
+    'android:icon="@mipmap/ic_launcher"',
+    'android:roundIcon="@mipmap/ic_launcher"',
+)
+require_contains(
+    "vendor/patches/ltw-minecraft-26.2.patch",
+    "void glGetFloatv",
+    "void glGetBooleanv",
 )
 require_absent(
     "app/src/main/java/com/mclauncher/app/engine/CrashAnalyzer.kt",
@@ -387,6 +425,7 @@ for field in (
     "physicalMouseCapture",
     "hideTouchControlsWithExternalInput",
     "sustainedPerformanceMode",
+    "minecraftGraphicsApi",
 ):
     if field not in model:
         errors.append(f"LauncherSettings field is missing: {field}")

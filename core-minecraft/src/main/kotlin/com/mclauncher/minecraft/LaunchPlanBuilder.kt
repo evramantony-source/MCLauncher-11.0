@@ -3,6 +3,7 @@ package com.mclauncher.minecraft
 import com.mclauncher.model.AccountType
 import com.mclauncher.model.AuthSession
 import com.mclauncher.model.LauncherSettings
+import com.mclauncher.model.MinecraftGraphicsApi
 import com.mclauncher.model.MinecraftInstance
 import com.mclauncher.model.OfflineAccount
 import com.mclauncher.model.PerformancePreset
@@ -40,6 +41,11 @@ class LaunchPlanBuilder(
         val baseVersionId = versionResolver.baseVersionId(instance.versionId)
         require(layout.clientJar(baseVersionId).isFile) { "Minecraft client JAR is missing for $baseVersionId" }
         val document = versionResolver.resolve(instance.versionId)
+        val supportsGraphicsApi = MinecraftVersionCapabilities.supportsGraphicsApi(baseVersionId)
+        // Keep the selected OpenGL translator prepared even when Minecraft prefers
+        // Vulkan. GLFW selects the Vulkan surface dynamically, while the prepared
+        // translator remains available if Minecraft falls back to OpenGL.
+        val launchRenderer = effectiveSettings.renderer
 
         val requiredJava = document["javaVersion"]?.jsonObject
             ?.get("majorVersion")?.jsonPrimitive?.content?.toIntOrNull() ?: 8
@@ -48,7 +54,11 @@ class LaunchPlanBuilder(
         }
 
         val gameDirectory = layout.instanceGameDirectory(instance.gameDirectoryName).apply { mkdirs() }
-        applyMinecraftOptions(gameDirectory, effectiveSettings)
+        applyMinecraftOptions(
+            gameDirectory = gameDirectory,
+            settings = effectiveSettings,
+            supportsGraphicsApi = supportsGraphicsApi
+        )
         val nativesDirectory = layout.nativesFor(instance.id).apply {
             deleteRecursively()
             mkdirs()
@@ -87,9 +97,20 @@ class LaunchPlanBuilder(
             jvmArguments = jvmArguments,
             mainClass = mainClass,
             gameArguments = gameArguments,
-            environment = buildEnvironment(effectiveSettings, runtimeHome, nativesDirectory),
-            renderer = effectiveSettings.renderer,
+            environment = buildEnvironment(
+                settings = effectiveSettings,
+                runtimeHome = runtimeHome,
+                nativesDirectory = nativesDirectory,
+                launchRenderer = launchRenderer,
+                supportsGraphicsApi = supportsGraphicsApi
+            ),
+            renderer = launchRenderer,
             graphicsDriver = effectiveSettings.graphicsDriver,
+            minecraftGraphicsApi = if (supportsGraphicsApi) {
+                effectiveSettings.minecraftGraphicsApi
+            } else {
+                MinecraftGraphicsApi.DEFAULT
+            },
             windowWidth = effectiveSettings.width,
             windowHeight = effectiveSettings.height
         )
@@ -240,7 +261,7 @@ class LaunchPlanBuilder(
         val classpathValue = placeholders.getValue("${'$'}{classpath}")
         output += "-Djava.class.path=$classpathValue"
         output += "-Dmclauncher.name=MCLauncher"
-        output += "-Dmclauncher.version=11.0.0-alpha04"
+        output += "-Dmclauncher.version=11.0.0-alpha05"
         output += "-Dmclauncher.fpsLimit=${settings.fpsLimit}"
         when (settings.performancePreset) {
             PerformancePreset.BATTERY -> {
@@ -373,14 +394,20 @@ class LaunchPlanBuilder(
     private fun buildEnvironment(
         settings: LauncherSettings,
         runtimeHome: File,
-        nativesDirectory: File
+        nativesDirectory: File,
+        launchRenderer: Renderer,
+        supportsGraphicsApi: Boolean
     ): Map<String, String> = buildMap {
         put("JAVA_HOME", runtimeHome.absolutePath)
         put("HOME", layout.root.absolutePath)
         put("TMPDIR", File(layout.root, "tmp").apply { mkdirs() }.absolutePath)
         put("LD_LIBRARY_PATH", nativesDirectory.absolutePath)
-        put("MCLAUNCHER_RENDERER", settings.renderer.id)
+        put("MCLAUNCHER_RENDERER", launchRenderer.id)
         put("MCLAUNCHER_GRAPHICS_DRIVER", settings.graphicsDriver.id)
+        put(
+            "MCLAUNCHER_GRAPHICS_API",
+            if (supportsGraphicsApi) settings.minecraftGraphicsApi.optionsValue else "unsupported"
+        )
         put("MCLAUNCHER_FPS_LIMIT", settings.fpsLimit.toString())
     }
     private fun minecraftArchitecture(androidAbi: String): String = when (androidAbi) {
@@ -391,7 +418,11 @@ class LaunchPlanBuilder(
     }
 
     /** Applies launcher settings through Minecraft's own options file so the FPS limiter is real. */
-    private fun applyMinecraftOptions(gameDirectory: File, settings: LauncherSettings) {
+    private fun applyMinecraftOptions(
+        gameDirectory: File,
+        settings: LauncherSettings,
+        supportsGraphicsApi: Boolean
+    ) {
         val options = File(gameDirectory, "options.txt")
         val values = linkedMapOf(
             "maxFps" to (if (settings.fpsLimit >= 240) "260" else settings.fpsLimit.coerceIn(20, 260).toString()),
@@ -399,6 +430,10 @@ class LaunchPlanBuilder(
             "rawMouseInput" to settings.physicalMouseCapture.toString(),
             "touchscreen" to "false"
         )
+        if (supportsGraphicsApi) {
+            // 26.2 stores this enum as a quoted options.txt string.
+            values["preferredGraphicsBackend"] = "\"${settings.minecraftGraphicsApi.optionsValue}\""
+        }
         val existing = if (options.isFile) options.readLines().toMutableList() else mutableListOf()
         values.forEach { (key, value) ->
             val index = existing.indexOfFirst { it.substringBefore(':') == key }

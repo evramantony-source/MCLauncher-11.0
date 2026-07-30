@@ -1,0 +1,27 @@
+diff --git a/ltw/src/main/tinywrapper/main.c b/ltw/src/main/tinywrapper/main.c
+index c6d2c20..98ddbd1 100644
+--- a/ltw/src/main/tinywrapper/main.c
++++ b/ltw/src/main/tinywrapper/main.c
+@@ -414,6 +414,22 @@ void glUseProgram(GLuint program) {
+     current_context->program = program;
+ }
+ 
++/*
++ * LWJGL resolves OpenGL 1.x core entry points directly from libltw.so instead
++ * of routing every lookup through glXGetProcAddress. Minecraft 26.2's new
++ * GlDevice constructor calls glGetFloatv during startup, so merely having the
++ * GLES function in LTW's internal dispatch table is not enough.
++ */
++void glGetBooleanv(GLenum pname, GLboolean* data) {
++    if(!current_context) return;
++    es3_functions.glGetBooleanv(pname, data);
++}
++
++void glGetFloatv(GLenum pname, GLfloat* data) {
++    if(!current_context) return;
++    es3_functions.glGetFloatv(pname, data);
++}
++
+ void glGetIntegerv(GLenum pname, GLint* data) {
+     if(!current_context) return;
+     switch (pname) {

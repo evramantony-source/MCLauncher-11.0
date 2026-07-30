@@ -30,6 +30,20 @@ class CrashAnalyzerTest {
     }
 
     @Test
+    fun minecraft262OpenLtwSymbolFailureNamesTheCompatibilityBuild() {
+        val result = CrashAnalyzer.analyzeText(
+            """
+            Resolved graphics renderer=openltw (requested=openltw)
+            Prepared LWJGL OpenGL library /renderers/openltw/libltw.so
+            FATAL ERROR: No context is current or a function that is not available
+            at org.lwjgl.opengl.GL11C.nglGetFloatv(Native Method)
+            """.trimIndent()
+        )
+
+        assertEquals("OpenLTW needs the 26.2 compatibility build", result?.title)
+    }
+
+    @Test
     fun explicitInvalidTokenStillReportsExpiredSession() {
         val result = CrashAnalyzer.analyzeText("Authentication failed: invalid token")
 

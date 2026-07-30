@@ -24,7 +24,7 @@ from typing import Iterable
 
 SUPPORTED_ABIS = ("arm64-v8a", "armeabi-v7a", "x86_64")
 RUNTIME_VERSIONS = (8, 17, 21, 25)
-USER_AGENT = "MCLauncher-engine-vendor/11.0-alpha04"
+USER_AGENT = "MCLauncher-engine-vendor/11.0-alpha05"
 
 
 def digest(path: Path, algorithm: str) -> str:
@@ -57,7 +57,7 @@ def bundle_version(lock: dict) -> str:
     ).hexdigest()[:12]
     return (
         f"mojo-{lock['engine']['commit'][:12]}-"
-        f"lock-{lock_digest}-mclauncher-11.0-alpha04"
+        f"lock-{lock_digest}-mclauncher-11.0-alpha05"
     )
 
 
@@ -215,6 +215,11 @@ def copy_apk_native_libraries(apk: Path, output: Path, abis: Iterable[str]) -> d
             ):
                 continue
             abi, filename = parts[1], parts[2]
+            # OpenLTW is built separately from the pinned current source plus the
+            # Minecraft 26.2 compatibility patch. Never retain a stale AAR that
+            # may happen to be present in the launch-engine APK.
+            if "ltw" in filename.lower():
+                continue
             target = output / abi / "natives" / filename
             target.parent.mkdir(parents=True, exist_ok=True)
             with archive.open(info) as source, target.open("wb") as destination:
@@ -233,7 +238,6 @@ def write_graphics_packs(output: Path, copied: dict[str, list[str]]) -> list[dic
     # Renderer dependencies remain available in <abi>/natives and are included in
     # LD_LIBRARY_PATH. Each pack copies only the selected renderer entry library.
     presets = (
-        ("openltw", "OPEN_LTW", "opengles3_ltw", ("libltw",)),
         ("gl4es", "GL4ES", "opengles3", ("libgl4es",)),
     )
     records: list[dict] = []
@@ -270,9 +274,96 @@ def write_graphics_packs(output: Path, copied: dict[str, list[str]]) -> list[dic
             )
             records.append({"abi": abi, "id": renderer_id, "files": selected})
 
-        if not any(record["abi"] == abi and record["id"] in {"gl4es", "openltw"} for record in records):
-            raise RuntimeError(f"No usable default GL4ES/OpenLTW renderer was produced for {abi}")
+        if not any(record["abi"] == abi and record["id"] == "gl4es" for record in records):
+            raise RuntimeError(f"No usable default GL4ES renderer was produced for {abi}")
     return records
+
+
+def vendor_openltw(
+    aar: Path,
+    source_root: Path,
+    source: dict,
+    output: Path,
+    abis: Iterable[str],
+) -> tuple[list[dict], str]:
+    if not aar.is_file():
+        raise RuntimeError(f"Pinned OpenLTW AAR is missing: {aar}")
+    if not source_root.is_dir():
+        raise RuntimeError(f"Pinned OpenLTW source tree is missing: {source_root}")
+
+    expected_commit = str(source["commit"])
+    resolved_commit = subprocess.run(
+        ["git", "-C", str(source_root), "rev-parse", "HEAD"],
+        check=True,
+        stdout=subprocess.PIPE,
+        text=True,
+    ).stdout.strip()
+    if resolved_commit != expected_commit:
+        raise RuntimeError(
+            f"OpenLTW source commit is {resolved_commit}, expected {expected_commit}"
+        )
+
+    license_source = source_root / "LICENSE"
+    if (
+        not license_source.is_file()
+        or sha256(license_source) != str(source["licenseSha256"])
+    ):
+        raise RuntimeError("OpenLTW source license failed integrity validation")
+
+    records: list[dict] = []
+    with zipfile.ZipFile(aar) as archive:
+        for abi in abis:
+            pack = output / abi / "renderers/openltw"
+            library = pack / "libltw.so"
+            extract_archive_member(archive, f"jni/{abi}/libltw.so", library)
+            symbols = library.read_bytes()
+            for required in (b"glGetFloatv", b"glGetBooleanv"):
+                if required not in symbols:
+                    raise RuntimeError(
+                        f"Patched OpenLTW/{abi} is missing {required.decode()}"
+                    )
+            manifest = {
+                "schemaVersion": 1,
+                "id": "bundled-openltw",
+                "name": "Bundled OpenLTW / LTW",
+                "version": str(source["version"]),
+                "kind": "renderer",
+                "architecture": abi,
+                "renderer": "OPEN_LTW",
+                "driver": None,
+                "pojavRenderer": "opengles3_ltw",
+                "preload": ["libltw.so"],
+                "environment": {
+                    "LIBGL_ES": "3",
+                    "LTW_LOG_DIR": "${cache}/openltw",
+                },
+                "files": ["libltw.so"],
+                "sourceName": "MCLauncher pinned source build",
+                "sourceProject": str(source["sourceRepository"]),
+                "license": str(source["license"]),
+                "importedAtEpochMs": 0,
+            }
+            (pack / "mclauncher-graphics.json").write_text(
+                json.dumps(manifest, indent=2) + "\n",
+                encoding="utf-8",
+            )
+            records.append(
+                {
+                    "abi": abi,
+                    "id": "openltw",
+                    "version": str(source["version"]),
+                    "files": ["libltw.so"],
+                    "sourceCommit": expected_commit,
+                    "sourceAarSha256": sha256(aar),
+                    "librarySha256": sha256(library),
+                    "compatibilityPatch": str(source["patch"]),
+                }
+            )
+
+    license_target = output / "common/licenses/OpenLTW-LGPL-3.0.txt"
+    license_target.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(license_source, license_target)
+    return records, str(license_target.relative_to(output))
 
 
 def extract_archive_member(archive: zipfile.ZipFile, member: str, target: Path) -> None:
@@ -723,6 +814,8 @@ def vendor_licenses(mojo_root: Path, output: Path) -> list[str]:
     notice = license_dir / "MCLauncher-engine-sources.txt"
     notice.write_text(
         "Engine source: https://github.com/MojoLauncher/MojoLauncher\n"
+        "OpenLTW source: https://github.com/MojoLauncher/LTW\n"
+        "OpenLTW compatibility patch: vendor/patches/ltw-minecraft-26.2.patch\n"
         "Runtime source: https://github.com/MojoLauncher/android-openjdk-build-multiarch\n"
         "Patched LWJGL source records: ../jars/substitutions.json and bundle-manifest.json\n",
         encoding="utf-8",
@@ -735,6 +828,8 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--mojo-root", type=Path, required=True)
     parser.add_argument("--mojo-apk", type=Path, required=True)
+    parser.add_argument("--ltw-root", type=Path, required=True)
+    parser.add_argument("--ltw-aar", type=Path, required=True)
     parser.add_argument("--abis", default="arm64-v8a")
     parser.add_argument("--output", type=Path, default=Path("app/src/main/assets/bundled_engine"))
     parser.add_argument("--cache", type=Path, default=Path(".engine-cache"))
@@ -753,13 +848,20 @@ def main() -> int:
 
     natives = copy_apk_native_libraries(args.mojo_apk, output, abis)
     renderers = write_graphics_packs(output, natives)
+    openltw, openltw_license = vendor_openltw(
+        args.ltw_aar,
+        args.ltw_root,
+        lock["renderers"]["openLTW"],
+        output,
+        abis,
+    )
     mobileglues, mobileglues_license = vendor_mobileglues(
         lock["renderers"]["mobileGlues"],
         output,
         args.cache,
         abis,
     )
-    renderers = mobileglues + renderers
+    renderers = mobileglues + openltw + renderers
     jna_dispatch, jna_license = vendor_jna_dispatch(
         lock["nativeCompatibility"]["jna"],
         output,
@@ -783,7 +885,7 @@ def main() -> int:
     trust_directory.mkdir(parents=True, exist_ok=True)
     shutil.copy2(runtime_certificate, trust_directory / "mojo-runtime-signing-cert.pem")
     licenses = vendor_licenses(args.mojo_root, output)
-    licenses.extend((mobileglues_license, jna_license))
+    licenses.extend((openltw_license, mobileglues_license, jna_license))
 
     version = bundle_version(lock)
     (output / "bundle-version.txt").write_text(version + "\n", encoding="utf-8")

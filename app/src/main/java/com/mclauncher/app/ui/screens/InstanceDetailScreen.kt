@@ -52,9 +52,11 @@ import coil3.compose.AsyncImage
 import com.mclauncher.app.ui.LauncherUiState
 import com.mclauncher.app.ui.components.LauncherCard
 import com.mclauncher.minecraft.InstalledContent
+import com.mclauncher.minecraft.MinecraftVersionCapabilities
 import com.mclauncher.model.GraphicsDriver
 import com.mclauncher.model.InstanceLaunchSettings
 import com.mclauncher.model.JavaVersion
+import com.mclauncher.model.MinecraftGraphicsApi
 import com.mclauncher.model.MinecraftInstance
 import com.mclauncher.model.PerformancePreset
 import com.mclauncher.model.Renderer
@@ -142,6 +144,8 @@ private fun androidx.compose.foundation.lazy.LazyListScope.overviewItems(
     onUpdateInstance: (String, (MinecraftInstance) -> MinecraftInstance) -> Unit
 ) {
     val effectiveSettings = instance.launchSettings.applyTo(state.snapshot.settings)
+    val supportsGraphicsApi =
+        MinecraftVersionCapabilities.supportsGraphicsApi(instance.versionId)
 
     item {
         LauncherCard(modifier = Modifier.fillMaxWidth()) {
@@ -178,6 +182,9 @@ private fun androidx.compose.foundation.lazy.LazyListScope.overviewItems(
             DetailRow("Java runtime", "Java ${instance.javaVersion.major}")
             DetailRow("Account", state.selectedAccount?.username ?: "No account selected")
             DetailRow("Settings", if (instance.launchSettings.enabled) "Per-instance" else "Global defaults")
+            if (supportsGraphicsApi) {
+                DetailRow("Minecraft graphics API", effectiveSettings.minecraftGraphicsApi.displayName)
+            }
             DetailRow("Renderer", effectiveSettings.renderer.displayName)
             DetailRow("Graphics driver", effectiveSettings.graphicsDriver.displayName)
             DetailRow("Memory", "${effectiveSettings.memoryMb} MB")
@@ -239,6 +246,8 @@ private fun androidx.compose.foundation.lazy.LazyListScope.settingsItems(
     val global = state.snapshot.settings
     val overrides = instance.launchSettings
     val effective = overrides.applyTo(global)
+    val supportsGraphicsApi =
+        MinecraftVersionCapabilities.supportsGraphicsApi(instance.versionId)
 
     fun updateOverrides(transform: (InstanceLaunchSettings) -> InstanceLaunchSettings) {
         onUpdateInstance(instance.id) { current ->
@@ -288,7 +297,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.settingsItems(
                         if (overrides.enabled) {
                             "This instance has independent launch settings."
                         } else {
-                            "Renderer, driver, RAM, FPS and resolution follow Settings."
+                            "Graphics API, renderer, driver, RAM, FPS and resolution follow Settings."
                         },
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -316,11 +325,47 @@ private fun androidx.compose.foundation.lazy.LazyListScope.settingsItems(
     item {
         LauncherCard(modifier = Modifier.fillMaxWidth()) {
             Text("Graphics", style = MaterialTheme.typography.titleLarge)
-            Text("Renderer", style = MaterialTheme.typography.titleSmall)
+            if (supportsGraphicsApi) {
+                Text("Minecraft graphics API", style = MaterialTheme.typography.titleSmall)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    MinecraftGraphicsApi.entries.forEach { api ->
+                        FilterChip(
+                            selected = effective.minecraftGraphicsApi == api,
+                            onClick = {
+                                updateOverrides { it.copy(minecraftGraphicsApi = api) }
+                            },
+                            label = { Text(api.displayName) }
+                        )
+                    }
+                }
+                Text(
+                    effective.minecraftGraphicsApi.description,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            } else {
+                Text(
+                    "Minecraft's Graphics API selector is available for 26.2 and newer. This version uses OpenGL.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            Text(
+                if (supportsGraphicsApi && effective.minecraftGraphicsApi == MinecraftGraphicsApi.VULKAN) {
+                    "OpenGL fallback renderer"
+                } else {
+                    "OpenGL renderer"
+                },
+                style = MaterialTheme.typography.titleSmall
+            )
             val availableRenderers = Renderer.entries.filter { renderer ->
-                renderer == Renderer.AUTO ||
-                    renderer == effective.renderer ||
-                    state.engineEnvironment?.renderers?.firstOrNull { it.renderer == renderer }?.installed == true
+                renderer != Renderer.VULKAN &&
+                    (
+                        renderer == Renderer.AUTO ||
+                            renderer == effective.renderer ||
+                            state.engineEnvironment?.renderers?.firstOrNull { it.renderer == renderer }?.installed == true
+                        )
             }
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 availableRenderers.forEach { renderer ->
