@@ -12,6 +12,11 @@ on:
           - arm64-v8a
           - armeabi-v7a
           - x86_64
+      microsoft_accounts:
+        description: Build with the private signer and enable Microsoft/Game Pass accounts
+        required: true
+        default: false
+        type: boolean
   push:
     branches: [ "main" ]
   pull_request:
@@ -60,6 +65,11 @@ jobs:
     env:
       TARGET_ABI: ${{ inputs.abi || 'arm64-v8a' }}
       CURSEFORGE_API_KEY: ${{ secrets.CURSEFORGE_API_KEY }}
+      PRIVATE_ACCOUNT_BUILD: ${{ inputs.microsoft_accounts || 'false' }}
+      PRIVATE_SIGNING_KEY_BASE64: ${{ secrets.MCLAUNCHER_SIGNING_KEY_BASE64 }}
+      MCLAUNCHER_SIGNING_STORE_PASSWORD: ${{ secrets.MCLAUNCHER_SIGNING_STORE_PASSWORD }}
+      MCLAUNCHER_SIGNING_KEY_ALIAS: ${{ secrets.MCLAUNCHER_SIGNING_KEY_ALIAS }}
+      MCLAUNCHER_SIGNING_KEY_PASSWORD: ${{ secrets.MCLAUNCHER_SIGNING_KEY_PASSWORD }}
     steps:
       - name: Check out MCLauncher
         uses: actions/checkout@v4
@@ -160,6 +170,7 @@ jobs:
           gradle-version: "8.10.2"
 
       - name: Restore stable alpha debug signer
+        if: env.PRIVATE_ACCOUNT_BUILD != 'true'
         shell: bash
         run: |
           mkdir -p .ci-signing
@@ -169,15 +180,36 @@ jobs:
             -storepass mclauncher-alpha \
             -alias mclauncher-alpha
 
+      - name: Restore private Microsoft-account signer
+        if: env.PRIVATE_ACCOUNT_BUILD == 'true'
+        shell: bash
+        run: |
+          test -n "$PRIVATE_SIGNING_KEY_BASE64" || { echo "Missing MCLAUNCHER_SIGNING_KEY_BASE64 secret"; exit 1; }
+          test -n "$MCLAUNCHER_SIGNING_STORE_PASSWORD" || { echo "Missing MCLAUNCHER_SIGNING_STORE_PASSWORD secret"; exit 1; }
+          test -n "$MCLAUNCHER_SIGNING_KEY_ALIAS" || { echo "Missing MCLAUNCHER_SIGNING_KEY_ALIAS secret"; exit 1; }
+          test -n "$MCLAUNCHER_SIGNING_KEY_PASSWORD" || { echo "Missing MCLAUNCHER_SIGNING_KEY_PASSWORD secret"; exit 1; }
+          mkdir -p .ci-signing
+          printf '%s' "$PRIVATE_SIGNING_KEY_BASE64" | base64 --decode > .ci-signing/mclauncher-account.jks
+          keytool -list \
+            -keystore .ci-signing/mclauncher-account.jks \
+            -storepass "$MCLAUNCHER_SIGNING_STORE_PASSWORD" \
+            -alias "$MCLAUNCHER_SIGNING_KEY_ALIAS"
+
       - name: Build standalone MCLauncher APK
         shell: bash
+        env:
+          MCLAUNCHER_PRIVATE_ACCOUNTS: ${{ env.PRIVATE_ACCOUNT_BUILD }}
         run: gradle --no-daemon :app:assembleDebug -PmclauncherAbi="$TARGET_ABI"
 
       - name: Verify final APK payload
         shell: bash
         run: |
           APK=app/build/outputs/apk/debug/app-debug.apk
-          OUT=app/build/outputs/apk/debug/MCLauncher-11.0-alpha09-${TARGET_ABI}.apk
+          if [ "$PRIVATE_ACCOUNT_BUILD" = "true" ]; then
+            OUT=app/build/outputs/apk/debug/MCLauncher-11.0-alpha09-microsoft-${TARGET_ABI}.apk
+          else
+            OUT=app/build/outputs/apk/debug/MCLauncher-11.0-alpha09-${TARGET_ABI}.apk
+          fi
           test -f "$APK"
           cp "$APK" "$OUT"
           unzip -t "$OUT" >/dev/null
@@ -192,10 +224,12 @@ jobs:
       - name: Upload standalone APK
         uses: actions/upload-artifact@v4
         with:
-          name: MCLauncher-11.0-alpha09-${{ env.TARGET_ABI }}
+          name: MCLauncher-11.0-alpha09-${{ env.PRIVATE_ACCOUNT_BUILD == 'true' && 'microsoft-' || '' }}${{ env.TARGET_ABI }}
           retention-days: 14
           path: |
             app/build/outputs/apk/debug/MCLauncher-11.0-alpha09-${{ env.TARGET_ABI }}.apk
             app/build/outputs/apk/debug/MCLauncher-11.0-alpha09-${{ env.TARGET_ABI }}.apk.sha256
+            app/build/outputs/apk/debug/MCLauncher-11.0-alpha09-microsoft-${{ env.TARGET_ABI }}.apk
+            app/build/outputs/apk/debug/MCLauncher-11.0-alpha09-microsoft-${{ env.TARGET_ABI }}.apk.sha256
             app/src/main/assets/bundled_engine/bundle-manifest.json
           if-no-files-found: error

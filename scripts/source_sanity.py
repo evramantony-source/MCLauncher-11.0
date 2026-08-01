@@ -205,8 +205,15 @@ require_contains(
 )
 require_contains(
     "app/build.gradle.kts",
-    'buildConfigField("boolean", "PUBLIC_ALPHA_SIGNER", "true")',
-    'signingConfigs.getByName("alphaDebug")',
+    'buildConfigField("boolean", "PUBLIC_ALPHA_SIGNER", (!privateAccountBuild).toString())',
+    'if (privateAccountBuild) "accountDebug" else "alphaDebug"',
+    'MCLAUNCHER_SIGNING_STORE_PASSWORD',
+)
+require_contains(
+    ".github/workflows/android.yml",
+    "microsoft_accounts:",
+    "MCLAUNCHER_SIGNING_KEY_BASE64",
+    "MCLAUNCHER_PRIVATE_ACCOUNTS",
 )
 require_contains(
     "app/src/main/java/com/mclauncher/app/ui/screens/AccountsScreen.kt",

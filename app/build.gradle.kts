@@ -8,6 +8,15 @@ plugins {
 val supportedAbis = setOf("arm64-v8a", "armeabi-v7a", "x86_64")
 val targetAbi = providers.gradleProperty("mclauncherAbi").orElse("arm64-v8a").get()
 val alphaKeystore = rootProject.file(".ci-signing/mclauncher-alpha-debug.jks")
+val accountKeystore = rootProject.file(".ci-signing/mclauncher-account.jks")
+val privateAccountBuild = providers.gradleProperty("mclauncherPrivateAccounts")
+    .orElse(providers.environmentVariable("MCLAUNCHER_PRIVATE_ACCOUNTS"))
+    .orElse("false")
+    .map { it.toBooleanStrict() }
+    .get()
+val accountStorePassword = providers.environmentVariable("MCLAUNCHER_SIGNING_STORE_PASSWORD").orElse("").get()
+val accountKeyAlias = providers.environmentVariable("MCLAUNCHER_SIGNING_KEY_ALIAS").orElse("").get()
+val accountKeyPassword = providers.environmentVariable("MCLAUNCHER_SIGNING_KEY_PASSWORD").orElse("").get()
 val curseForgeApiKey = providers.gradleProperty("curseforgeApiKey")
     .orElse(providers.environmentVariable("CURSEFORGE_API_KEY"))
     .orElse("")
@@ -17,6 +26,12 @@ val escapedCurseForgeApiKey = curseForgeApiKey
     .replace("\"", "\\\"")
 require(targetAbi in supportedAbis) {
     "Unsupported mclauncherAbi=$targetAbi. Supported values: ${supportedAbis.joinToString()}"
+}
+if (privateAccountBuild) {
+    require(accountKeystore.isFile) { "Private account build requires .ci-signing/mclauncher-account.jks" }
+    require(accountStorePassword.isNotBlank()) { "Private account build requires MCLAUNCHER_SIGNING_STORE_PASSWORD" }
+    require(accountKeyAlias.isNotBlank()) { "Private account build requires MCLAUNCHER_SIGNING_KEY_ALIAS" }
+    require(accountKeyPassword.isNotBlank()) { "Private account build requires MCLAUNCHER_SIGNING_KEY_PASSWORD" }
 }
 
 android {
@@ -30,7 +45,7 @@ android {
         targetSdk = 35
         versionCode = 19
         versionName = "11.0.0-alpha09"
-        buildConfigField("boolean", "PUBLIC_ALPHA_SIGNER", "true")
+        buildConfigField("boolean", "PUBLIC_ALPHA_SIGNER", (!privateAccountBuild).toString())
         buildConfigField("String", "CURSEFORGE_API_KEY", "\"$escapedCurseForgeApiKey\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -52,11 +67,17 @@ android {
             keyAlias = "mclauncher-alpha"
             keyPassword = "mclauncher-alpha"
         }
+        create("accountDebug") {
+            storeFile = accountKeystore
+            storePassword = accountStorePassword
+            keyAlias = accountKeyAlias
+            keyPassword = accountKeyPassword
+        }
     }
 
     buildTypes {
         debug {
-            signingConfig = signingConfigs.getByName("alphaDebug")
+            signingConfig = signingConfigs.getByName(if (privateAccountBuild) "accountDebug" else "alphaDebug")
         }
         release {
             isMinifyEnabled = false

@@ -6,7 +6,8 @@ MCLauncher is an independent Android launcher for Minecraft: Java Edition. It ha
 
 > **Alpha signing:** CI test APKs use a stable, public debug key so device-test
 > builds can update in place. Microsoft sign-in is deliberately disabled in
-> these APKs. A private release key is required before enabling real accounts.
+> these APKs. A private account build enables Microsoft and Game Pass accounts
+> only when it is signed with a private key that is not committed here.
 
 - Mojang release and snapshot discovery with verified client, library and asset downloads.
 - Separate instances, per-instance launch settings, screenshots, logs and crash diagnosis.
@@ -49,6 +50,29 @@ The large generated runtime/native payload belongs in the APK artifact, not in G
 4. Download the `MCLauncher-11.0-alpha09-arm64-v8a` artifact.
 5. Extract it and install `MCLauncher-11.0-alpha09-arm64-v8a.apk`.
 6. Follow `docs/FIRST_DEVICE_TEST.md`.
+
+## Microsoft and Xbox Game Pass accounts
+
+The Microsoft device-code implementation completes the Microsoft, Xbox Live,
+XSTS and Minecraft Services authentication chain, checks
+`/entitlements/mcstore`, then loads the Java profile. This accepts both a
+permanently purchased Java licence and an active eligible Game Pass entitlement.
+
+Publicly signed alpha APKs keep Microsoft sign-in disabled because their signing
+key is public. To create a Microsoft-account build, configure these GitHub Actions
+repository secrets with a private Android keystore that you control:
+
+- `MCLAUNCHER_SIGNING_KEY_BASE64`
+- `MCLAUNCHER_SIGNING_STORE_PASSWORD`
+- `MCLAUNCHER_SIGNING_KEY_ALIAS`
+- `MCLAUNCHER_SIGNING_KEY_PASSWORD`
+
+Run **Build standalone MCLauncher 11 APK**, enable **microsoft_accounts**, and
+download the artifact containing `alpha09-microsoft`. Because this APK has a
+different signer, back up worlds and uninstall the public alpha before installing
+it. In MCLauncher Settings, enter an authorized Microsoft OAuth public-client ID,
+then use **Accounts → Microsoft account → Sign in**. Never commit the private
+keystore or its passwords.
 
 Pull requests and pushes to `main` run the default arm64 build automatically.
 
