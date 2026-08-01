@@ -20,13 +20,19 @@ import com.mclauncher.app.engine.NativeEngineCoordinator
 import com.mclauncher.app.engine.NativeLaunchBridge
 import com.mclauncher.app.engine.PackageCatalogManager
 import com.mclauncher.minecraft.CurseForgeMod
+import com.mclauncher.minecraft.CurseForgeFile
+import com.mclauncher.minecraft.CurseForgePackInstaller
 import com.mclauncher.minecraft.CurseForgeRepository
+import com.mclauncher.minecraft.HttpDownloader
 import com.mclauncher.minecraft.InstalledContent
 import com.mclauncher.minecraft.LaunchPlanBuilder
 import com.mclauncher.minecraft.LoaderInstaller
 import com.mclauncher.minecraft.LoaderVersionChoice
 import com.mclauncher.minecraft.ModrinthProject
+import com.mclauncher.minecraft.ModrinthVersion
+import com.mclauncher.minecraft.ModrinthPackInstaller
 import com.mclauncher.minecraft.ModrinthRepository
+import com.mclauncher.minecraft.PackRuntimeSpec
 import com.mclauncher.minecraft.MojangVersionRepository
 import com.mclauncher.minecraft.MojangVersionSummary
 import com.mclauncher.minecraft.VanillaInstaller
@@ -34,6 +40,7 @@ import com.mclauncher.model.AccountType
 import com.mclauncher.model.ContentSource
 import com.mclauncher.model.ContentType
 import com.mclauncher.model.InstallProgress
+import com.mclauncher.model.InstallStage
 import com.mclauncher.model.JavaVersion
 import com.mclauncher.model.LauncherSettings
 import com.mclauncher.model.LauncherSnapshot
@@ -41,12 +48,14 @@ import com.mclauncher.model.MinecraftInstance
 import com.mclauncher.model.ModLoader
 import com.mclauncher.model.OfflineAccountFactory
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import java.io.File
@@ -77,6 +86,11 @@ data class LauncherUiState(
     val activeContentInstallId: String? = null,
     val installedContent: List<InstalledContent> = emptyList(),
     val selectedContentInstanceId: String? = null,
+    val selectedModrinthProject: ModrinthProject? = null,
+    val selectedCurseForgeProject: CurseForgeMod? = null,
+    val modrinthVersions: List<ModrinthVersion> = emptyList(),
+    val curseForgeFiles: List<CurseForgeFile> = emptyList(),
+    val contentVersionsLoading: Boolean = false,
     val loaderChoices: List<LoaderVersionChoice> = emptyList(),
     val loaderLoading: Boolean = false,
     val microsoftDeviceCode: MicrosoftDeviceCode? = null,
@@ -106,6 +120,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     private val enginePackManager = EnginePackManager(app, layout)
     private val modrinth = ModrinthRepository(layout)
     private val curseForge = CurseForgeRepository(layout)
+    private val httpDownloader = HttpDownloader()
     private val tokenStore = SecureTokenStore(app)
     private val microsoftAuth = MicrosoftAuthManager(tokenStore)
     private val packageCatalogManager = PackageCatalogManager(app)
@@ -416,41 +431,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
             updateSnapshot(before.copy(instances = before.instances + instance))
             _state.update { it.copy(activeInstallVersion = version.id, installProgress = InstallProgress(message = "Preparing installation")) }
 
-            runCatching {
-                if (loader == ModLoader.VANILLA) {
-                    installer.install(version) { progress -> _state.update { it.copy(installProgress = progress) } }
-                    instance.copy(installed = true)
-                } else {
-                    val selectedLoaderVersion = loaderVersion ?: loaderInstaller.available(loader, version.id).firstOrNull()?.version
-                        ?: error("No compatible ${loader.displayName} version was found")
-                    var loaderInstance = loaderInstaller.installProfile(
-                        instance.copy(loaderVersion = selectedLoaderVersion),
-                        selectedLoaderVersion
-                    ) { text ->
-                        _state.update { it.copy(installProgress = InstallProgress(message = text)) }
-                    }
-                    if (!loaderInstance.installed && loader in listOf(ModLoader.FORGE, ModLoader.NEOFORGE)) {
-                        val architecture = Build.SUPPORTED_ABIS.firstOrNull() ?: "arm64-v8a"
-                        val environment = enginePackManager.inspect()
-                        require(environment.nativeBridgeAvailable) { "Native engine is required to run the ${loader.displayName} installer" }
-                        require(environment.enginePack.installed) { "Install the Android LWJGL engine pack first" }
-                        require(environment.runtimes.firstOrNull { it.version == loaderInstance.javaVersion }?.installed == true) {
-                            "Install Java ${loaderInstance.javaVersion.major} for $architecture first"
-                        }
-                        _state.update { it.copy(installProgress = InstallProgress(message = "Running ${loader.displayName} installer")) }
-                        val toolFile = loaderInstaller.toolPlanFile(loaderInstance)
-                        val exitCode = nativeEngineCoordinator.runTool(toolFile, architecture)
-                        val toolLog = NativeLaunchBridge.nativeDrainLogs().orEmpty()
-                        File(layout.root, "logs/loader-${loader.id}-${System.currentTimeMillis()}.log").apply {
-                            parentFile?.mkdirs()
-                            writeText(toolLog)
-                        }
-                        require(exitCode == 0) { "${loader.displayName} installer exited with code $exitCode" }
-                        loaderInstance = loaderInstaller.finalizeInstaller(loaderInstance, selectedLoaderVersion)
-                    }
-                    loaderInstance
-                }
-            }.onSuccess { installed ->
+            runCatching { installRuntime(instance, version, loaderVersion) }.onSuccess { installed ->
                 instance = installed
                 val current = _state.value.snapshot
                 updateSnapshot(current.copy(instances = current.instances.map { if (it.id == id) installed else it }))
@@ -519,10 +500,87 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    fun installContent(project: ModrinthProject) {
-        val state = _state.value
-        val instance = state.snapshot.instances.firstOrNull { it.id == state.selectedContentInstanceId }
-        if (instance == null) {
+    fun showModrinthVersions(project: ModrinthProject) {
+        val current = _state.value
+        val instance = current.snapshot.instances.firstOrNull { it.id == current.selectedContentInstanceId }
+        if (current.contentType != ContentType.MODPACK && instance == null) {
+            _state.update { it.copy(message = "Select an installed instance first") }
+            return
+        }
+        viewModelScope.launch {
+            _state.update {
+                it.copy(
+                    selectedModrinthProject = project,
+                    selectedCurseForgeProject = null,
+                    modrinthVersions = emptyList(),
+                    contentVersionsLoading = true
+                )
+            }
+            runCatching {
+                modrinth.versions(
+                    projectId = project.project_id,
+                    gameVersion = if (current.contentType == ContentType.MODPACK) null else instance?.let(::baseGameVersion),
+                    loader = if (current.contentType == ContentType.MODPACK) null else instance?.loader
+                )
+            }.onSuccess { versions ->
+                _state.update { it.copy(modrinthVersions = versions, contentVersionsLoading = false) }
+            }.onFailure { error ->
+                _state.update { it.copy(contentVersionsLoading = false, message = "Versions unavailable: ${error.message}") }
+            }
+        }
+    }
+
+    fun showCurseForgeVersions(mod: CurseForgeMod) {
+        val current = _state.value
+        val instance = current.snapshot.instances.firstOrNull { it.id == current.selectedContentInstanceId }
+        if (current.contentType != ContentType.MODPACK && instance == null) {
+            _state.update { it.copy(message = "Select an installed instance first") }
+            return
+        }
+        viewModelScope.launch {
+            _state.update {
+                it.copy(
+                    selectedCurseForgeProject = mod,
+                    selectedModrinthProject = null,
+                    curseForgeFiles = emptyList(),
+                    contentVersionsLoading = true
+                )
+            }
+            runCatching {
+                curseForge.files(
+                    apiKey = effectiveCurseForgeApiKey(),
+                    modId = mod.id,
+                    gameVersion = if (current.contentType == ContentType.MODPACK) null else instance?.let(::baseGameVersion)
+                )
+            }.onSuccess { files ->
+                _state.update { it.copy(curseForgeFiles = files, contentVersionsLoading = false) }
+            }.onFailure { error ->
+                _state.update { it.copy(contentVersionsLoading = false, message = "Versions unavailable: ${error.message}") }
+            }
+        }
+    }
+
+    fun dismissContentVersions() {
+        _state.update {
+            it.copy(
+                selectedModrinthProject = null,
+                selectedCurseForgeProject = null,
+                modrinthVersions = emptyList(),
+                curseForgeFiles = emptyList(),
+                contentVersionsLoading = false
+            )
+        }
+    }
+
+    fun installContent(project: ModrinthProject) = installModrinth(project, null)
+
+    fun installContentVersion(project: ModrinthProject, version: ModrinthVersion) =
+        installModrinth(project, version)
+
+    private fun installModrinth(project: ModrinthProject, selectedVersion: ModrinthVersion?) {
+        val current = _state.value
+        val instance = current.snapshot.instances.firstOrNull { it.id == current.selectedContentInstanceId }
+        if (current.contentType != ContentType.MODPACK && instance == null) {
             _state.update { it.copy(message = "Select an installed instance first") }
             return
         }
@@ -530,33 +588,51 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
             _state.update {
                 it.copy(
                     engineOperation = "Installing ${project.title}",
-                    activeContentInstallId = project.project_id
+                    activeContentInstallId = project.project_id,
+                    activeInstallVersion = project.title,
+                    installProgress = InstallProgress(message = "Preparing ${project.title}"),
+                    selectedModrinthProject = null
                 )
             }
             runCatching {
-                val versions = modrinth.versions(project.project_id, baseGameVersion(instance), instance.loader)
-                val version = versions.firstOrNull() ?: error("No compatible file for ${instance.name}")
-                modrinth.install(
-                    instance = instance,
-                    project = project,
-                    version = version,
-                    contentType = state.contentType,
-                    installDependencies = state.snapshot.settings.autoInstallDependencies
-                ) { text -> _state.update { it.copy(engineOperation = text) } }
-            }.onSuccess {
+                val version = selectedVersion ?: modrinth.versions(
+                    projectId = project.project_id,
+                    gameVersion = if (current.contentType == ContentType.MODPACK) null else instance?.let(::baseGameVersion),
+                    loader = if (current.contentType == ContentType.MODPACK) null else instance?.loader
+                ).firstOrNull() ?: error("No compatible version for ${project.title}")
+                if (current.contentType == ContentType.MODPACK) {
+                    installModrinthPack(project, version)
+                } else {
+                    val target = requireNotNull(instance)
+                    modrinth.install(
+                        instance = target,
+                        project = project,
+                        version = version,
+                        contentType = current.contentType,
+                        installDependencies = current.snapshot.settings.autoInstallDependencies
+                    ) { progress -> _state.update { it.copy(installProgress = progress) } }
+                    target
+                }
+            }.onSuccess { installedInstance ->
                 _state.update {
                     it.copy(
                         engineOperation = null,
                         activeContentInstallId = null,
-                        message = "${project.title} installed"
+                        activeInstallVersion = null,
+                        installProgress = null,
+                        message = if (current.contentType == ContentType.MODPACK) {
+                            "${installedInstance.name} instance installed"
+                        } else "${project.title} installed"
                     )
                 }
-                loadInstalledContent(instance.id)
+                if (current.contentType != ContentType.MODPACK) instance?.let { loadInstalledContent(it.id) }
             }.onFailure { error ->
                 _state.update {
                     it.copy(
                         engineOperation = null,
                         activeContentInstallId = null,
+                        activeInstallVersion = null,
+                        installProgress = null,
                         message = "Content install failed: ${error.message}"
                     )
                 }
@@ -564,10 +640,15 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    fun installCurseForgeContent(mod: CurseForgeMod) {
-        val currentState = _state.value
-        val instance = currentState.snapshot.instances.firstOrNull { it.id == currentState.selectedContentInstanceId }
-        if (instance == null) {
+    fun installCurseForgeContent(mod: CurseForgeMod) = installCurseForge(mod, null)
+
+    fun installCurseForgeVersion(mod: CurseForgeMod, file: CurseForgeFile) =
+        installCurseForge(mod, file)
+
+    private fun installCurseForge(mod: CurseForgeMod, selectedFile: CurseForgeFile?) {
+        val current = _state.value
+        val instance = current.snapshot.instances.firstOrNull { it.id == current.selectedContentInstanceId }
+        if (current.contentType != ContentType.MODPACK && instance == null) {
             _state.update { it.copy(message = "Select an installed instance first") }
             return
         }
@@ -576,38 +657,59 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
             _state.update {
                 it.copy(
                     engineOperation = "Installing ${mod.name}",
-                    activeContentInstallId = "curseforge:${mod.id}"
+                    activeContentInstallId = "curseforge:${mod.id}",
+                    activeInstallVersion = mod.name,
+                    installProgress = InstallProgress(message = "Preparing ${mod.name}"),
+                    selectedCurseForgeProject = null
                 )
             }
             runCatching {
-                val gameVersion = baseGameVersion(instance)
-                val compatible = curseForge.files(apiKey, mod.id, gameVersion)
-                val selectedFile = compatible.firstOrNull()
-                    ?: mod.latestFiles.firstOrNull { gameVersion in it.gameVersions }
-                    ?: error("No compatible file for ${instance.name}")
-                curseForge.install(
+                val gameVersion = instance?.let(::baseGameVersion)
+                val file = selectedFile ?: curseForge.files(
                     apiKey = apiKey,
-                    instance = instance,
-                    mod = mod,
-                    file = selectedFile,
-                    contentType = currentState.contentType,
-                    gameVersion = gameVersion,
-                    installDependencies = currentState.snapshot.settings.autoInstallDependencies
-                ) { text -> _state.update { it.copy(engineOperation = text) } }
-            }.onSuccess {
+                    modId = mod.id,
+                    gameVersion = if (current.contentType == ContentType.MODPACK) null else gameVersion
+                ).firstOrNull()
+                    ?: mod.latestFiles.firstOrNull {
+                        current.contentType == ContentType.MODPACK ||
+                            (gameVersion != null && gameVersion in it.gameVersions)
+                    }
+                    ?: error("No compatible version for ${mod.name}")
+                if (current.contentType == ContentType.MODPACK) {
+                    installCurseForgePack(apiKey, mod, file)
+                } else {
+                    val target = requireNotNull(instance)
+                    curseForge.install(
+                        apiKey = apiKey,
+                        instance = target,
+                        mod = mod,
+                        file = file,
+                        contentType = current.contentType,
+                        gameVersion = requireNotNull(gameVersion),
+                        installDependencies = current.snapshot.settings.autoInstallDependencies
+                    ) { progress -> _state.update { it.copy(installProgress = progress) } }
+                    target
+                }
+            }.onSuccess { installedInstance ->
                 _state.update {
                     it.copy(
                         engineOperation = null,
                         activeContentInstallId = null,
-                        message = "${mod.name} installed"
+                        activeInstallVersion = null,
+                        installProgress = null,
+                        message = if (current.contentType == ContentType.MODPACK) {
+                            "${installedInstance.name} instance installed"
+                        } else "${mod.name} installed"
                     )
                 }
-                loadInstalledContent(instance.id)
+                if (current.contentType != ContentType.MODPACK) instance?.let { loadInstalledContent(it.id) }
             }.onFailure { error ->
                 _state.update {
                     it.copy(
                         engineOperation = null,
                         activeContentInstallId = null,
+                        activeInstallVersion = null,
+                        installProgress = null,
                         message = "CurseForge install failed: ${error.message}"
                     )
                 }
@@ -787,6 +889,154 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         return (rootLogs + instanceLogs).distinctBy(File::getAbsolutePath).sortedByDescending(File::lastModified)
     }
 
+    private suspend fun installModrinthPack(
+        project: ModrinthProject,
+        version: ModrinthVersion
+    ): MinecraftInstance {
+        val packFile = version.files.firstOrNull { it.primary } ?: version.files.firstOrNull()
+            ?: error("${version.name} has no downloadable pack file")
+        val staging = File(layout.root, "downloads/modpacks/modrinth-${project.project_id}-${version.id}.mrpack")
+        modrinth.downloadArchive(project, version, staging) { progress ->
+            _state.update { it.copy(installProgress = progress) }
+        }
+        val spec = ModrinthPackInstaller(layout).inspect(staging)
+        val instance = createPackInstance(project.title, project.icon_url, spec)
+        val destination = File(
+            layout.instanceGameDirectory(instance.gameDirectoryName),
+            "${ContentType.MODPACK.folderName}/${File(packFile.filename).name}"
+        )
+        withContext(Dispatchers.IO) {
+            destination.parentFile?.mkdirs()
+            staging.copyTo(destination, overwrite = true)
+        }
+        modrinth.install(
+            instance = instance,
+            project = project,
+            version = version,
+            contentType = ContentType.MODPACK,
+            installDependencies = false
+        ) { progress -> _state.update { it.copy(installProgress = progress) } }
+        return instance
+    }
+
+    private suspend fun installCurseForgePack(
+        apiKey: String,
+        mod: CurseForgeMod,
+        file: CurseForgeFile
+    ): MinecraftInstance {
+        val staging = File(layout.root, "downloads/modpacks/curseforge-${mod.id}-${file.id}.zip")
+        curseForge.downloadArchive(apiKey, mod, file, staging) { progress ->
+            _state.update { it.copy(installProgress = progress) }
+        }
+        val spec = CurseForgePackInstaller(layout).inspect(staging)
+        val instance = createPackInstance(mod.name, mod.logo?.thumbnailUrl ?: mod.logo?.url, spec)
+        val destination = File(
+            layout.instanceGameDirectory(instance.gameDirectoryName),
+            "${ContentType.MODPACK.folderName}/${File(file.fileName).name}"
+        )
+        withContext(Dispatchers.IO) {
+            destination.parentFile?.mkdirs()
+            staging.copyTo(destination, overwrite = true)
+        }
+        curseForge.install(
+            apiKey = apiKey,
+            instance = instance,
+            mod = mod,
+            file = file,
+            contentType = ContentType.MODPACK,
+            gameVersion = spec.minecraftVersion,
+            installDependencies = false
+        ) { progress -> _state.update { it.copy(installProgress = progress) } }
+        return instance
+    }
+
+    private suspend fun createPackInstance(
+        name: String,
+        iconUrl: String?,
+        spec: PackRuntimeSpec
+    ): MinecraftInstance {
+        val manifest = versionRepository.loadManifest()
+        val version = manifest.versions.firstOrNull { it.id == spec.minecraftVersion }
+            ?: error("Minecraft ${spec.minecraftVersion} is not available from Mojang")
+        val id = UUID.randomUUID().toString()
+        val directoryName = "pack-${id.take(8)}"
+        val iconPath = cacheInstanceIcon(directoryName, iconUrl)
+        val pending = MinecraftInstance(
+            id = id,
+            name = name,
+            versionId = spec.minecraftVersion,
+            gameDirectoryName = directoryName,
+            javaVersion = _state.value.snapshot.settings.selectedJava,
+            loader = spec.loader,
+            loaderVersion = spec.loaderVersion,
+            createdAtEpochMs = System.currentTimeMillis(),
+            installed = false,
+            iconPath = iconPath
+        )
+        val before = _state.value.snapshot
+        updateSnapshot(before.copy(instances = before.instances + pending))
+        val installed = installRuntime(pending, version, spec.loaderVersion)
+        val current = _state.value.snapshot
+        updateSnapshot(current.copy(instances = current.instances.map { if (it.id == id) installed else it }))
+        return installed
+    }
+
+    private suspend fun cacheInstanceIcon(directoryName: String, iconUrl: String?): String? {
+        if (iconUrl.isNullOrBlank()) return null
+        val target = File(
+            layout.instanceGameDirectory(directoryName),
+            ".mclauncher/instance-icon/icon.png"
+        )
+        return runCatching { httpDownloader.download(iconUrl, target).absolutePath }.getOrNull()
+    }
+
+    private suspend fun installRuntime(
+        instance: MinecraftInstance,
+        version: MojangVersionSummary,
+        requestedLoaderVersion: String?
+    ): MinecraftInstance {
+        if (instance.loader == ModLoader.VANILLA) {
+            installer.install(version) { progress -> _state.update { it.copy(installProgress = progress) } }
+            return instance.copy(versionId = version.id, installed = true)
+        }
+
+        val selectedLoaderVersion = requestedLoaderVersion
+            ?: loaderInstaller.available(instance.loader, version.id).firstOrNull()?.version
+            ?: error("No compatible ${instance.loader.displayName} version was found")
+        var loaderInstance = loaderInstaller.installProfile(
+            instance.copy(versionId = version.id, loaderVersion = selectedLoaderVersion),
+            selectedLoaderVersion
+        ) { progress -> _state.update { it.copy(installProgress = progress) } }
+
+        if (!loaderInstance.installed && instance.loader in listOf(ModLoader.FORGE, ModLoader.NEOFORGE)) {
+            val architecture = Build.SUPPORTED_ABIS.firstOrNull() ?: "arm64-v8a"
+            val environment = enginePackManager.inspect()
+            require(environment.nativeBridgeAvailable) { "Native engine is required to run the ${instance.loader.displayName} installer" }
+            require(environment.enginePack.installed) { "Install the Android LWJGL engine pack first" }
+            require(environment.runtimes.firstOrNull { it.version == loaderInstance.javaVersion }?.installed == true) {
+                "Install Java ${loaderInstance.javaVersion.major} for $architecture first"
+            }
+            _state.update {
+                it.copy(
+                    installProgress = InstallProgress(
+                        stage = InstallStage.LOADER,
+                        message = "Running ${instance.loader.displayName} installer"
+                    )
+                )
+            }
+            val toolFile = loaderInstaller.toolPlanFile(loaderInstance)
+            val exitCode = nativeEngineCoordinator.runTool(toolFile, architecture)
+            val toolLog = NativeLaunchBridge.nativeDrainLogs().orEmpty()
+            File(layout.root, "logs/loader-${instance.loader.id}-${System.currentTimeMillis()}.log").apply {
+                parentFile?.mkdirs()
+                writeText(toolLog)
+            }
+            require(exitCode == 0) { "${instance.loader.displayName} installer exited with code $exitCode" }
+            loaderInstance = loaderInstaller.finalizeInstaller(loaderInstance, selectedLoaderVersion)
+        }
+        return loaderInstance
+    }
+
     private suspend fun updateContentForInstance(instance: MinecraftInstance): Int {
         val items = modrinth.listInstalled(instance)
         var updated = 0
@@ -807,7 +1057,9 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                     contentType = item.contentType,
                     gameVersion = item.gameVersion,
                     installDependencies = settings.autoInstallDependencies
-                ) { message -> _state.update { it.copy(engineOperation = message) } }
+                ) { progress ->
+                    _state.update { it.copy(engineOperation = progress.message, installProgress = progress) }
+                }
                 updated++
             } else {
                 val latest = modrinth.updateAvailable(instance, item) ?: return@forEachIndexed
@@ -818,7 +1070,9 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                     version = latest,
                     contentType = item.contentType,
                     installDependencies = settings.autoInstallDependencies
-                ) { message -> _state.update { it.copy(engineOperation = message) } }
+                ) { progress ->
+                    _state.update { it.copy(engineOperation = progress.message, installProgress = progress) }
+                }
                 updated++
             }
         }

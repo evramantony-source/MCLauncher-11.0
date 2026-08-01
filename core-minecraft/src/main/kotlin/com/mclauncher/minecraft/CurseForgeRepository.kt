@@ -1,6 +1,8 @@
 package com.mclauncher.minecraft
 
 import com.mclauncher.model.ContentType
+import com.mclauncher.model.InstallProgress
+import com.mclauncher.model.InstallStage
 import com.mclauncher.model.MinecraftInstance
 import com.mclauncher.model.ModLoader
 import kotlinx.coroutines.Dispatchers
@@ -62,11 +64,14 @@ class CurseForgeRepository(
         ).data
     }
 
-    suspend fun files(apiKey: String, modId: Int, gameVersion: String): List<CurseForgeFile> {
+    suspend fun files(apiKey: String, modId: Int, gameVersion: String? = null): List<CurseForgeFile> {
         requireApiKey(apiKey)
+        val versionQuery = gameVersion?.takeIf(String::isNotBlank)
+            ?.let { "&gameVersion=${HttpDownloader.encode(it)}" }
+            .orEmpty()
         return json.decodeFromString<CurseForgeFilesResponse>(
             downloader.readText(
-                "https://api.curseforge.com/v1/mods/$modId/files?gameVersion=${HttpDownloader.encode(gameVersion)}&pageSize=50",
+                "https://api.curseforge.com/v1/mods/$modId/files?pageSize=50$versionQuery",
                 headers(apiKey)
             )
         ).data
@@ -80,21 +85,27 @@ class CurseForgeRepository(
         contentType: ContentType,
         gameVersion: String,
         installDependencies: Boolean = true,
-        onProgress: (String) -> Unit = {}
+        onProgress: (InstallProgress) -> Unit = {}
     ): InstalledContent {
         requireApiKey(apiKey)
         val gameDir = layout.instanceGameDirectory(instance.gameDirectoryName).apply { mkdirs() }
         val folder = File(gameDir, contentType.folderName).apply { mkdirs() }
         val target = File(folder, file.fileName)
-        onProgress("Downloading ${file.fileName}")
-        downloadFile(apiKey, mod.id, file, target)
+        downloadArchive(apiKey, mod, file, target, onProgress)
 
         if (contentType == ContentType.MODPACK) {
-            onProgress("Reading ${mod.name} manifest")
+            onProgress(InstallProgress(stage = InstallStage.PACK_FILES, message = "Reading ${mod.name} manifest"))
             val manifest = CurseForgePackInstaller(layout, json).readManifest(instance, target)
             val required = manifest.files.filter { it.required }
             required.forEachIndexed { index, entry ->
-                onProgress("Installing pack mod ${index + 1}/${required.size}")
+                onProgress(
+                    InstallProgress(
+                        stage = InstallStage.PACK_FILES,
+                        completedFiles = index,
+                        totalFiles = required.size,
+                        message = "Installing pack mod ${index + 1}/${required.size}"
+                    )
+                )
                 val childMod = mod(apiKey, entry.projectId)
                 val childFile = file(apiKey, entry.projectId, entry.fileId)
                 val childTarget = File(gameDir, "mods/${childFile.fileName}")
@@ -143,12 +154,19 @@ class CurseForgeRepository(
         parent: CurseForgeFile,
         gameVersion: String,
         visited: MutableSet<Int>,
-        onProgress: (String) -> Unit
+        onProgress: (InstallProgress) -> Unit
     ) {
         val required = parent.dependencies.filter { it.relationType == REQUIRED_DEPENDENCY }
         required.forEachIndexed { index, dependency ->
             if (!visited.add(dependency.modId)) return@forEachIndexed
-            onProgress("Installing CurseForge dependency ${index + 1}/${required.size}")
+            onProgress(
+                InstallProgress(
+                    stage = InstallStage.CONTENT_DOWNLOAD,
+                    completedFiles = index,
+                    totalFiles = required.size,
+                    message = "Installing CurseForge dependency ${index + 1}/${required.size}"
+                )
+            )
             val dependencyMod = mod(apiKey, dependency.modId)
             val dependencyFile = files(apiKey, dependency.modId, gameVersion).firstOrNull()
                 ?: error("No compatible file for required dependency ${dependencyMod.name}")
@@ -158,7 +176,59 @@ class CurseForgeRepository(
         }
     }
 
-    private suspend fun downloadFile(apiKey: String, modId: Int, file: CurseForgeFile, destination: File): File {
+    suspend fun downloadArchive(
+        apiKey: String,
+        mod: CurseForgeMod,
+        file: CurseForgeFile,
+        destination: File,
+        onProgress: (InstallProgress) -> Unit = {}
+    ): File {
+        var downloadedBytes = 0L
+        val total = file.fileLength.takeIf { it > 0L }
+        onProgress(
+            InstallProgress(
+                stage = InstallStage.CONTENT_DOWNLOAD,
+                totalFiles = 1,
+                currentFile = file.fileName,
+                totalBytes = total,
+                message = "Downloading ${mod.name}"
+            )
+        )
+        val result = downloadFile(apiKey, mod.id, file, destination) { delta ->
+            downloadedBytes += delta
+            onProgress(
+                InstallProgress(
+                    stage = InstallStage.CONTENT_DOWNLOAD,
+                    totalFiles = 1,
+                    currentFile = file.fileName,
+                    downloadedBytes = downloadedBytes,
+                    totalBytes = total,
+                    message = "Downloading ${mod.name}"
+                )
+            )
+        }
+        if (downloadedBytes == 0L) downloadedBytes = result.length()
+        onProgress(
+            InstallProgress(
+                stage = InstallStage.CONTENT_DOWNLOAD,
+                completedFiles = 1,
+                totalFiles = 1,
+                currentFile = file.fileName,
+                downloadedBytes = downloadedBytes,
+                totalBytes = total ?: downloadedBytes,
+                message = "Downloaded ${mod.name}"
+            )
+        )
+        return result
+    }
+
+    private suspend fun downloadFile(
+        apiKey: String,
+        modId: Int,
+        file: CurseForgeFile,
+        destination: File,
+        onBytes: ((Long) -> Unit)? = null
+    ): File {
         val downloadUrl = file.downloadUrl ?: json.decodeFromString<CurseForgeDownloadUrlResponse>(
             downloader.readText(
                 "https://api.curseforge.com/v1/mods/$modId/files/${file.id}/download-url",
@@ -173,7 +243,8 @@ class CurseForgeRepository(
             downloadUrl,
             destination,
             expectedSha1 = sha1,
-            expectedSize = file.fileLength.takeIf { it > 0 }
+            expectedSize = file.fileLength.takeIf { it > 0 },
+            onBytes = onBytes
         )
     }
 

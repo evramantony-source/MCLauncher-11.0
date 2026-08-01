@@ -19,7 +19,6 @@ import androidx.compose.material.icons.rounded.Storage
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -29,10 +28,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
+import coil3.compose.AsyncImage
 import com.mclauncher.app.R
 import com.mclauncher.app.engine.NativeLaunchBridge
 import com.mclauncher.app.ui.LauncherUiState
 import com.mclauncher.app.ui.components.LauncherCard
+import com.mclauncher.app.ui.components.InstallProgressCard
+import java.io.File
 
 @Composable
 fun HomeScreen(
@@ -80,6 +82,16 @@ fun HomeScreen(
 
             item {
                 LauncherCard(modifier = Modifier.fillMaxWidth()) {
+                    featured?.iconPath?.let { iconPath ->
+                        AsyncImage(
+                            model = File(iconPath),
+                            contentDescription = "${featured.name} icon",
+                            modifier = Modifier
+                                .size(56.dp)
+                                .clip(RoundedCornerShape(14.dp))
+                                .padding(bottom = 6.dp)
+                        )
+                    }
                     Text(
                         featured?.name ?: "Build your first instance",
                         style = MaterialTheme.typography.headlineSmall
@@ -115,23 +127,11 @@ fun HomeScreen(
 
             state.installProgress?.let { progress ->
                 item {
-                    LauncherCard(modifier = Modifier.fillMaxWidth()) {
-                        Text("Installing ${state.activeInstallVersion}", style = MaterialTheme.typography.titleMedium)
-                        Text(
-                            progress.message,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(top = 4.dp, bottom = 10.dp)
-                        )
-                        LinearProgressIndicator(
-                            progress = { progress.fraction },
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                        Text(
-                            "${progress.completedFiles} / ${progress.totalFiles} files • ${progress.currentFile}",
-                            style = MaterialTheme.typography.bodySmall,
-                            modifier = Modifier.padding(top = 8.dp)
-                        )
-                    }
+                    InstallProgressCard(
+                        progress = progress,
+                        title = "Installing ${state.activeInstallVersion}",
+                        modifier = Modifier.fillMaxWidth()
+                    )
                 }
             }
 

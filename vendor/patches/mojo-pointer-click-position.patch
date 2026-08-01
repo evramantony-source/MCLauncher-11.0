@@ -1,19 +1,43 @@
+diff --git a/glfw/src/android_input_queue.c b/glfw/src/android_input_queue.c
+--- a/glfw/src/android_input_queue.c
++++ b/glfw/src/android_input_queue.c
+@@ -38,7 +38,10 @@ void _input_queue_wait_unlock(queue_top_t* top) {
+ 
+ void _input_queue_push(queue_top_t* top, input_event_t* event) {
+     queue_t *current = &top->queues[atomic_load(&top->index)];
+-    uint16_t ev_idx = atomic_fetch_add(&current->events_total, 1);
++    uint16_t ev_idx = atomic_load(&current->events_total);
++    while(ev_idx < 512 &&
++          !atomic_compare_exchange_weak(&current->events_total, &ev_idx, ev_idx + 1)) {}
++    if(ev_idx >= 512) return;
+     input_event_t *put_event = &current->events[ev_idx];
+     memcpy(put_event, event, sizeof(input_event_t));
+     pthread_cond_broadcast(&top->wait_cond);
 diff --git a/glfw/src/android_input_queue.h b/glfw/src/android_input_queue.h
 --- a/glfw/src/android_input_queue.h
 +++ b/glfw/src/android_input_queue.h
-@@ -12,7 +12,7 @@ typedef struct {
+@@ -14,7 +14,8 @@ typedef struct {
      int32_t type;
      union {
          struct { int32_t glfw_code, code, state, mods; jchar codepoint; } k;
 -        struct { int32_t button, state, mods; } m;
 +        struct { int32_t button, state, mods; double cursor_x, cursor_y; } m;
++        struct { double cursor_x, cursor_y; } p;
          struct { int32_t length, mods; jchar *codepoints; } u;
          struct { double xscroll, yscroll; } s;
      };
 diff --git a/glfw/src/android_window.c b/glfw/src/android_window.c
 --- a/glfw/src/android_window.c
 +++ b/glfw/src/android_window.c
-@@ -236,6 +236,8 @@ static int translate_android_action_button(int32_t actionButton) {
+@@ -56,6 +56,7 @@
+ #define GLFW_ANDROID_EVENT_TYPE_UNICODE_CHARS 4
+ #define GLFW_ANDROID_EVENT_TYPE_MOUSE_SCROLL 5
+ #define GLFW_ANDROID_EVENT_TYPE_JOYSTICK_STATE 6
++#define GLFW_ANDROID_EVENT_TYPE_MOUSE_POSITION 7
+ 
+ #define FLAG_MOUSE_POS (1 >> 0)
+ #define FLAG_APP_FOCUS (1 >> 1)
+@@ -236,6 +237,8 @@ static int translate_android_action_button(int32_t actionButton) {
  
  extern void _glfwUpdateJoystickConnectSate(void);
  
@@ -22,7 +46,7 @@ diff --git a/glfw/src/android_window.c b/glfw/src/android_window.c
  static void android_dequeue_event(input_event_t* evp) {
      input_event_t event = *evp;
      if(surfaceOwner == NULL) return;
-@@ -247,6 +249,10 @@ static void android_dequeue_event(input_event_t* evp) {
+@@ -247,8 +250,18 @@ static void android_dequeue_event(input_event_t* evp) {
              if(event.k.codepoint != 0) _glfwInputChar(surfaceOwner, event.k.codepoint, event.k.mods, true);
              break;
          case GLFW_ANDROID_EVENT_TYPE_MOUSE_BUTTONS:
@@ -32,8 +56,31 @@ diff --git a/glfw/src/android_window.c b/glfw/src/android_window.c
 +            _glfwInputCursorPos(surfaceOwner, _glfw.android.xcursor, _glfw.android.ycursor);
              _glfwInputMouseClick(surfaceOwner, event.m.button, event.m.state, event.m.mods);
              break;
++        case GLFW_ANDROID_EVENT_TYPE_MOUSE_POSITION:
++            cursor_unscaled.x = event.p.cursor_x;
++            cursor_unscaled.y = event.p.cursor_y;
++            computeCursorPos();
++            _glfwInputCursorPos(surfaceOwner, _glfw.android.xcursor, _glfw.android.ycursor);
++            break;
          case GLFW_ANDROID_EVENT_TYPE_UNICODE_CHARS:
-@@ -1398,7 +1402,9 @@ Java_git_artdeell_dnbootstrap_glfw_GLFW_sendMouseEvent(JNIEnv *env, jclass clazz
+             for(int32_t i = 0; i < event.u.length; i++) {
+                 _glfwInputChar(surfaceOwner, event.u.codepoints[i], event.u.mods, true);
+@@ -1345,8 +1358,12 @@ Java_git_artdeell_dnbootstrap_glfw_GLFW_sendMousePosition0__DD(JNIEnv *env, jcla
+     if(cursor_unscaled.x == v1 && cursor_unscaled.y == v2) return;
+     cursor_unscaled.x = v1;
+     cursor_unscaled.y = v2;
+-    update_flags |= FLAG_MOUSE_POS;
+-    _input_queue_wait_unlock(&input_queue);
++    input_event_t event = {
++            .type = GLFW_ANDROID_EVENT_TYPE_MOUSE_POSITION,
++            .p.cursor_x = v1,
++            .p.cursor_y = v2
++    };
++    android_send_event(&event);
+ }
+ 
+ JNIEXPORT void JNICALL
+@@ -1399,7 +1416,9 @@ Java_git_artdeell_dnbootstrap_glfw_GLFW_sendMouseEvent(JNIEnv *env, jclass clazz
              .type = GLFW_ANDROID_EVENT_TYPE_MOUSE_BUTTONS,
              .m.button = glfw_mouse_key,
              .m.state = state,

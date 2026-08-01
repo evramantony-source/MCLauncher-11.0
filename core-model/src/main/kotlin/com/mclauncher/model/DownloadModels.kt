@@ -11,6 +11,9 @@ enum class InstallStage {
     LOGGING_CONFIG,
     ASSET_INDEX,
     ASSETS,
+    LOADER,
+    CONTENT_DOWNLOAD,
+    PACK_FILES,
     FINISHED,
     FAILED
 }
@@ -27,6 +30,8 @@ data class InstallProgress(
 ) {
     val fraction: Float
         get() = when {
+            totalBytes != null && totalBytes > 0L ->
+                (downloadedBytes.toFloat() / totalBytes.toFloat()).coerceIn(0f, 1f)
             totalFiles <= 0 -> 0f
             else -> (completedFiles.toFloat() / totalFiles.toFloat()).coerceIn(0f, 1f)
         }

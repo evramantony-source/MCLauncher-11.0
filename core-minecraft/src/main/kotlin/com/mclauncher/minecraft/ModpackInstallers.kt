@@ -2,6 +2,8 @@ package com.mclauncher.minecraft
 
 import com.mclauncher.model.MinecraftInstance
 import com.mclauncher.model.ModLoader
+import com.mclauncher.model.InstallProgress
+import com.mclauncher.model.InstallStage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerialName
@@ -67,15 +69,32 @@ data class CurseForgePackFile(
     val required: Boolean = true
 )
 
+data class PackRuntimeSpec(
+    val minecraftVersion: String,
+    val loader: ModLoader,
+    val loaderVersion: String? = null
+)
+
 class ModrinthPackInstaller(
     private val layout: MinecraftLayout,
     private val downloader: HttpDownloader = HttpDownloader(),
     private val json: Json = Json { ignoreUnknownKeys = true }
 ) {
+    suspend fun inspect(archive: File): PackRuntimeSpec = withContext(Dispatchers.IO) {
+        require(archive.isFile) { "Modrinth pack file is missing" }
+        ZipFile(archive).use { zip ->
+            val indexEntry = zip.getEntry("modrinth.index.json") ?: error("This .mrpack has no modrinth.index.json")
+            val index = zip.getInputStream(indexEntry).bufferedReader().use {
+                json.decodeFromString<ModrinthPackIndex>(it.readText())
+            }
+            runtimeSpec(index.dependencies)
+        }
+    }
+
     suspend fun install(
         instance: MinecraftInstance,
         archive: File,
-        onProgress: (String) -> Unit = {}
+        onProgress: (InstallProgress) -> Unit = {}
     ): ModrinthPackIndex = withContext(Dispatchers.IO) {
         require(archive.isFile) { "Modrinth pack file is missing" }
         val gameDir = layout.instanceGameDirectory(instance.gameDirectoryName).apply { mkdirs() }
@@ -86,22 +105,51 @@ class ModrinthPackInstaller(
             validatePackCompatibility(instance, index.dependencies)
 
             val eligible = index.files.filterNot { it.env.client.equals("unsupported", true) }
+            val totalBytes = eligible.map { it.fileSize }.takeIf { sizes -> sizes.all { it > 0L } }?.sum()
+            var downloadedBytes = 0L
             eligible.forEachIndexed { position, entry ->
                 require(entry.downloads.isNotEmpty()) { "No download URL for ${entry.path}" }
                 val destination = safeChild(gameDir, entry.path)
-                onProgress("Installing pack file ${position + 1}/${eligible.size}: ${destination.name}")
+                onProgress(
+                    InstallProgress(
+                        stage = InstallStage.PACK_FILES,
+                        completedFiles = position,
+                        totalFiles = eligible.size,
+                        currentFile = destination.name,
+                        downloadedBytes = downloadedBytes,
+                        totalBytes = totalBytes,
+                        message = "Installing pack files"
+                    )
+                )
                 var failure: Throwable? = null
                 for (url in entry.downloads) {
+                    var streamed = 0L
                     val result = runCatching {
                         downloader.download(
                             url = url,
                             destination = destination,
                             expectedSha1 = entry.hashes.sha1,
                             expectedSha512 = entry.hashes.sha512,
-                            expectedSize = entry.fileSize.takeIf { it > 0 }
+                            expectedSize = entry.fileSize.takeIf { it > 0 },
+                            onBytes = { delta ->
+                                streamed += delta
+                                downloadedBytes += delta
+                                onProgress(
+                                    InstallProgress(
+                                        stage = InstallStage.PACK_FILES,
+                                        completedFiles = position,
+                                        totalFiles = eligible.size,
+                                        currentFile = destination.name,
+                                        downloadedBytes = downloadedBytes,
+                                        totalBytes = totalBytes,
+                                        message = "Installing pack files"
+                                    )
+                                )
+                            }
                         )
                     }
                     if (result.isSuccess) {
+                        if (streamed == 0L) downloadedBytes += entry.fileSize.takeIf { it > 0L } ?: destination.length()
                         failure = null
                         break
                     }
@@ -112,26 +160,48 @@ class ModrinthPackInstaller(
 
             extractDirectory(zip, "overrides/", gameDir)
             extractDirectory(zip, "client-overrides/", gameDir)
+            onProgress(
+                InstallProgress(
+                    stage = InstallStage.PACK_FILES,
+                    completedFiles = eligible.size,
+                    totalFiles = eligible.size,
+                    downloadedBytes = downloadedBytes,
+                    totalBytes = totalBytes ?: downloadedBytes.takeIf { it > 0L },
+                    message = "${index.name} installed"
+                )
+            )
             index
         }
     }
 
     private fun validatePackCompatibility(instance: MinecraftInstance, dependencies: Map<String, String>) {
-        val minecraft = dependencies["minecraft"]
-        if (!minecraft.isNullOrBlank()) {
-            val current = baseGameVersion(instance)
-            require(current == minecraft) { "Pack requires Minecraft $minecraft, but ${instance.name} uses $current" }
+        val spec = runtimeSpec(dependencies)
+        val current = baseGameVersion(instance)
+        require(current == spec.minecraftVersion) {
+            "Pack requires Minecraft ${spec.minecraftVersion}, but ${instance.name} uses $current"
         }
-        val requiredLoader = when {
-            dependencies.containsKey("fabric-loader") -> ModLoader.FABRIC
-            dependencies.containsKey("quilt-loader") -> ModLoader.QUILT
-            dependencies.containsKey("forge") -> ModLoader.FORGE
-            dependencies.containsKey("neoforge") -> ModLoader.NEOFORGE
-            else -> ModLoader.VANILLA
+        require(instance.loader == spec.loader) {
+            "Pack requires ${spec.loader.displayName}, but the selected instance uses ${instance.loader.displayName}"
         }
-        if (requiredLoader != ModLoader.VANILLA) {
-            require(instance.loader == requiredLoader) { "Pack requires ${requiredLoader.displayName}, but the selected instance uses ${instance.loader.displayName}" }
+        if (!spec.loaderVersion.isNullOrBlank()) require(instance.loaderVersion == spec.loaderVersion) {
+            "Pack requires ${spec.loader.displayName} ${spec.loaderVersion}, but the instance uses ${instance.loaderVersion ?: "no loader version"}"
         }
+    }
+
+    private fun runtimeSpec(dependencies: Map<String, String>): PackRuntimeSpec {
+        val minecraft = dependencies["minecraft"]?.takeIf(String::isNotBlank)
+            ?: error("Modrinth pack does not declare a Minecraft version")
+        val loaderEntry = listOf(
+            "fabric-loader" to ModLoader.FABRIC,
+            "quilt-loader" to ModLoader.QUILT,
+            "forge" to ModLoader.FORGE,
+            "neoforge" to ModLoader.NEOFORGE
+        ).firstOrNull { dependencies.containsKey(it.first) }
+        return PackRuntimeSpec(
+            minecraftVersion = minecraft,
+            loader = loaderEntry?.second ?: ModLoader.VANILLA,
+            loaderVersion = loaderEntry?.first?.let { dependencies[it] }?.takeIf(String::isNotBlank)
+        )
     }
 }
 
@@ -139,6 +209,17 @@ class CurseForgePackInstaller(
     private val layout: MinecraftLayout,
     private val json: Json = Json { ignoreUnknownKeys = true }
 ) {
+    suspend fun inspect(archive: File): PackRuntimeSpec = withContext(Dispatchers.IO) {
+        require(archive.isFile) { "CurseForge pack file is missing" }
+        ZipFile(archive).use { zip ->
+            val entry = zip.getEntry("manifest.json") ?: error("This CurseForge pack has no manifest.json")
+            val manifest = zip.getInputStream(entry).bufferedReader().use {
+                json.decodeFromString<CurseForgePackManifest>(it.readText())
+            }
+            runtimeSpec(manifest)
+        }
+    }
+
     suspend fun readManifest(instance: MinecraftInstance, archive: File): CurseForgePackManifest = withContext(Dispatchers.IO) {
         ZipFile(archive).use { zip ->
             val entry = zip.getEntry("manifest.json") ?: error("This CurseForge pack has no manifest.json")
@@ -147,30 +228,55 @@ class CurseForgePackInstaller(
             require(manifest.minecraft.version == current) {
                 "Pack requires Minecraft ${manifest.minecraft.version}, but ${instance.name} uses $current"
             }
-            val requiredLoader = manifest.minecraft.modLoaders.firstOrNull { it.primary } ?: manifest.minecraft.modLoaders.firstOrNull()
-            if (requiredLoader != null) {
-                val expected = when {
-                    requiredLoader.id.startsWith("fabric-") -> ModLoader.FABRIC
-                    requiredLoader.id.startsWith("quilt-") -> ModLoader.QUILT
-                    requiredLoader.id.startsWith("forge-") -> ModLoader.FORGE
-                    requiredLoader.id.startsWith("neoforge-") -> ModLoader.NEOFORGE
-                    else -> null
-                }
-                if (expected != null) require(instance.loader == expected) {
-                    "Pack requires ${expected.displayName}, but the selected instance uses ${instance.loader.displayName}"
-                }
+            val spec = runtimeSpec(manifest)
+            require(instance.loader == spec.loader) {
+                "Pack requires ${spec.loader.displayName}, but the selected instance uses ${instance.loader.displayName}"
+            }
+            if (!spec.loaderVersion.isNullOrBlank()) require(instance.loaderVersion == spec.loaderVersion) {
+                "Pack requires ${spec.loader.displayName} ${spec.loaderVersion}, but the instance uses ${instance.loaderVersion ?: "no loader version"}"
             }
             extractDirectory(zip, manifest.overrides.trim('/') + "/", layout.instanceGameDirectory(instance.gameDirectoryName))
             manifest
         }
     }
+
+    private fun runtimeSpec(manifest: CurseForgePackManifest): PackRuntimeSpec {
+        val required = manifest.minecraft.modLoaders.firstOrNull { it.primary }
+            ?: manifest.minecraft.modLoaders.firstOrNull()
+        val loader = when {
+            required == null -> ModLoader.VANILLA
+            required.id.startsWith("fabric-") -> ModLoader.FABRIC
+            required.id.startsWith("quilt-") -> ModLoader.QUILT
+            required.id.startsWith("forge-") -> ModLoader.FORGE
+            required.id.startsWith("neoforge-") -> ModLoader.NEOFORGE
+            else -> error("Unsupported CurseForge loader ${required.id}")
+        }
+        return PackRuntimeSpec(
+            minecraftVersion = manifest.minecraft.version,
+            loader = loader,
+            loaderVersion = required?.id?.substringAfter('-', missingDelimiterValue = "")?.takeIf(String::isNotBlank)
+        )
+    }
 }
 
-internal fun baseGameVersion(instance: MinecraftInstance): String = instance.versionId
-    .substringBefore("-fabric")
-    .substringBefore("-quilt")
-    .substringBefore("-forge")
-    .substringBefore("-neoforge")
+internal fun baseGameVersion(instance: MinecraftInstance): String {
+    val loaderVersion = instance.loaderVersion
+    if (!loaderVersion.isNullOrBlank()) {
+        val prefixed = when (instance.loader) {
+            ModLoader.FABRIC -> "fabric-loader-$loaderVersion-"
+            ModLoader.QUILT -> "quilt-loader-$loaderVersion-"
+            else -> null
+        }
+        if (prefixed != null && instance.versionId.startsWith(prefixed)) {
+            return instance.versionId.removePrefix(prefixed)
+        }
+    }
+    return instance.versionId
+        .substringBefore("-fabric")
+        .substringBefore("-quilt")
+        .substringBefore("-forge")
+        .substringBefore("-neoforge")
+}
 
 internal fun safeChild(root: File, relative: String): File {
     require(relative.isNotBlank()) { "Empty archive path" }

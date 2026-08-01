@@ -1,6 +1,8 @@
 package com.mclauncher.minecraft
 
 import com.mclauncher.model.JavaVersion
+import com.mclauncher.model.InstallProgress
+import com.mclauncher.model.InstallStage
 import com.mclauncher.model.MinecraftInstance
 import com.mclauncher.model.ModLoader
 import kotlinx.coroutines.Dispatchers
@@ -54,13 +56,13 @@ class LoaderInstaller(
     suspend fun installProfile(
         instance: MinecraftInstance,
         loaderVersion: String,
-        onProgress: (String) -> Unit = {}
+        onProgress: (InstallProgress) -> Unit = {}
     ): MinecraftInstance {
         require(instance.loader != ModLoader.VANILLA) { "Choose a mod loader first" }
         val base = versionRepository.loadManifest().versions.firstOrNull { it.id == instance.versionId }
             ?: error("Minecraft ${instance.versionId} is not present in Mojang's manifest")
-        onProgress("Installing Minecraft ${instance.versionId}")
-        vanillaInstaller.install(base) { progress -> onProgress(progress.message) }
+        onProgress(InstallProgress(stage = InstallStage.LOADER, message = "Installing Minecraft ${instance.versionId}"))
+        vanillaInstaller.install(base, onProgress)
 
         return when (instance.loader) {
             ModLoader.FABRIC -> installJsonProfile(instance, loaderVersion, fabricProfileUrl(instance.versionId, loaderVersion), onProgress)
@@ -75,9 +77,16 @@ class LoaderInstaller(
         instance: MinecraftInstance,
         loaderVersion: String,
         profileUrl: String,
-        onProgress: (String) -> Unit
+        onProgress: (InstallProgress) -> Unit
     ): MinecraftInstance {
-        onProgress("Downloading ${instance.loader.displayName} $loaderVersion profile")
+        onProgress(
+            InstallProgress(
+                stage = InstallStage.LOADER,
+                totalFiles = 1,
+                currentFile = "$loaderVersion.json",
+                message = "Downloading ${instance.loader.displayName} $loaderVersion profile"
+            )
+        )
         val raw = downloader.readText(profileUrl)
         val profile = json.parseToJsonElement(raw).jsonObject
         val profileId = profile["id"]?.jsonPrimitive?.content
@@ -89,36 +98,96 @@ class LoaderInstaller(
         return instance.copy(versionId = profileId, loaderVersion = loaderVersion, installed = true)
     }
 
-    private suspend fun downloadProfileLibraries(profile: JsonObject, onProgress: (String) -> Unit) {
+    private suspend fun downloadProfileLibraries(profile: JsonObject, onProgress: (InstallProgress) -> Unit) {
         val libraries = profile["libraries"] as? JsonArray ?: return
-        libraries.forEachIndexed { index, element ->
+        val downloads = libraries.mapNotNull { element ->
             val library = element.jsonObject
-            val coordinate = library["name"]?.jsonPrimitive?.content ?: return@forEachIndexed
+            val coordinate = library["name"]?.jsonPrimitive?.content ?: return@mapNotNull null
             val artifact = library["downloads"]?.jsonObject?.get("artifact") as? JsonObject
             val path = artifact?.get("path")?.jsonPrimitive?.content ?: MavenCoordinates.path(coordinate)
             val url = artifact?.get("url")?.jsonPrimitive?.content
                 ?: library["url"]?.jsonPrimitive?.content?.trimEnd('/')?.let { "$it/$path" }
                 ?: error("No download URL for $coordinate")
-            onProgress("Downloading loader library ${index + 1}/${libraries.size}")
-            downloader.download(
+            LoaderDownload(
                 url = url,
-                destination = layout.library(path),
-                expectedSha1 = artifact?.get("sha1")?.jsonPrimitive?.content,
-                expectedSize = artifact?.get("size")?.jsonPrimitive?.content?.toLongOrNull()
+                target = layout.library(path),
+                sha1 = artifact?.get("sha1")?.jsonPrimitive?.content,
+                size = artifact?.get("size")?.jsonPrimitive?.content?.toLongOrNull()
             )
         }
+        val totalBytes = downloads.map { it.size }.takeIf { sizes -> sizes.all { it != null } }
+            ?.sumOf { it ?: 0L }
+        var downloadedBytes = 0L
+        downloads.forEachIndexed { index, download ->
+            var streamed = 0L
+            onProgress(
+                InstallProgress(
+                    stage = InstallStage.LOADER,
+                    completedFiles = index,
+                    totalFiles = downloads.size,
+                    currentFile = download.target.name,
+                    downloadedBytes = downloadedBytes,
+                    totalBytes = totalBytes,
+                    message = "Downloading loader libraries"
+                )
+            )
+            downloader.download(
+                url = download.url,
+                destination = download.target,
+                expectedSha1 = download.sha1,
+                expectedSize = download.size,
+                onBytes = { delta ->
+                    streamed += delta
+                    downloadedBytes += delta
+                    onProgress(
+                        InstallProgress(
+                            stage = InstallStage.LOADER,
+                            completedFiles = index,
+                            totalFiles = downloads.size,
+                            currentFile = download.target.name,
+                            downloadedBytes = downloadedBytes,
+                            totalBytes = totalBytes,
+                            message = "Downloading loader libraries"
+                        )
+                    )
+                }
+            )
+            if (streamed == 0L) downloadedBytes += download.size ?: download.target.length()
+        }
+        onProgress(
+            InstallProgress(
+                stage = InstallStage.LOADER,
+                completedFiles = downloads.size,
+                totalFiles = downloads.size,
+                downloadedBytes = downloadedBytes,
+                totalBytes = totalBytes ?: downloadedBytes.takeIf { it > 0L },
+                message = "Loader libraries installed"
+            )
+        )
     }
 
     private suspend fun prepareInstaller(
         instance: MinecraftInstance,
         loaderVersion: String,
         url: String,
-        onProgress: (String) -> Unit
+        onProgress: (InstallProgress) -> Unit
     ): MinecraftInstance {
         val installerDir = File(layout.root, "installers/${instance.loader.id}").apply { mkdirs() }
         val installerJar = File(installerDir, "${instance.loader.id}-$loaderVersion-installer.jar")
-        onProgress("Downloading ${instance.loader.displayName} installer")
-        downloader.download(url, installerJar)
+        var downloadedBytes = 0L
+        onProgress(InstallProgress(stage = InstallStage.LOADER, totalFiles = 1, currentFile = installerJar.name, message = "Downloading ${instance.loader.displayName} installer"))
+        downloader.download(url, installerJar, onBytes = { delta ->
+            downloadedBytes += delta
+            onProgress(
+                InstallProgress(
+                    stage = InstallStage.LOADER,
+                    totalFiles = 1,
+                    currentFile = installerJar.name,
+                    downloadedBytes = downloadedBytes,
+                    message = "Downloading ${instance.loader.displayName} installer"
+                )
+            )
+        })
         val mainClass = withContext(Dispatchers.IO) {
             JarFile(installerJar).use { jar ->
                 jar.manifest?.mainAttributes?.getValue("Main-Class")
@@ -136,9 +205,25 @@ class LoaderInstaller(
         val planFile = File(layout.root, "tool-plans/${toolPlan.id}.json")
         planFile.parentFile?.mkdirs()
         planFile.writeText(json.encodeToString(ToolLaunchPlan.serializer(), toolPlan))
-        onProgress("Installer prepared; run the generated tool plan from Engine setup")
+        onProgress(
+            InstallProgress(
+                stage = InstallStage.LOADER,
+                completedFiles = 1,
+                totalFiles = 1,
+                downloadedBytes = installerJar.length(),
+                totalBytes = installerJar.length(),
+                message = "Installer prepared; running it next"
+            )
+        )
         return instance.copy(loaderVersion = loaderVersion, installed = false)
     }
+
+    private data class LoaderDownload(
+        val url: String,
+        val target: File,
+        val sha1: String?,
+        val size: Long?
+    )
 
     private suspend fun parseFabricChoices(gameVersion: String): List<LoaderVersionChoice> {
         val raw = downloader.readText("https://meta.fabricmc.net/v2/versions/loader/$gameVersion")

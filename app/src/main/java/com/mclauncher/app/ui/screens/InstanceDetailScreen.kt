@@ -154,11 +154,20 @@ private fun androidx.compose.foundation.lazy.LazyListScope.overviewItems(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Icon(
-                    if (instance.installed) Icons.Rounded.CheckCircle else Icons.Rounded.ErrorOutline,
-                    contentDescription = null,
-                    tint = if (instance.installed) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
-                )
+                instance.iconPath?.let { iconPath ->
+                    AsyncImage(
+                        model = File(iconPath),
+                        contentDescription = "${instance.name} icon",
+                        modifier = Modifier.size(58.dp).clip(RoundedCornerShape(12.dp)),
+                        contentScale = ContentScale.Crop
+                    )
+                } ?: run {
+                    Icon(
+                        if (instance.installed) Icons.Rounded.CheckCircle else Icons.Rounded.ErrorOutline,
+                        contentDescription = null,
+                        tint = if (instance.installed) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
+                    )
+                }
                 Column(modifier = Modifier.weight(1f)) {
                     Text(instance.name, style = MaterialTheme.typography.headlineSmall)
                     Text(

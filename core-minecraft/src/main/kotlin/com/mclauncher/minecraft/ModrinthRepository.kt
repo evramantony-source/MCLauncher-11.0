@@ -1,6 +1,8 @@
 package com.mclauncher.minecraft
 
 import com.mclauncher.model.ContentType
+import com.mclauncher.model.InstallProgress
+import com.mclauncher.model.InstallStage
 import com.mclauncher.model.MinecraftInstance
 import com.mclauncher.model.ModLoader
 import kotlinx.coroutines.Dispatchers
@@ -51,14 +53,18 @@ class ModrinthRepository(
 
     suspend fun versions(
         projectId: String,
-        gameVersion: String,
+        gameVersion: String? = null,
         loader: ModLoader? = null
     ): List<ModrinthVersion> {
         val query = buildString {
-            append("?game_versions=")
-            append(HttpDownloader.encode(json.encodeToString(listOf(gameVersion))))
+            var separator = "?"
+            if (!gameVersion.isNullOrBlank()) {
+                append(separator).append("game_versions=")
+                append(HttpDownloader.encode(json.encodeToString(listOf(gameVersion))))
+                separator = "&"
+            }
             if (loader != null && loader != ModLoader.VANILLA) {
-                append("&loaders=")
+                append(separator).append("loaders=")
                 append(HttpDownloader.encode(json.encodeToString(listOf(loader.id))))
             }
         }
@@ -68,29 +74,76 @@ class ModrinthRepository(
     suspend fun version(versionId: String): ModrinthVersion =
         json.decodeFromString(downloader.readText("https://api.modrinth.com/v2/version/$versionId"))
 
+    suspend fun downloadArchive(
+        project: ModrinthProject,
+        version: ModrinthVersion,
+        destination: File,
+        onProgress: (InstallProgress) -> Unit = {}
+    ): File {
+        val file = version.files.firstOrNull { it.primary } ?: version.files.firstOrNull()
+            ?: error("${version.name} does not contain a downloadable file")
+        var downloadedBytes = 0L
+        val total = file.size.takeIf { it > 0L }
+        onProgress(
+            InstallProgress(
+                stage = InstallStage.CONTENT_DOWNLOAD,
+                totalFiles = 1,
+                currentFile = file.filename,
+                totalBytes = total,
+                message = "Downloading ${project.title}"
+            )
+        )
+        val result = downloader.download(
+            url = file.url,
+            destination = destination,
+            expectedSha1 = file.hashes.sha1,
+            expectedSha512 = file.hashes.sha512,
+            expectedSize = total,
+            onBytes = { delta ->
+                downloadedBytes += delta
+                onProgress(
+                    InstallProgress(
+                        stage = InstallStage.CONTENT_DOWNLOAD,
+                        totalFiles = 1,
+                        currentFile = file.filename,
+                        downloadedBytes = downloadedBytes,
+                        totalBytes = total,
+                        message = "Downloading ${project.title}"
+                    )
+                )
+            }
+        )
+        if (downloadedBytes == 0L) downloadedBytes = result.length()
+        onProgress(
+            InstallProgress(
+                stage = InstallStage.CONTENT_DOWNLOAD,
+                completedFiles = 1,
+                totalFiles = 1,
+                currentFile = file.filename,
+                downloadedBytes = downloadedBytes,
+                totalBytes = total ?: downloadedBytes,
+                message = "Downloaded ${project.title}"
+            )
+        )
+        return result
+    }
+
     suspend fun install(
         instance: MinecraftInstance,
         project: ModrinthProject,
         version: ModrinthVersion,
         contentType: ContentType,
         installDependencies: Boolean = true,
-        onProgress: (String) -> Unit = {}
+        onProgress: (InstallProgress) -> Unit = {}
     ): InstalledContent {
         val gameDir = layout.instanceGameDirectory(instance.gameDirectoryName).apply { mkdirs() }
         val targetFolder = File(gameDir, contentType.folderName).apply { mkdirs() }
         val file = version.files.firstOrNull { it.primary } ?: version.files.firstOrNull()
             ?: error("${version.name} does not contain a downloadable file")
-        onProgress("Downloading ${file.filename}")
         val destination = File(targetFolder, file.filename)
-        downloader.download(
-            url = file.url,
-            destination = destination,
-            expectedSha1 = file.hashes.sha1,
-            expectedSha512 = file.hashes.sha512,
-            expectedSize = file.size.takeIf { it > 0 }
-        )
+        downloadArchive(project, version, destination, onProgress)
         if (contentType == ContentType.MODPACK) {
-            onProgress("Applying ${project.title} to ${instance.name}")
+            onProgress(InstallProgress(stage = InstallStage.PACK_FILES, message = "Applying ${project.title} to ${instance.name}"))
             ModrinthPackInstaller(layout, downloader, json).install(instance, destination, onProgress)
         }
 
@@ -103,7 +156,7 @@ class ModrinthRepository(
             iconUrl = project.icon_url,
             versionNumber = version.version_number,
             loader = version.loaders.firstOrNull(),
-            gameVersion = instance.versionId.substringBefore("-fabric").substringBefore("-quilt"),
+            gameVersion = baseGameVersion(instance),
             sha1 = file.hashes.sha1
         )
         updateIndex(gameDir) { current -> current.filterNot { it.projectId == project.project_id } + installed }
@@ -111,7 +164,14 @@ class ModrinthRepository(
         if (installDependencies && contentType != ContentType.MODPACK) {
             val required = version.dependencies.filter { it.dependency_type == "required" }
             required.forEachIndexed { index, dependency ->
-                onProgress("Installing dependency ${index + 1}/${required.size}")
+                onProgress(
+                    InstallProgress(
+                        stage = InstallStage.CONTENT_DOWNLOAD,
+                        completedFiles = index,
+                        totalFiles = required.size,
+                        message = "Installing dependency ${index + 1}/${required.size}"
+                    )
+                )
                 installDependency(instance, dependency, contentType, mutableSetOf(version.id), onProgress)
             }
         }
@@ -160,13 +220,13 @@ class ModrinthRepository(
         dependency: ModrinthDependency,
         fallbackType: ContentType,
         visited: MutableSet<String>,
-        onProgress: (String) -> Unit
+        onProgress: (InstallProgress) -> Unit
     ) {
         val dependencyVersion = when {
             !dependency.version_id.isNullOrBlank() -> version(dependency.version_id)
             !dependency.project_id.isNullOrBlank() -> versions(
                 projectId = dependency.project_id,
-                gameVersion = instance.versionId.substringBefore("-fabric").substringBefore("-quilt"),
+                gameVersion = baseGameVersion(instance),
                 loader = instance.loader
             ).firstOrNull()
             else -> null

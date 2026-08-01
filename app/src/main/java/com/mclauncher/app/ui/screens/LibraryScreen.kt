@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -22,13 +23,18 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
+import coil3.compose.AsyncImage
 import com.mclauncher.app.ui.LauncherUiState
 import com.mclauncher.app.ui.components.LauncherCard
+import com.mclauncher.app.ui.components.InstallProgressCard
 import com.mclauncher.app.ui.components.PageHeader
+import java.io.File
 
 @Composable
 fun LibraryScreen(
@@ -72,6 +78,16 @@ fun LibraryScreen(
                 }
             }
 
+            state.installProgress?.let { progress ->
+                item {
+                    InstallProgressCard(
+                        progress = progress,
+                        title = "Installing ${state.activeInstallVersion.orEmpty()}",
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            }
+
             if (state.orderedInstances.isEmpty()) {
                 item {
                     LauncherCard(modifier = Modifier.fillMaxWidth()) {
@@ -97,6 +113,13 @@ fun LibraryScreen(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
+                        instance.iconPath?.let { iconPath ->
+                            AsyncImage(
+                                model = File(iconPath),
+                                contentDescription = "${instance.name} icon",
+                                modifier = Modifier.size(54.dp).clip(RoundedCornerShape(12.dp))
+                            )
+                        }
                         Column(modifier = Modifier.weight(1f)) {
                             Text((if (instance.favorite) "★ " else "") + instance.name, style = MaterialTheme.typography.titleMedium)
                             Text(

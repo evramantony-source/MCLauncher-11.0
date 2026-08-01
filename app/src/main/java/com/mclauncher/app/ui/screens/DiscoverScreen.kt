@@ -1,6 +1,7 @@
 package com.mclauncher.app.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
@@ -49,9 +50,12 @@ import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import com.mclauncher.app.ui.LauncherUiState
 import com.mclauncher.app.ui.components.LauncherCard
+import com.mclauncher.app.ui.components.InstallProgressCard
 import com.mclauncher.app.ui.components.PageHeader
 import com.mclauncher.minecraft.CurseForgeMod
+import com.mclauncher.minecraft.CurseForgeFile
 import com.mclauncher.minecraft.ModrinthProject
+import com.mclauncher.minecraft.ModrinthVersion
 import com.mclauncher.minecraft.MojangVersionSummary
 import com.mclauncher.model.ContentSource
 import com.mclauncher.model.ContentType
@@ -77,6 +81,11 @@ fun DiscoverScreen(
     onSelectContentInstance: (String) -> Unit,
     onInstallContent: (ModrinthProject) -> Unit,
     onInstallCurseForgeContent: (CurseForgeMod) -> Unit,
+    onShowModrinthVersions: (ModrinthProject) -> Unit,
+    onShowCurseForgeVersions: (CurseForgeMod) -> Unit,
+    onInstallContentVersion: (ModrinthProject, ModrinthVersion) -> Unit,
+    onInstallCurseForgeVersion: (CurseForgeMod, CurseForgeFile) -> Unit,
+    onDismissContentVersions: () -> Unit,
     onOpenSettings: () -> Unit,
     snackbarHost: @Composable () -> Unit
 ) {
@@ -95,11 +104,75 @@ fun DiscoverScreen(
 
     LaunchedEffect(section, selectedInstanceId, contentSource) {
         val type = section.contentType ?: return@LaunchedEffect
-        val instanceId = selectedInstanceId ?: return@LaunchedEffect
-        onSelectContentInstance(instanceId)
+        val instanceId = selectedInstanceId
+        if (type != ContentType.MODPACK && instanceId == null) return@LaunchedEffect
+        if (instanceId != null) onSelectContentInstance(instanceId)
         if (contentSource != ContentSource.CURSEFORGE || state.curseForgeAvailable) {
-            onSearchContent(search, type, instanceId, contentSource)
+            onSearchContent(search, type, if (type == ContentType.MODPACK) null else instanceId, contentSource)
         }
+    }
+
+    state.selectedModrinthProject?.let { project ->
+        AlertDialog(
+            onDismissRequest = onDismissContentVersions,
+            title = { Text("Choose ${project.title} version") },
+            text = {
+                if (state.contentVersionsLoading) {
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(state.modrinthVersions, key = { it.id }) { version ->
+                            VersionChoiceRow(
+                                title = version.version_number,
+                                subtitle = buildString {
+                                    append(version.version_type.replaceFirstChar { it.uppercase() })
+                                    if (version.game_versions.isNotEmpty()) append(" • ").append(version.game_versions.joinToString())
+                                    if (version.loaders.isNotEmpty()) append(" • ").append(version.loaders.joinToString())
+                                },
+                                actionLabel = if (state.contentType == ContentType.MODPACK) "Download" else "Install",
+                                onClick = { onInstallContentVersion(project, version) }
+                            )
+                        }
+                        if (state.modrinthVersions.isEmpty()) item { Text("No compatible versions were found.") }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = onDismissContentVersions) { Text("Close") } }
+        )
+    }
+
+    state.selectedCurseForgeProject?.let { project ->
+        AlertDialog(
+            onDismissRequest = onDismissContentVersions,
+            title = { Text("Choose ${project.name} version") },
+            text = {
+                if (state.contentVersionsLoading) {
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(state.curseForgeFiles, key = { it.id }) { file ->
+                            VersionChoiceRow(
+                                title = file.displayName,
+                                subtitle = buildString {
+                                    append(when (file.releaseType) { 2 -> "Beta"; 3 -> "Alpha"; else -> "Release" })
+                                    if (file.gameVersions.isNotEmpty()) append(" • ").append(file.gameVersions.joinToString())
+                                },
+                                actionLabel = if (state.contentType == ContentType.MODPACK) "Download" else "Install",
+                                onClick = { onInstallCurseForgeVersion(project, file) }
+                            )
+                        }
+                        if (state.curseForgeFiles.isEmpty()) item { Text("No compatible versions were found.") }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = onDismissContentVersions) { Text("Close") } }
+        )
     }
 
     pendingVersion?.let { version ->
@@ -244,7 +317,14 @@ fun DiscoverScreen(
                         label = { Text("Search ${section.label.lowercase()}") },
                         trailingIcon = {
                             IconButton(
-                                onClick = { onSearchContent(search, type, selectedInstanceId, contentSource) },
+                                onClick = {
+                                    onSearchContent(
+                                        search,
+                                        type,
+                                        if (type == ContentType.MODPACK) null else selectedInstanceId,
+                                        contentSource
+                                    )
+                                },
                                 enabled = contentSource != ContentSource.CURSEFORGE || state.curseForgeAvailable
                             ) {
                                 Icon(Icons.Rounded.Search, contentDescription = "Search")
@@ -252,25 +332,46 @@ fun DiscoverScreen(
                         }
                     )
                 }
-                item {
-                    Text("Target instance", style = MaterialTheme.typography.titleMedium)
-                    Row(
-                        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        state.snapshot.instances.filter { it.installed }.forEach { instance ->
-                            FilterChip(
-                                selected = selectedInstanceId == instance.id,
-                                onClick = {
-                                    selectedInstanceId = instance.id
-                                    onSelectContentInstance(instance.id)
-                                    if (contentSource != ContentSource.CURSEFORGE || state.curseForgeAvailable) {
-                                        onSearchContent(search, type, instance.id, contentSource)
-                                    }
-                                },
-                                label = { Text(instance.name) }
+                if (type == ContentType.MODPACK) {
+                    item {
+                        LauncherCard(modifier = Modifier.fillMaxWidth()) {
+                            Text("Separate modpack instance", style = MaterialTheme.typography.titleMedium)
+                            Text(
+                                "Download creates a new instance with the pack's exact Minecraft version, loader, loader version, name and icon.",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
+                    }
+                } else {
+                    item {
+                        Text("Target instance", style = MaterialTheme.typography.titleMedium)
+                        Row(
+                            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            state.snapshot.instances.filter { it.installed }.forEach { instance ->
+                                FilterChip(
+                                    selected = selectedInstanceId == instance.id,
+                                    onClick = {
+                                        selectedInstanceId = instance.id
+                                        onSelectContentInstance(instance.id)
+                                        if (contentSource != ContentSource.CURSEFORGE || state.curseForgeAvailable) {
+                                            onSearchContent(search, type, instance.id, contentSource)
+                                        }
+                                    },
+                                    label = { Text(instance.name) }
+                                )
+                            }
+                        }
+                    }
+                }
+                state.installProgress?.let { progress ->
+                    item {
+                        InstallProgressCard(
+                            progress = progress,
+                            title = "Installing ${state.activeInstallVersion.orEmpty()}",
+                            modifier = Modifier.fillMaxWidth()
+                        )
                     }
                 }
                 if (state.contentLoading) item { LinearProgressIndicator(modifier = Modifier.fillMaxWidth()) }
@@ -296,6 +397,8 @@ fun DiscoverScreen(
                                 it.projectId == project.project_id && it.contentType == type
                             },
                             installing = state.activeContentInstallId == project.project_id,
+                            actionLabel = if (type == ContentType.MODPACK) "Download" else "Install",
+                            onOpenVersions = { onShowModrinthVersions(project) },
                             onInstall = { onInstallContent(project) }
                         )
                     }
@@ -307,6 +410,8 @@ fun DiscoverScreen(
                                 it.projectId == "curseforge:${project.id}" && it.contentType == type
                             },
                             installing = state.activeContentInstallId == "curseforge:${project.id}",
+                            actionLabel = if (type == ContentType.MODPACK) "Download" else "Install",
+                            onOpenVersions = { onShowCurseForgeVersions(project) },
                             onInstall = { onInstallCurseForgeContent(project) }
                         )
                     }
@@ -360,12 +465,11 @@ private fun androidx.compose.foundation.lazy.LazyListScope.minecraftVersionItems
     }
     state.installProgress?.let { progress ->
         item {
-            LauncherCard(modifier = Modifier.fillMaxWidth()) {
-                Text("Installing ${state.activeInstallVersion}", style = MaterialTheme.typography.titleMedium)
-                Text(progress.message, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                LinearProgressIndicator(progress = { progress.fraction }, modifier = Modifier.fillMaxWidth().padding(top = 10.dp))
-                Text("${progress.completedFiles} / ${progress.totalFiles} • ${progress.currentFile}", style = MaterialTheme.typography.bodySmall)
-            }
+            InstallProgressCard(
+                progress = progress,
+                title = "Installing ${state.activeInstallVersion}",
+                modifier = Modifier.fillMaxWidth()
+            )
         }
     }
     if (visibleVersions.isEmpty()) {
@@ -397,9 +501,11 @@ private fun ContentProjectCard(
     project: ModrinthProject,
     installed: Boolean,
     installing: Boolean,
+    actionLabel: String,
+    onOpenVersions: () -> Unit,
     onInstall: () -> Unit
 ) {
-    LauncherCard(modifier = Modifier.fillMaxWidth()) {
+    LauncherCard(modifier = Modifier.fillMaxWidth().clickable(onClick = onOpenVersions)) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
@@ -410,6 +516,7 @@ private fun ContentProjectCard(
                 Text(project.title, style = MaterialTheme.typography.titleMedium)
                 Text(project.description, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2)
                 Text("by ${project.author} • ${project.downloads} downloads", style = MaterialTheme.typography.bodySmall)
+                Text("Tap for versions", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodySmall)
             }
             if (installed) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -420,10 +527,10 @@ private fun ContentProjectCard(
                 Button(onClick = onInstall, enabled = !installing) {
                     if (installing) {
                         CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
-                        Text("Installing", modifier = Modifier.padding(start = 6.dp))
+                        Text(if (actionLabel == "Download") "Downloading" else "Installing", modifier = Modifier.padding(start = 6.dp))
                     } else {
                         Icon(Icons.Rounded.Download, contentDescription = null)
-                        Text("Install", modifier = Modifier.padding(start = 5.dp))
+                        Text(actionLabel, modifier = Modifier.padding(start = 5.dp))
                     }
                 }
             }
@@ -437,9 +544,11 @@ private fun CurseForgeProjectCard(
     project: CurseForgeMod,
     installed: Boolean,
     installing: Boolean,
+    actionLabel: String,
+    onOpenVersions: () -> Unit,
     onInstall: () -> Unit
 ) {
-    LauncherCard(modifier = Modifier.fillMaxWidth()) {
+    LauncherCard(modifier = Modifier.fillMaxWidth().clickable(onClick = onOpenVersions)) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
@@ -450,6 +559,7 @@ private fun CurseForgeProjectCard(
                 Text(project.name, style = MaterialTheme.typography.titleMedium)
                 Text(project.summary, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2)
                 Text("CurseForge • ${project.downloadCount.toLong()} downloads", style = MaterialTheme.typography.bodySmall)
+                Text("Tap for versions", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodySmall)
             }
             if (installed) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -460,13 +570,39 @@ private fun CurseForgeProjectCard(
                 Button(onClick = onInstall, enabled = !installing) {
                     if (installing) {
                         CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
-                        Text("Installing", modifier = Modifier.padding(start = 6.dp))
+                        Text(if (actionLabel == "Download") "Downloading" else "Installing", modifier = Modifier.padding(start = 6.dp))
                     } else {
                         Icon(Icons.Rounded.Download, contentDescription = null)
-                        Text("Install", modifier = Modifier.padding(start = 5.dp))
+                        Text(actionLabel, modifier = Modifier.padding(start = 5.dp))
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun VersionChoiceRow(
+    title: String,
+    subtitle: String,
+    actionLabel: String,
+    onClick: () -> Unit
+) {
+    LauncherCard(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(title, style = MaterialTheme.typography.titleSmall)
+                Text(
+                    subtitle,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+            Button(onClick = onClick) { Text(actionLabel) }
         }
     }
 }

@@ -17,6 +17,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import java.io.File
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
 
 class VanillaInstaller(
     private val layout: MinecraftLayout,
@@ -31,8 +32,12 @@ class VanillaInstaller(
         layout.ensureBaseDirectories()
         val versionJsonFile = layout.versionJson(version.id)
 
-        onProgress(InstallProgress(InstallStage.VERSION_METADATA, currentFile = versionJsonFile.name, message = "Downloading version metadata"))
-        downloader.download(version.url, versionJsonFile, expectedSha1 = version.sha1)
+        downloadOne(
+            stage = InstallStage.VERSION_METADATA,
+            request = DownloadRequest(version.url, versionJsonFile, version.sha1, null),
+            message = "Downloading version metadata",
+            onProgress = onProgress
+        )
         val versionDocument = withContext(Dispatchers.IO) {
             json.parseToJsonElement(versionJsonFile.readText()).jsonObject
         }
@@ -62,12 +67,16 @@ class VanillaInstaller(
         val client = document["downloads"]?.jsonObject?.get("client")?.jsonObject
             ?: error("Version $versionId has no client download")
         val target = layout.clientJar(versionId)
-        onProgress(InstallProgress(InstallStage.CLIENT, currentFile = target.name, message = "Downloading Minecraft client"))
-        downloader.download(
-            url = client.requiredString("url"),
-            destination = target,
-            expectedSha1 = client.optionalString("sha1"),
-            expectedSize = client.optionalLong("size")
+        downloadOne(
+            stage = InstallStage.CLIENT,
+            request = DownloadRequest(
+                url = client.requiredString("url"),
+                destination = target,
+                sha1 = client.optionalString("sha1"),
+                size = client.optionalLong("size")
+            ),
+            message = "Downloading Minecraft client",
+            onProgress = onProgress
         )
     }
 
@@ -108,12 +117,16 @@ class VanillaInstaller(
         val file = loggingClient["file"] as? JsonObject ?: return
         val id = file.requiredString("id")
         val target = layout.loggingConfig(id)
-        onProgress(InstallProgress(InstallStage.LOGGING_CONFIG, currentFile = id, message = "Downloading logging configuration"))
-        downloader.download(
-            url = file.requiredString("url"),
-            destination = target,
-            expectedSha1 = file.optionalString("sha1"),
-            expectedSize = file.optionalLong("size")
+        downloadOne(
+            stage = InstallStage.LOGGING_CONFIG,
+            request = DownloadRequest(
+                url = file.requiredString("url"),
+                destination = target,
+                sha1 = file.optionalString("sha1"),
+                size = file.optionalLong("size")
+            ),
+            message = "Downloading logging configuration",
+            onProgress = onProgress
         )
     }
 
@@ -124,12 +137,16 @@ class VanillaInstaller(
         val assetIndex = document["assetIndex"]?.jsonObject ?: error("Version has no asset index")
         val id = assetIndex.requiredString("id")
         val target = layout.assetIndex(id)
-        onProgress(InstallProgress(InstallStage.ASSET_INDEX, currentFile = target.name, message = "Downloading asset index"))
-        downloader.download(
-            url = assetIndex.requiredString("url"),
-            destination = target,
-            expectedSha1 = assetIndex.optionalString("sha1"),
-            expectedSize = assetIndex.optionalLong("size")
+        downloadOne(
+            stage = InstallStage.ASSET_INDEX,
+            request = DownloadRequest(
+                url = assetIndex.requiredString("url"),
+                destination = target,
+                sha1 = assetIndex.optionalString("sha1"),
+                size = assetIndex.optionalLong("size")
+            ),
+            message = "Downloading asset index",
+            onProgress = onProgress
         )
         return withContext(Dispatchers.IO) { json.parseToJsonElement(target.readText()).jsonObject }
     }
@@ -191,16 +208,47 @@ class VanillaInstaller(
         }
         val semaphore = Semaphore(6)
         val completed = AtomicInteger(0)
-        onProgress(InstallProgress(stage, completedFiles = 0, totalFiles = requests.size, message = message))
+        val downloaded = AtomicLong(0L)
+        val totalBytes = requests.map { it.size }.takeIf { sizes -> sizes.all { it != null } }
+            ?.sumOf { it ?: 0L }
+        onProgress(
+            InstallProgress(
+                stage = stage,
+                completedFiles = 0,
+                totalFiles = requests.size,
+                downloadedBytes = 0L,
+                totalBytes = totalBytes,
+                message = message
+            )
+        )
         requests.map { request ->
             async(Dispatchers.IO) {
                 semaphore.withPermit {
+                    var streamedBytes = 0L
                     downloader.download(
                         url = request.url,
                         destination = request.destination,
                         expectedSha1 = request.sha1,
-                        expectedSize = request.size
+                        expectedSize = request.size,
+                        onBytes = { delta ->
+                            streamedBytes += delta
+                            val currentBytes = downloaded.addAndGet(delta)
+                            onProgress(
+                                InstallProgress(
+                                    stage = stage,
+                                    completedFiles = completed.get(),
+                                    totalFiles = requests.size,
+                                    currentFile = request.destination.name,
+                                    downloadedBytes = currentBytes,
+                                    totalBytes = totalBytes,
+                                    message = message
+                                )
+                            )
+                        }
                     )
+                    if (streamedBytes == 0L) {
+                        downloaded.addAndGet(request.size ?: request.destination.length())
+                    }
                     val done = completed.incrementAndGet()
                     onProgress(
                         InstallProgress(
@@ -208,12 +256,66 @@ class VanillaInstaller(
                             completedFiles = done,
                             totalFiles = requests.size,
                             currentFile = request.destination.name,
+                            downloadedBytes = downloaded.get(),
+                            totalBytes = totalBytes,
                             message = message
                         )
                     )
                 }
             }
         }.awaitAll()
+    }
+
+    private suspend fun downloadOne(
+        stage: InstallStage,
+        request: DownloadRequest,
+        message: String,
+        onProgress: (InstallProgress) -> Unit
+    ) {
+        var downloadedBytes = 0L
+        onProgress(
+            InstallProgress(
+                stage = stage,
+                completedFiles = 0,
+                totalFiles = 1,
+                currentFile = request.destination.name,
+                downloadedBytes = 0L,
+                totalBytes = request.size,
+                message = message
+            )
+        )
+        downloader.download(
+            url = request.url,
+            destination = request.destination,
+            expectedSha1 = request.sha1,
+            expectedSize = request.size,
+            onBytes = { delta ->
+                downloadedBytes += delta
+                onProgress(
+                    InstallProgress(
+                        stage = stage,
+                        completedFiles = 0,
+                        totalFiles = 1,
+                        currentFile = request.destination.name,
+                        downloadedBytes = downloadedBytes,
+                        totalBytes = request.size,
+                        message = message
+                    )
+                )
+            }
+        )
+        if (downloadedBytes == 0L) downloadedBytes = request.size ?: request.destination.length()
+        onProgress(
+            InstallProgress(
+                stage = stage,
+                completedFiles = 1,
+                totalFiles = 1,
+                currentFile = request.destination.name,
+                downloadedBytes = downloadedBytes,
+                totalBytes = request.size ?: downloadedBytes.takeIf { it > 0L },
+                message = message
+            )
+        )
     }
 
     private data class AssetEntry(

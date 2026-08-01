@@ -1,5 +1,13 @@
 # Changelog
 
+## 11.0.0-alpha09
+
+- Queued every virtual-mouse position through GLFW before its matching button event, keeping Minecraft hover and the visible cursor in the same coordinate stream.
+- Added a dedicated `Esc` touch button so inventories and other Minecraft screens can close without opening MCLauncher's game overlay.
+- Added live byte and file progress for Minecraft, loader, content and modpack downloads.
+- Made project cards open compatible release, beta and alpha version lists while keeping the main button as latest-compatible install.
+- Made Modrinth and CurseForge modpacks create their own named/iconized instance with the exact Minecraft, loader and loader version declared by the pack.
+
 ## 11.0.0-alpha08
 
 - Made every queued GLFW mouse press carry the cursor position that was visible when the press happened, preventing a tap from activating a stale, far-away menu target.

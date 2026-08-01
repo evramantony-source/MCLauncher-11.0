@@ -130,8 +130,7 @@ fun GameTouchOverlay(
                             y = maxHeight * control.y.coerceIn(0f, 0.92f)
                         )
                         .size(width, height),
-                    onToggle = { active -> toggles[control.id] = active },
-                    onMenu = if (control.id == "escape") onMenu else null
+                    onToggle = { active -> toggles[control.id] = active }
                 )
             }
         }
@@ -157,10 +156,8 @@ fun GameTouchOverlay(
                     forceVirtualMouse = !forceVirtualMouse
                 }
             }
-            OverlayButton("Menu") {
-                tapKey(256)
-                onMenu()
-            }
+            OverlayButton("Esc") { tapKey(256) }
+            OverlayButton("Menu", onMenu)
             OverlayButton("Hide", onToggleVisibility)
         }
     }
@@ -270,8 +267,7 @@ private fun DynamicControl(
     toggled: Boolean,
     globalOpacity: Float,
     modifier: Modifier,
-    onToggle: (Boolean) -> Unit,
-    onMenu: (() -> Unit)?
+    onToggle: (Boolean) -> Unit
 ) {
     val shape = RoundedCornerShape(16.dp)
     val effectiveOpacity = (control.opacity * globalOpacity).coerceIn(0.15f, 1f)
@@ -279,7 +275,6 @@ private fun DynamicControl(
     fun send(pressed: Boolean) {
         control.keyCode?.let { GameInputBridge.key(it, pressed) }
         control.mouseButton?.let { GameInputBridge.mouseButton(it, pressed) }
-        if (!pressed && control.id == "escape") onMenu?.invoke()
     }
 
     Box(

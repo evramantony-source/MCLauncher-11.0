@@ -129,6 +129,11 @@ fun MCLauncherApp(launcherViewModel: LauncherViewModel = viewModel()) {
                     onSelectContentInstance = launcherViewModel::selectContentInstance,
                     onInstallContent = launcherViewModel::installContent,
                     onInstallCurseForgeContent = launcherViewModel::installCurseForgeContent,
+                    onShowModrinthVersions = launcherViewModel::showModrinthVersions,
+                    onShowCurseForgeVersions = launcherViewModel::showCurseForgeVersions,
+                    onInstallContentVersion = launcherViewModel::installContentVersion,
+                    onInstallCurseForgeVersion = launcherViewModel::installCurseForgeVersion,
+                    onDismissContentVersions = launcherViewModel::dismissContentVersions,
                     onOpenSettings = { navController.navigate(LauncherDestination.Settings.route) },
                     snackbarHost = { SnackbarHost(snackbarHostState) }
                 )
