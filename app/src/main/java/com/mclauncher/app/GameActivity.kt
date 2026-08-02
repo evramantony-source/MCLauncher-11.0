@@ -12,7 +12,6 @@ import android.view.Surface
 import android.view.SurfaceHolder
 import android.view.SurfaceView
 import android.view.View
-import android.view.ViewConfiguration
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -124,7 +123,7 @@ class GameActivity : ComponentActivity() {
         val dataRoot = File(planPath).parentFile?.parentFile ?: filesDir
         val sessionLog = File(dataRoot, "logs/latest-session.log").apply {
             parentFile?.mkdirs()
-            writeText("MCLauncher 11.0 alpha11 session ${System.currentTimeMillis()}\n")
+            writeText("MCLauncher 11.0 alpha12 session ${System.currentTimeMillis()}\n")
         }
 
         setContent {
@@ -436,7 +435,7 @@ class GameActivity : ComponentActivity() {
         if (
             touchSource &&
             !launcherOverlayOwnsTouch &&
-            GameInputBridge.isVirtualMouseCaptureEnabled()
+            GameInputBridge.isDirectTouchCaptureEnabled()
         ) {
             val view = gameSurfaceView
             if (view != null && view.width > 0 && view.height > 0) {
@@ -458,13 +457,12 @@ class GameActivity : ComponentActivity() {
                         localY in 0f..topControlExclusion
                 if (
                     !startsOnOverlayControls &&
-                    GameInputBridge.handleVirtualMouseTouch(
+                    GameInputBridge.handleDirectTouch(
                         event = event,
                         surfaceLeft = surfaceLeftInEventSpace,
                         surfaceTop = surfaceTopInEventSpace,
                         width = view.width,
-                        height = view.height,
-                        touchSlop = ViewConfiguration.get(this).scaledTouchSlop.toFloat()
+                        height = view.height
                     )
                 ) {
                     return true

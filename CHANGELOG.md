@@ -1,5 +1,12 @@
 # Changelog
 
+## 11.0.0-alpha12
+
+- Replaced the visible virtual cursor with cursor-free direct taps on Minecraft menus and inventory slots.
+- Kept Minecraft's left button held from finger-down through movement so inventory items can be dragged naturally, then released it safely on finger-up, cancellation or mode changes.
+- Added a transparent nine-slot touch target over Minecraft's real in-world hotbar, mapped to the standard `1` through `9` keys without drawing a duplicate HUD.
+- Preserved the Alpha 11 grab-release and serialized native input ordering fixes for physical mouse, controller and touch input.
+
 ## 11.0.0-alpha11
 
 - Restored the pinned Android GLFW grab-release contract so opening an inventory or menu recenters both MCLauncher's visible arrow and Minecraft's hover cursor together.

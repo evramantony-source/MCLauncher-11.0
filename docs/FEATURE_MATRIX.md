@@ -1,4 +1,4 @@
-# MCLauncher 11.0 Alpha 05 feature matrix
+# MCLauncher 11.0 Alpha 12 feature matrix
 
 | Area | Current status |
 |---|---|
@@ -16,7 +16,7 @@
 | MobileGlues default and GL4ES/OpenLTW fallback | Hash-pinned; exports and payload enforced by verifier |
 | Android JNA compatibility | Version-selected JNA 6/7 dispatch libraries |
 | Optional renderer/driver packs | Manifest-driven custom packs plus verified one-tap packages with canonical built-in identity; missing saved choices fall back safely |
-| Touch | Editable controls, swipe look, optional look stick and normalized virtual menu mouse with manual fallback; device proof required |
+| Touch | Cursor-free direct menu/inventory taps, held finger drag, tappable nine-slot hotbar, editable controls, swipe look and optional look stick; device proof required |
 | Keyboard, mouse, controller and gyro | Raw keyboard path, absolute/relative mouse and menu/gamepad contexts implemented; device proof required |
 | Launcher theme | System, dark and light modes implemented |
 | FPS limit and performance settings | Global and per-instance settings implemented |

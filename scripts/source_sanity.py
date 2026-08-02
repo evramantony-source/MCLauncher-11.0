@@ -146,8 +146,8 @@ if openltw.get("patch") != "vendor/patches/ltw-minecraft-26.2.patch":
 
 require_contains(
     "app/build.gradle.kts",
-    'versionName = "11.0.0-alpha11"',
-    'versionCode = 21',
+    'versionName = "11.0.0-alpha12"',
+    'versionCode = 22',
     'mclauncherAbi',
     'abiFilters += targetAbi',
     'CURSEFORGE_API_KEY',
@@ -160,7 +160,7 @@ require_contains(
     "scripts/source_sanity.py",
     'assembleNoruntimeDebug',
     'assembleDebug -PmclauncherAbi=',
-    'MCLauncher-11.0-alpha11-',
+    'MCLauncher-11.0-alpha12-',
     'mojo-pointer-click-position.patch',
     "Build pinned OpenLTW with Minecraft 26.2 compatibility",
     "--ltw-aar",
@@ -177,7 +177,7 @@ require_contains(
     'No Android LWJGL substitution is defined',
     'prepareAndroidNatives',
     'applyMinecraftOptions',
-    '-Dmclauncher.version=11.0.0-alpha11',
+    '-Dmclauncher.version=11.0.0-alpha12',
     'authSession?.accessToken ?: "0"',
     'AccountType.MICROSOFT) "msa" else "legacy"',
 )
@@ -333,10 +333,23 @@ require_contains(
     'MovementJoystick',
     'LookJoystick',
     'LookPad',
-    'VirtualMouseCursor',
+    'HotbarTouchTarget',
+    'HotbarTouchLayout.widthPixels',
+    'directTouchActive',
     'virtualMouseEnabled',
+    'setDirectTouchCaptureEnabled',
+)
+require_absent(
+    "app/src/main/java/com/mclauncher/app/ui/game/TouchControls.kt",
+    'VirtualMouseCursor',
     'forceVirtualMouse',
-    'setVirtualMouseCaptureEnabled',
+)
+require_contains(
+    "app/src/main/java/com/mclauncher/app/ui/game/HotbarTouchLayout.kt",
+    'SLOT_COUNT = 9',
+    'MIN_SCALED_WIDTH = 320',
+    'MIN_SCALED_HEIGHT = 240',
+    'fun slotAt',
 )
 require_contains(
     "app/src/main/java/com/mclauncher/app/ui/screens/SettingsScreen.kt",
@@ -354,10 +367,11 @@ require_contains(
     'nativeSendRawKey',
     'cursorPosition',
     'cursorPositionNormalized',
-    'handleVirtualMouseTouch',
-    'virtualMouseCaptureEnabled',
-    'VIRTUAL_MOUSE_CLICK_HOLD_MILLIS = 33L',
-    'clickMouseButton(button)',
+    'handleDirectTouch',
+    'directTouchCaptureEnabled',
+    'directTouchButtonDown',
+    'MOUSE_CLICK_HOLD_MILLIS = 33L',
+    'fun clickMouseButton(button:',
 )
 require_contains(
     "app/src/main/java/git/artdeell/dnbootstrap/glfw/GLFW.java",
@@ -367,7 +381,8 @@ require_contains(
 )
 require_contains(
     "app/src/main/java/com/mclauncher/app/GameActivity.kt",
-    "GameInputBridge.handleVirtualMouseTouch",
+    "GameInputBridge.handleDirectTouch",
+    "GameInputBridge.isDirectTouchCaptureEnabled",
     "topControlExclusion",
     "SOURCE_TOUCHSCREEN",
     "launcherOverlayOwnsTouch",
@@ -428,8 +443,8 @@ require_contains(
 )
 require_contains(
     "app/src/main/java/com/mclauncher/app/ui/game/TouchControls.kt",
-    "GameInputBridge.setVirtualMouseCaptureEnabled",
-    "pointerState.grabbed && !virtualMouseActive && settings.movementJoystickEnabled",
+    "GameInputBridge.setDirectTouchCaptureEnabled",
+    "pointerState.grabbed && !directTouchActive && settings.movementJoystickEnabled",
 )
 require_contains(
     "app/src/main/java/com/mclauncher/app/engine/GraphicsRegistry.kt",

@@ -2,7 +2,6 @@ package com.mclauncher.app.ui.game
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
@@ -34,7 +33,6 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
@@ -62,29 +60,28 @@ fun GameTouchOverlay(
 ) {
     if (!visible) return
     val toggles = remember { mutableStateMapOf<String, Boolean>() }
-    var forceVirtualMouse by remember { mutableStateOf(false) }
-    val virtualMouseActive = settings.virtualMouseEnabled &&
-        (!pointerState.grabbed || forceVirtualMouse)
+    val directTouchActive = settings.virtualMouseEnabled && !pointerState.grabbed
 
     DisposableEffect(Unit) {
         onDispose {
             GameInputBridge.releaseMovement()
         }
     }
-    DisposableEffect(virtualMouseActive) {
-        GameInputBridge.setVirtualMouseCaptureEnabled(virtualMouseActive)
+    DisposableEffect(directTouchActive) {
+        GameInputBridge.setDirectTouchCaptureEnabled(directTouchActive)
         onDispose {
-            GameInputBridge.setVirtualMouseCaptureEnabled(false)
+            GameInputBridge.setDirectTouchCaptureEnabled(false)
         }
     }
 
     BoxWithConstraints(modifier = modifier.fillMaxSize()) {
         val shortSide = if (maxWidth < maxHeight) maxWidth else maxHeight
         val joystickDiameter = shortSide * settings.joystickSize.coerceIn(0.14f, 0.34f)
+        val density = LocalDensity.current
 
         when {
             pointerState.grabbed &&
-                !virtualMouseActive &&
+                !directTouchActive &&
                 settings.touchLookMode == TouchLookMode.JOYSTICK -> {
                 LookJoystick(
                     sensitivity = settings.lookSensitivity,
@@ -95,7 +92,7 @@ fun GameTouchOverlay(
                         .size(joystickDiameter)
                 )
             }
-            pointerState.grabbed && !virtualMouseActive -> {
+            pointerState.grabbed && !directTouchActive -> {
                 LookPad(
                     sensitivity = settings.lookSensitivity,
                     modifier = Modifier
@@ -106,7 +103,7 @@ fun GameTouchOverlay(
             }
         }
 
-        if (pointerState.grabbed && !virtualMouseActive && settings.movementJoystickEnabled) {
+        if (pointerState.grabbed && !directTouchActive && settings.movementJoystickEnabled) {
             MovementJoystick(
                 deadZone = settings.joystickDeadZone,
                 modifier = Modifier
@@ -116,7 +113,7 @@ fun GameTouchOverlay(
             )
         }
 
-        if (pointerState.grabbed && !virtualMouseActive) {
+        if (pointerState.grabbed && !directTouchActive) {
             settings.controlLayout.filter(ControlElement::visible).forEach { control ->
                 val width = maxWidth * (control.width * settings.controlScale).coerceIn(0.04f, 0.35f)
                 val height = maxHeight * (control.height * settings.controlScale).coerceIn(0.04f, 0.30f)
@@ -135,14 +132,22 @@ fun GameTouchOverlay(
             }
         }
 
-        if (virtualMouseActive) {
-            VirtualMouseCursor(
+        if (pointerState.grabbed && settings.virtualMouseEnabled) {
+            val hotbarWidthPx = HotbarTouchLayout.widthPixels(
+                constraints.maxWidth,
+                constraints.maxHeight
+            )
+            val hotbarHeightPx = maxOf(
+                HotbarTouchLayout.heightPixels(constraints.maxWidth, constraints.maxHeight).toFloat(),
+                with(density) { 48.dp.toPx() }
+            )
+            HotbarTouchTarget(
                 modifier = Modifier
-                    .offset(
-                        x = maxWidth * pointerState.x.coerceIn(0f, 1f),
-                        y = maxHeight * pointerState.y.coerceIn(0f, 1f)
+                    .align(Alignment.BottomCenter)
+                    .size(
+                        width = with(density) { hotbarWidthPx.toDp() },
+                        height = with(density) { hotbarHeightPx.toDp() }
                     )
-                    .size(28.dp)
             )
         }
 
@@ -151,11 +156,6 @@ fun GameTouchOverlay(
             verticalAlignment = Alignment.CenterVertically
         ) {
             KeyboardButton()
-            if (settings.virtualMouseEnabled && pointerState.grabbed) {
-                OverlayButton(if (forceVirtualMouse) "Look" else "Mouse") {
-                    forceVirtualMouse = !forceVirtualMouse
-                }
-            }
             OverlayButton("Esc") { tapKey(256) }
             OverlayButton("Menu", onMenu)
             OverlayButton("Hide", onToggleVisibility)
@@ -333,28 +333,16 @@ private fun LookPad(
 }
 
 @Composable
-private fun VirtualMouseCursor(modifier: Modifier = Modifier) {
-    Canvas(modifier = modifier) {
-        val cursor = Path().apply {
-            // The native cursor hotspot is the normalized coordinate itself.
-            // Keep the visible arrow's hotspot at (0, 0) as well.
-            moveTo(0f, 0f)
-            lineTo(size.width * 0.82f, size.height * 0.58f)
-            lineTo(size.width * 0.50f, size.height * 0.64f)
-            lineTo(size.width * 0.68f, size.height * 0.94f)
-            lineTo(size.width * 0.48f, size.height)
-            lineTo(size.width * 0.31f, size.height * 0.69f)
-            lineTo(size.width * 0.08f, size.height * 0.91f)
-            close()
+private fun HotbarTouchTarget(modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier.pointerInput(Unit) {
+            detectTapGestures { position ->
+                HotbarTouchLayout.slotAt(position.x, size.width.toFloat())?.let { slot ->
+                    tapKey(49 + slot)
+                }
+            }
         }
-        drawPath(cursor, Color.Black)
-        drawPath(
-            path = cursor,
-            color = Color.White,
-            alpha = 0.96f,
-            style = androidx.compose.ui.graphics.drawscope.Stroke(width = size.minDimension * 0.09f)
-        )
-    }
+    )
 }
 
 @Composable

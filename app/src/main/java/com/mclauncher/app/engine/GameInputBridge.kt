@@ -12,7 +12,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlin.math.abs
-import kotlin.math.hypot
 
 data class GamePointerState(
     val x: Float = 0.5f,
@@ -31,9 +30,9 @@ object GameInputBridge {
     @Volatile private var gamepadDeadZone: Float = 0.18f
     @Volatile private var surfaceWidth: Int = 1
     @Volatile private var surfaceHeight: Int = 1
-    @Volatile private var virtualMouseCaptureEnabled: Boolean = false
+    @Volatile private var directTouchCaptureEnabled: Boolean = false
 
-    private const val VIRTUAL_MOUSE_CLICK_HOLD_MILLIS = 33L
+    private const val MOUSE_CLICK_HOLD_MILLIS = 33L
     private val mainHandler = Handler(Looper.getMainLooper())
     private val _pointerState = MutableStateFlow(GamePointerState())
     val pointerState: StateFlow<GamePointerState> = _pointerState.asStateFlow()
@@ -45,11 +44,8 @@ object GameInputBridge {
     private var lastMouseY: Float? = null
     private var lastTriggerLeft = false
     private var lastTriggerRight = false
-    private var virtualTouchPointerId = MotionEvent.INVALID_POINTER_ID
-    private var virtualTouchDownTime = 0L
-    private var virtualTouchDownX = 0f
-    private var virtualTouchDownY = 0f
-    private var virtualTouchMoved = false
+    private var directTouchPointerId = MotionEvent.INVALID_POINTER_ID
+    private var directTouchButtonDown = false
 
     fun configure(bindings: List<ControllerBinding>, sensitivity: Float, controllerDeadZone: Float = 0.18f) {
         controllerBindings = bindings.associateBy(ControllerBinding::androidKeyCode)
@@ -62,12 +58,12 @@ object GameInputBridge {
         surfaceHeight = height.coerceAtLeast(1)
     }
 
-    fun setVirtualMouseCaptureEnabled(enabled: Boolean) {
-        virtualMouseCaptureEnabled = enabled
-        if (!enabled) resetVirtualTouch()
+    fun setDirectTouchCaptureEnabled(enabled: Boolean) {
+        directTouchCaptureEnabled = enabled
+        if (!enabled) resetDirectTouch(releaseButton = true)
     }
 
-    fun isVirtualMouseCaptureEnabled(): Boolean = virtualMouseCaptureEnabled
+    fun isDirectTouchCaptureEnabled(): Boolean = directTouchCaptureEnabled
 
     fun syncPointerState(x: Double, y: Double, grabbed: Boolean) {
         _pointerState.value = GamePointerState(
@@ -174,7 +170,7 @@ object GameInputBridge {
         synchronized(pendingClickReleases) {
             pendingClickReleases[button] = release
         }
-        mainHandler.postDelayed(release, VIRTUAL_MOUSE_CLICK_HOLD_MILLIS)
+        mainHandler.postDelayed(release, MOUSE_CLICK_HOLD_MILLIS)
     }
 
     fun cursorDelta(dx: Float, dy: Float, applySensitivity: Boolean = true) {
@@ -401,21 +397,22 @@ object GameInputBridge {
     }
 
     /**
-     * Handles touchscreen menu navigation before Compose can consume the event.
+     * Handles direct touchscreen menu and inventory input before Compose can consume it.
      *
      * Coordinates use the Activity window's coordinate space and are converted to
-     * the SurfaceView's normalized space. A tap is left-click, a stationary long
-     * press is right-click, and dragging only moves the cursor.
+     * the SurfaceView's normalized space. Finger-down presses Minecraft's left
+     * mouse button, movement drags while it remains held, and finger-up releases it.
+     * Minecraft still receives ordinary GLFW events, but the player never manages
+     * a separate virtual cursor.
      */
-    fun handleVirtualMouseTouch(
+    fun handleDirectTouch(
         event: MotionEvent,
         surfaceLeft: Float,
         surfaceTop: Float,
         width: Int,
-        height: Int,
-        touchSlop: Float
+        height: Int
     ): Boolean {
-        if (!virtualMouseCaptureEnabled) return false
+        if (!directTouchCaptureEnabled) return false
 
         fun pointerPosition(pointerIndex: Int): Pair<Float, Float> =
             (event.getX(pointerIndex) - surfaceLeft) to
@@ -434,69 +431,56 @@ object GameInputBridge {
                 if (localX !in 0f..width.toFloat() || localY !in 0f..height.toFloat()) {
                     false
                 } else {
-                    virtualTouchPointerId = event.getPointerId(event.actionIndex)
-                    virtualTouchDownTime = event.eventTime
-                    virtualTouchDownX = localX
-                    virtualTouchDownY = localY
-                    virtualTouchMoved = false
+                    resetDirectTouch(releaseButton = true)
+                    directTouchPointerId = event.getPointerId(event.actionIndex)
                     movePointer(localX, localY)
+                    directTouchButtonDown = true
+                    setMouseButtonState(MOUSE_LEFT, true)
                     true
                 }
             }
             MotionEvent.ACTION_MOVE -> {
-                val pointerIndex = event.findPointerIndex(virtualTouchPointerId)
+                val pointerIndex = event.findPointerIndex(directTouchPointerId)
                 if (pointerIndex < 0) {
                     false
                 } else {
                     val (localX, localY) = pointerPosition(pointerIndex)
-                    if (hypot(localX - virtualTouchDownX, localY - virtualTouchDownY) > touchSlop) {
-                        virtualTouchMoved = true
-                    }
                     movePointer(localX, localY)
                     true
                 }
             }
             MotionEvent.ACTION_UP -> {
-                val pointerIndex = event.findPointerIndex(virtualTouchPointerId)
+                val pointerIndex = event.findPointerIndex(directTouchPointerId)
                     .takeIf { it >= 0 } ?: event.actionIndex
-                val active = virtualTouchPointerId != MotionEvent.INVALID_POINTER_ID
-                val (localX, localY) = pointerPosition(pointerIndex)
-                if (active) movePointer(localX, localY)
-                val shouldClick = active && !virtualTouchMoved
-                val button = if (
-                    shouldClick &&
-                    event.eventTime - virtualTouchDownTime >=
-                    android.view.ViewConfiguration.getLongPressTimeout()
-                ) {
-                    MOUSE_RIGHT
-                } else {
-                    MOUSE_LEFT
+                val active = directTouchPointerId != MotionEvent.INVALID_POINTER_ID
+                if (active) {
+                    val (localX, localY) = pointerPosition(pointerIndex)
+                    movePointer(localX, localY)
                 }
-                resetVirtualTouch()
-                if (shouldClick) {
-                    clickMouseButton(button)
-                }
+                resetDirectTouch(releaseButton = true)
                 active
             }
             MotionEvent.ACTION_CANCEL -> {
-                val active = virtualTouchPointerId != MotionEvent.INVALID_POINTER_ID
-                resetVirtualTouch()
+                val active = directTouchPointerId != MotionEvent.INVALID_POINTER_ID
+                resetDirectTouch(releaseButton = true)
                 active
             }
             MotionEvent.ACTION_POINTER_DOWN -> {
-                virtualTouchPointerId != MotionEvent.INVALID_POINTER_ID
+                directTouchPointerId != MotionEvent.INVALID_POINTER_ID
             }
             MotionEvent.ACTION_POINTER_UP -> {
-                val active = virtualTouchPointerId != MotionEvent.INVALID_POINTER_ID
+                val active = directTouchPointerId != MotionEvent.INVALID_POINTER_ID
                 if (
                     active &&
-                    event.getPointerId(event.actionIndex) == virtualTouchPointerId
+                    event.getPointerId(event.actionIndex) == directTouchPointerId
                 ) {
-                    resetVirtualTouch()
+                    val (localX, localY) = pointerPosition(event.actionIndex)
+                    movePointer(localX, localY)
+                    resetDirectTouch(releaseButton = true)
                 }
                 active
             }
-            else -> virtualTouchPointerId != MotionEvent.INVALID_POINTER_ID
+            else -> directTouchPointerId != MotionEvent.INVALID_POINTER_ID
         }
     }
 
@@ -515,13 +499,15 @@ object GameInputBridge {
         lastTriggerLeft = false
         lastTriggerRight = false
         resetPointerPosition()
-        resetVirtualTouch()
+        resetDirectTouch(releaseButton = false)
     }
 
-    private fun resetVirtualTouch() {
-        virtualTouchPointerId = MotionEvent.INVALID_POINTER_ID
-        virtualTouchDownTime = 0L
-        virtualTouchMoved = false
+    private fun resetDirectTouch(releaseButton: Boolean) {
+        if (releaseButton && directTouchButtonDown) {
+            setMouseButtonState(MOUSE_LEFT, false)
+        }
+        directTouchButtonDown = false
+        directTouchPointerId = MotionEvent.INVALID_POINTER_ID
     }
 
     private fun filteredAxis(event: MotionEvent, axis: Int): Float {

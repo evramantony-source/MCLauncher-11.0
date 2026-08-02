@@ -33,7 +33,7 @@ application experience onto it:
 | Install and update progress | MCLauncher byte/file progress state |
 | Desktop process launch | `MCLauncherAndroidEngine` and `NativeEngineCoordinator` |
 | Java selection | Bundled Android Java 8, 17, 21 and 25 runtimes |
-| Keyboard and mouse | Android GLFW bridge, virtual mouse and physical input routing |
+| Touch, keyboard and mouse | Android GLFW bridge, direct-touch menus/inventories, hotbar mapping and physical input routing |
 | Account selection | Microsoft authentication plus deterministic local/offline profiles |
 
 ## Launch contract

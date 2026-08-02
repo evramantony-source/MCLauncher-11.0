@@ -448,11 +448,11 @@ fun SettingsScreen(
                         }
                     }
                     Text(
-                        "Swipe anywhere uses the right side of the screen like a normal mobile game. In menus, tap or drag anywhere to position the virtual mouse.",
+                        "Swipe anywhere uses the right side of the screen like a normal mobile game. In menus and inventories, tap controls directly and drag items with your finger. In a world, tap the hotbar to select a slot.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    SwitchRow("Show virtual mouse in Minecraft menus", settings.virtualMouseEnabled) { checked ->
+                    SwitchRow("Direct-touch menus and hotbar", settings.virtualMouseEnabled) { checked ->
                         onUpdateSettings { it.copy(virtualMouseEnabled = checked) }
                     }
                     SwitchRow("Capture physical mouse", settings.physicalMouseCapture) { checked -> onUpdateSettings { it.copy(physicalMouseCapture = checked) } }

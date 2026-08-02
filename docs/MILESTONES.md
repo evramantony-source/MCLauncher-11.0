@@ -27,6 +27,14 @@
 - [ ] Pass the Alpha 02 CI build.
 - [ ] Verify menu, keyboard, mouse, controller, content and renderer behavior on-device.
 
+## Alpha 12 — direct touchscreen interaction
+
+- [x] Remove the visible virtual cursor from touchscreen navigation.
+- [x] Translate finger-down, move and up into a held Minecraft inventory drag.
+- [x] Map direct taps over the real hotbar to slots 1 through 9.
+- [x] Preserve physical mouse, keyboard, controller and existing in-world controls.
+- [ ] Verify menu taps, inventory drag and all hotbar slots on the Redmi Pad Pro.
+
 ## After main-menu confirmation
 
 - Pin the observed Java 8 release ZIP digest in `vendor/engine-lock.json`.

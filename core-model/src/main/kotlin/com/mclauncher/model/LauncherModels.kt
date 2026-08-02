@@ -208,6 +208,7 @@ data class LauncherSettings(
     val gyroEnabled: Boolean = false,
     val movementJoystickEnabled: Boolean = true,
     val touchLookMode: TouchLookMode = TouchLookMode.SWIPE,
+    // Serialized name retained so existing alpha installs migrate to cursor-free direct touch.
     val virtualMouseEnabled: Boolean = true,
     // Kept for settings written by Alpha 01. touchLookMode is authoritative in Alpha 02.
     val lookJoystickEnabled: Boolean = true,
