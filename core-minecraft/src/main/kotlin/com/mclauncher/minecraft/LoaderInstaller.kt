@@ -89,6 +89,12 @@ class LoaderInstaller(
         )
         val raw = downloader.readText(profileUrl)
         val profile = json.parseToJsonElement(raw).jsonObject
+        requireProfileRuntime(
+            profile = profile,
+            loader = instance.loader,
+            gameVersion = instance.versionId,
+            loaderVersion = loaderVersion
+        )
         val profileId = profile["id"]?.jsonPrimitive?.content
             ?: "${instance.versionId}-${instance.loader.id}-$loaderVersion"
         val target = layout.versionJson(profileId)
@@ -302,13 +308,71 @@ class LoaderInstaller(
                 }
                 loaderMatch && runCatching {
                     val doc = json.parseToJsonElement(file.readText()).jsonObject
-                    doc["inheritsFrom"]?.jsonPrimitive?.content == instance.versionId || id.startsWith(instance.versionId)
+                    val targetsGame =
+                        doc["inheritsFrom"]?.jsonPrimitive?.content == instance.versionId ||
+                            id.startsWith(instance.versionId)
+                    targetsGame && profileDeclaresExactLoader(
+                        profile = doc,
+                        loader = instance.loader,
+                        gameVersion = instance.versionId,
+                        loaderVersion = loaderVersion
+                    )
                 }.getOrDefault(false)
             }
             .sortedByDescending { it.second.lastModified() }
         val profileId = candidates.firstOrNull()?.first
             ?: error("${instance.loader.displayName} installer exited without creating a version profile")
         return instance.copy(versionId = profileId, loaderVersion = loaderVersion, installed = true)
+    }
+
+    fun verifyInstalledProfile(
+        instance: MinecraftInstance,
+        gameVersion: String,
+        loaderVersion: String
+    ) {
+        require(instance.loaderVersion == loaderVersion) {
+            "Installed ${instance.loader.displayName} version ${instance.loaderVersion ?: "is missing"}; expected $loaderVersion"
+        }
+        val profileFile = layout.versionJson(instance.versionId)
+        require(profileFile.isFile) {
+            "Installed ${instance.loader.displayName} profile ${instance.versionId} is missing"
+        }
+        val profile = json.parseToJsonElement(profileFile.readText()).jsonObject
+        requireProfileRuntime(profile, instance.loader, gameVersion, loaderVersion)
+    }
+}
+
+internal fun requireProfileRuntime(
+    profile: JsonObject,
+    loader: ModLoader,
+    gameVersion: String,
+    loaderVersion: String
+) {
+    require(profileDeclaresExactLoader(profile, loader, gameVersion, loaderVersion)) {
+        "Downloaded ${loader.displayName} profile does not contain the exact required runtime " +
+            "$loaderVersion for Minecraft $gameVersion"
+    }
+}
+
+internal fun profileDeclaresExactLoader(
+    profile: JsonObject,
+    loader: ModLoader,
+    gameVersion: String,
+    loaderVersion: String
+): Boolean {
+    if (loader == ModLoader.VANILLA) return true
+    val coordinates = (profile["libraries"] as? JsonArray).orEmpty().mapNotNull { element ->
+        runCatching { element.jsonObject["name"]?.jsonPrimitive?.content }.getOrNull()
+    }
+    val expected = when (loader) {
+        ModLoader.FABRIC -> "net.fabricmc:fabric-loader:$loaderVersion"
+        ModLoader.QUILT -> "org.quiltmc:quilt-loader:$loaderVersion"
+        ModLoader.FORGE -> "net.minecraftforge:forge:$gameVersion-$loaderVersion"
+        ModLoader.NEOFORGE -> "net.neoforged:neoforge:$loaderVersion"
+        ModLoader.VANILLA -> return true
+    }
+    return coordinates.any { coordinate ->
+        coordinate == expected || coordinate.startsWith("$expected:")
     }
 }
 

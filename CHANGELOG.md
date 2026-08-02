@@ -1,5 +1,12 @@
 # Changelog
 
+## 11.0.0-alpha13
+
+- Made modpack runtime setup fail closed unless the archive declares one exact loader version, and verify the downloaded/generated profile contains that exact Fabric, Quilt, Forge or NeoForge artifact before marking the instance installed.
+- Replaced mixed screen/window touch arithmetic with one inset-safe SurfaceView mapping and added an atomic native position-plus-button event so a tap cannot activate a stale or different Minecraft control.
+- Replaced Material's remaining purple selection roles with green and moved dark mode to a midnight-black surface palette.
+- Display the exact loader, loader version and base Minecraft version in Home, Library and quick-instance summaries.
+
 ## 11.0.0-alpha12
 
 - Replaced the visible virtual cursor with cursor-free direct taps on Minecraft menus and inventory slots.

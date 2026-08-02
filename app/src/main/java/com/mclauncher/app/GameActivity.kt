@@ -123,7 +123,7 @@ class GameActivity : ComponentActivity() {
         val dataRoot = File(planPath).parentFile?.parentFile ?: filesDir
         val sessionLog = File(dataRoot, "logs/latest-session.log").apply {
             parentFile?.mkdirs()
-            writeText("MCLauncher 11.0 alpha12 session ${System.currentTimeMillis()}\n")
+            writeText("MCLauncher 11.0 alpha13 session ${System.currentTimeMillis()}\n")
         }
 
         setContent {
@@ -439,17 +439,15 @@ class GameActivity : ComponentActivity() {
         ) {
             val view = gameSurfaceView
             if (view != null && view.width > 0 && view.height > 0) {
-                // MotionEvent coordinates reaching Activity.dispatchTouchEvent can
-                // use the decor-window origin while SurfaceView moves through
-                // edge-to-edge/system-bar transitions. Convert both to screen
-                // coordinates before normalizing so the drawn cursor and GLFW hit
-                // target share one rectangle.
+                // Activity MotionEvents and getLocationInWindow use the same
+                // window coordinate space. Do not mix raw screen coordinates into
+                // this calculation: status/navigation insets and Android 16
+                // compatibility transforms can otherwise shift a tap to the next
+                // Minecraft control.
                 val location = IntArray(2)
-                view.getLocationOnScreen(location)
-                val eventToScreenX = event.rawX - event.x
-                val eventToScreenY = event.rawY - event.y
-                val surfaceLeftInEventSpace = location[0] - eventToScreenX
-                val surfaceTopInEventSpace = location[1] - eventToScreenY
+                view.getLocationInWindow(location)
+                val surfaceLeftInEventSpace = location[0].toFloat()
+                val surfaceTopInEventSpace = location[1].toFloat()
                 val localY = event.y - surfaceTopInEventSpace
                 val topControlExclusion = 60f * resources.displayMetrics.density
                 val startsOnOverlayControls =

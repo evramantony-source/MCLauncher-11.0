@@ -46,6 +46,8 @@ object GameInputBridge {
     private var lastTriggerRight = false
     private var directTouchPointerId = MotionEvent.INVALID_POINTER_ID
     private var directTouchButtonDown = false
+    private var directTouchX = 0.5f
+    private var directTouchY = 0.5f
 
     fun configure(bindings: List<ControllerBinding>, sensitivity: Float, controllerDeadZone: Float = 0.18f) {
         controllerBindings = bindings.associateBy(ControllerBinding::androidKeyCode)
@@ -208,10 +210,33 @@ object GameInputBridge {
         if (!NativeLaunchBridge.isAvailable) return
         val normalizedX = x.coerceIn(0f, 1f)
         val normalizedY = y.coerceIn(0f, 1f)
+        updateAbsolutePointer(normalizedX, normalizedY)
+        NativeLaunchBridge.nativeSendCursorPosition(normalizedX.toDouble(), normalizedY.toDouble())
+    }
+
+    private fun directTouchButtonAtNormalized(x: Float, y: Float, pressed: Boolean) {
+        if (!NativeLaunchBridge.isAvailable) return
+        val normalizedX = x.coerceIn(0f, 1f)
+        val normalizedY = y.coerceIn(0f, 1f)
+        directTouchX = normalizedX
+        directTouchY = normalizedY
+        updateAbsolutePointer(normalizedX, normalizedY)
+        synchronized(pressedMouseButtons) {
+            if (pressed) pressedMouseButtons += MOUSE_LEFT else pressedMouseButtons -= MOUSE_LEFT
+        }
+        NativeLaunchBridge.nativeSendTouchButton(
+            x = normalizedX.toDouble(),
+            y = normalizedY.toDouble(),
+            button = MOUSE_LEFT,
+            action = if (pressed) ACTION_PRESS else ACTION_RELEASE,
+            modifiers = 0
+        )
+    }
+
+    private fun updateAbsolutePointer(normalizedX: Float, normalizedY: Float) {
         _pointerState.update { it.copy(x = normalizedX, y = normalizedY) }
         GLFW.cursorX = normalizedX.toDouble()
         GLFW.cursorY = normalizedY.toDouble()
-        NativeLaunchBridge.nativeSendCursorPosition(normalizedX.toDouble(), normalizedY.toDouble())
     }
 
     fun scroll(dx: Float, dy: Float) {
@@ -414,28 +439,39 @@ object GameInputBridge {
     ): Boolean {
         if (!directTouchCaptureEnabled) return false
 
-        fun pointerPosition(pointerIndex: Int): Pair<Float, Float> =
-            (event.getX(pointerIndex) - surfaceLeft) to
-                (event.getY(pointerIndex) - surfaceTop)
+        fun pointerPosition(pointerIndex: Int): DirectTouchPoint = DirectTouchGeometry.map(
+            windowX = event.getX(pointerIndex),
+            windowY = event.getY(pointerIndex),
+            surfaceLeftInWindow = surfaceLeft,
+            surfaceTopInWindow = surfaceTop,
+            surfaceWidth = width,
+            surfaceHeight = height
+        )
 
-        fun movePointer(localX: Float, localY: Float) {
-            cursorPositionNormalized(
-                x = localX / width.coerceAtLeast(1),
-                y = localY / height.coerceAtLeast(1)
+        fun movePointer(point: DirectTouchPoint) {
+            directTouchX = point.normalizedX
+            directTouchY = point.normalizedY
+            cursorPositionNormalized(directTouchX, directTouchY)
+        }
+
+        fun sendTouchButton(point: DirectTouchPoint, pressed: Boolean) {
+            directTouchButtonAtNormalized(
+                x = point.normalizedX,
+                y = point.normalizedY,
+                pressed = pressed
             )
         }
 
         return when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
-                val (localX, localY) = pointerPosition(event.actionIndex)
-                if (localX !in 0f..width.toFloat() || localY !in 0f..height.toFloat()) {
+                val point = pointerPosition(event.actionIndex)
+                if (!point.insideSurface) {
                     false
                 } else {
                     resetDirectTouch(releaseButton = true)
                     directTouchPointerId = event.getPointerId(event.actionIndex)
-                    movePointer(localX, localY)
                     directTouchButtonDown = true
-                    setMouseButtonState(MOUSE_LEFT, true)
+                    sendTouchButton(point, pressed = true)
                     true
                 }
             }
@@ -444,8 +480,7 @@ object GameInputBridge {
                 if (pointerIndex < 0) {
                     false
                 } else {
-                    val (localX, localY) = pointerPosition(pointerIndex)
-                    movePointer(localX, localY)
+                    movePointer(pointerPosition(pointerIndex))
                     true
                 }
             }
@@ -454,10 +489,10 @@ object GameInputBridge {
                     .takeIf { it >= 0 } ?: event.actionIndex
                 val active = directTouchPointerId != MotionEvent.INVALID_POINTER_ID
                 if (active) {
-                    val (localX, localY) = pointerPosition(pointerIndex)
-                    movePointer(localX, localY)
+                    sendTouchButton(pointerPosition(pointerIndex), pressed = false)
+                    directTouchButtonDown = false
                 }
-                resetDirectTouch(releaseButton = true)
+                resetDirectTouch(releaseButton = false)
                 active
             }
             MotionEvent.ACTION_CANCEL -> {
@@ -474,9 +509,9 @@ object GameInputBridge {
                     active &&
                     event.getPointerId(event.actionIndex) == directTouchPointerId
                 ) {
-                    val (localX, localY) = pointerPosition(event.actionIndex)
-                    movePointer(localX, localY)
-                    resetDirectTouch(releaseButton = true)
+                    sendTouchButton(pointerPosition(event.actionIndex), pressed = false)
+                    directTouchButtonDown = false
+                    resetDirectTouch(releaseButton = false)
                 }
                 active
             }
@@ -504,7 +539,7 @@ object GameInputBridge {
 
     private fun resetDirectTouch(releaseButton: Boolean) {
         if (releaseButton && directTouchButtonDown) {
-            setMouseButtonState(MOUSE_LEFT, false)
+            directTouchButtonAtNormalized(directTouchX, directTouchY, pressed = false)
         }
         directTouchButtonDown = false
         directTouchPointerId = MotionEvent.INVALID_POINTER_ID

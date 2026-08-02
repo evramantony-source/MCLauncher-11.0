@@ -34,6 +34,7 @@ import com.mclauncher.app.engine.NativeLaunchBridge
 import com.mclauncher.app.ui.LauncherUiState
 import com.mclauncher.app.ui.components.LauncherCard
 import com.mclauncher.app.ui.components.InstallProgressCard
+import com.mclauncher.app.ui.components.runtimeLabel
 import java.io.File
 
 @Composable
@@ -97,7 +98,7 @@ fun HomeScreen(
                         style = MaterialTheme.typography.headlineSmall
                     )
                     Text(
-                        featured?.let { "Vanilla ${it.versionId} • Java ${it.javaVersion.major}" }
+                        featured?.runtimeLabel(includeJava = true)
                             ?: "Install an official Minecraft version from Discover.",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(top = 6.dp, bottom = 18.dp)

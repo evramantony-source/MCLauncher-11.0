@@ -35,6 +35,14 @@
 - [x] Preserve physical mouse, keyboard, controller and existing in-world controls.
 - [ ] Verify menu taps, inventory drag and all hotbar slots on the Redmi Pad Pro.
 
+## Alpha 13 — exact runtime and calibrated taps
+
+- [x] Reject modpacks that do not declare one exact loader version.
+- [x] Verify the installed profile contains the exact declared loader artifact.
+- [x] Send each direct press/release atomically with its mapped SurfaceView coordinate.
+- [x] Replace purple selection roles with green and use a midnight-black dark palette.
+- [ ] Verify exact modpack runtime and direct taps on the Redmi Pad Pro.
+
 ## After main-menu confirmation
 
 - Pin the observed Java 8 release ZIP digest in `vendor/engine-lock.json`.

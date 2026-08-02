@@ -976,7 +976,12 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         )
         val before = _state.value.snapshot
         updateSnapshot(before.copy(instances = before.instances + pending))
-        val installed = installRuntime(pending, version, spec.loaderVersion)
+        val installed = installRuntime(
+            instance = pending,
+            version = version,
+            requestedLoaderVersion = spec.exactLoaderVersion(),
+            requireExactLoader = true
+        )
         val current = _state.value.snapshot
         updateSnapshot(current.copy(instances = current.instances.map { if (it.id == id) installed else it }))
         return installed
@@ -994,7 +999,8 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     private suspend fun installRuntime(
         instance: MinecraftInstance,
         version: MojangVersionSummary,
-        requestedLoaderVersion: String?
+        requestedLoaderVersion: String?,
+        requireExactLoader: Boolean = false
     ): MinecraftInstance {
         if (instance.loader == ModLoader.VANILLA) {
             installer.install(version) { progress -> _state.update { it.copy(installProgress = progress) } }
@@ -1002,7 +1008,11 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         }
 
         val selectedLoaderVersion = requestedLoaderVersion
-            ?: loaderInstaller.available(instance.loader, version.id).firstOrNull()?.version
+            ?: if (requireExactLoader) {
+                error("The modpack does not declare an exact ${instance.loader.displayName} version")
+            } else {
+                loaderInstaller.available(instance.loader, version.id).firstOrNull()?.version
+            }
             ?: error("No compatible ${instance.loader.displayName} version was found")
         var loaderInstance = loaderInstaller.installProfile(
             instance.copy(versionId = version.id, loaderVersion = selectedLoaderVersion),
@@ -1034,6 +1044,13 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
             }
             require(exitCode == 0) { "${instance.loader.displayName} installer exited with code $exitCode" }
             loaderInstance = loaderInstaller.finalizeInstaller(loaderInstance, selectedLoaderVersion)
+        }
+        if (loaderInstance.installed) {
+            loaderInstaller.verifyInstalledProfile(
+                instance = loaderInstance,
+                gameVersion = version.id,
+                loaderVersion = selectedLoaderVersion
+            )
         }
         return loaderInstance
     }

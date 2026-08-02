@@ -73,7 +73,26 @@ data class PackRuntimeSpec(
     val minecraftVersion: String,
     val loader: ModLoader,
     val loaderVersion: String? = null
-)
+) {
+    fun exactLoaderVersion(): String? = when (loader) {
+        ModLoader.VANILLA -> null
+        else -> loaderVersion?.trim()?.takeIf(String::isNotEmpty)?.let(::requireExactVersion)
+            ?: error("The modpack does not declare an exact ${loader.displayName} version")
+    }
+
+    private fun requireExactVersion(declared: String): String {
+        val value = declared.trim()
+        require(value.isNotEmpty()) {
+            "The modpack does not declare an exact ${loader.displayName} version"
+        }
+        require(
+            value.matches(Regex("[0-9A-Za-z][0-9A-Za-z._+\\-]*"))
+        ) {
+            "The modpack declares a ${loader.displayName} version range ($value), not one exact version"
+        }
+        return value
+    }
+}
 
 class ModrinthPackInstaller(
     private val layout: MinecraftLayout,
@@ -183,25 +202,30 @@ class ModrinthPackInstaller(
         require(instance.loader == spec.loader) {
             "Pack requires ${spec.loader.displayName}, but the selected instance uses ${instance.loader.displayName}"
         }
-        if (!spec.loaderVersion.isNullOrBlank()) require(instance.loaderVersion == spec.loaderVersion) {
-            "Pack requires ${spec.loader.displayName} ${spec.loaderVersion}, but the instance uses ${instance.loaderVersion ?: "no loader version"}"
+        val exactLoaderVersion = spec.exactLoaderVersion()
+        if (exactLoaderVersion != null) require(instance.loaderVersion == exactLoaderVersion) {
+            "Pack requires ${spec.loader.displayName} $exactLoaderVersion, but the instance uses ${instance.loaderVersion ?: "no loader version"}"
         }
     }
 
     private fun runtimeSpec(dependencies: Map<String, String>): PackRuntimeSpec {
-        val minecraft = dependencies["minecraft"]?.takeIf(String::isNotBlank)
+        val minecraft = dependencies["minecraft"]?.trim()?.takeIf(String::isNotBlank)
             ?: error("Modrinth pack does not declare a Minecraft version")
-        val loaderEntry = listOf(
+        val loaderEntries = listOf(
             "fabric-loader" to ModLoader.FABRIC,
             "quilt-loader" to ModLoader.QUILT,
             "forge" to ModLoader.FORGE,
             "neoforge" to ModLoader.NEOFORGE
-        ).firstOrNull { dependencies.containsKey(it.first) }
+        ).filter { dependencies.containsKey(it.first) }
+        require(loaderEntries.size <= 1) {
+            "Modrinth pack declares multiple loaders: ${loaderEntries.joinToString { it.second.displayName }}"
+        }
+        val loaderEntry = loaderEntries.singleOrNull()
         return PackRuntimeSpec(
             minecraftVersion = minecraft,
             loader = loaderEntry?.second ?: ModLoader.VANILLA,
-            loaderVersion = loaderEntry?.first?.let { dependencies[it] }?.takeIf(String::isNotBlank)
-        )
+            loaderVersion = loaderEntry?.first?.let { dependencies[it]?.trim() }
+        ).also(PackRuntimeSpec::exactLoaderVersion)
     }
 }
 
@@ -232,8 +256,9 @@ class CurseForgePackInstaller(
             require(instance.loader == spec.loader) {
                 "Pack requires ${spec.loader.displayName}, but the selected instance uses ${instance.loader.displayName}"
             }
-            if (!spec.loaderVersion.isNullOrBlank()) require(instance.loaderVersion == spec.loaderVersion) {
-                "Pack requires ${spec.loader.displayName} ${spec.loaderVersion}, but the instance uses ${instance.loaderVersion ?: "no loader version"}"
+            val exactLoaderVersion = spec.exactLoaderVersion()
+            if (exactLoaderVersion != null) require(instance.loaderVersion == exactLoaderVersion) {
+                "Pack requires ${spec.loader.displayName} $exactLoaderVersion, but the instance uses ${instance.loaderVersion ?: "no loader version"}"
             }
             extractDirectory(zip, manifest.overrides.trim('/') + "/", layout.instanceGameDirectory(instance.gameDirectoryName))
             manifest
@@ -252,10 +277,10 @@ class CurseForgePackInstaller(
             else -> error("Unsupported CurseForge loader ${required.id}")
         }
         return PackRuntimeSpec(
-            minecraftVersion = manifest.minecraft.version,
+            minecraftVersion = manifest.minecraft.version.trim(),
             loader = loader,
             loaderVersion = required?.id?.substringAfter('-', missingDelimiterValue = "")?.takeIf(String::isNotBlank)
-        )
+        ).also(PackRuntimeSpec::exactLoaderVersion)
     }
 }
 

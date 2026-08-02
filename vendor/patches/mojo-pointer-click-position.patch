@@ -202,7 +202,7 @@ diff --git a/glfw/src/android_window.c b/glfw/src/android_window.c
  }
 
  JNIEXPORT void JNICALL
-@@ -1395,11 +1426,15 @@ Java_git_artdeell_dnbootstrap_glfw_GLFW_sendRawKeyEvent(JNIEnv *env, jclass claz
+@@ -1395,14 +1426,37 @@ Java_git_artdeell_dnbootstrap_glfw_GLFW_sendRawKeyEvent(JNIEnv *env, jclass claz
  JNIEXPORT void JNICALL
  Java_git_artdeell_dnbootstrap_glfw_GLFW_sendMouseEvent(JNIEnv *env, jclass clazz,
                                                         jint glfw_mouse_key, jint state, jint mods) {
@@ -219,3 +219,26 @@ diff --git a/glfw/src/android_window.c b/glfw/src/android_window.c
      android_send_event(&event);
 +    pthread_mutex_unlock(&cursor_request_mutex);
  }
++
++JNIEXPORT void JNICALL
++Java_git_artdeell_dnbootstrap_glfw_GLFW_sendMouseEventAt0(JNIEnv *env, jclass clazz,
++                                                          jint glfw_mouse_key, jint state, jint mods,
++                                                          jdouble cursor_x, jdouble cursor_y) {
++    pthread_mutex_lock(&cursor_request_mutex);
++    cursor_requested.x = cursor_x;
++    cursor_requested.y = cursor_y;
++    input_event_t event = {
++            .type = GLFW_ANDROID_EVENT_TYPE_MOUSE_BUTTONS,
++            .m.button = glfw_mouse_key,
++            .m.state = state,
++            .m.mods = mods,
++            .m.cursor_x = cursor_x,
++            .m.cursor_y = cursor_y
++    };
++    android_send_event(&event);
++    pthread_mutex_unlock(&cursor_request_mutex);
++}
+-
++
+ JNIEXPORT void JNICALL
+ Java_git_artdeell_dnbootstrap_glfw_GLFW_sendBulkUnicodeEvent(JNIEnv *env, jclass clazz,

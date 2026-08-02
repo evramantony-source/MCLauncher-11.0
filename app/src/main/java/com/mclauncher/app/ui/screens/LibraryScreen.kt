@@ -34,6 +34,7 @@ import com.mclauncher.app.ui.LauncherUiState
 import com.mclauncher.app.ui.components.LauncherCard
 import com.mclauncher.app.ui.components.InstallProgressCard
 import com.mclauncher.app.ui.components.PageHeader
+import com.mclauncher.app.ui.components.runtimeLabel
 import java.io.File
 
 @Composable
@@ -123,7 +124,7 @@ fun LibraryScreen(
                         Column(modifier = Modifier.weight(1f)) {
                             Text((if (instance.favorite) "★ " else "") + instance.name, style = MaterialTheme.typography.titleMedium)
                             Text(
-                                "${instance.versionId} • Java ${instance.javaVersion.major} • ${if (instance.installed) "Installed" else "Incomplete"}",
+                                "${instance.runtimeLabel(includeJava = true)} • ${if (instance.installed) "Installed" else "Incomplete"}",
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 style = MaterialTheme.typography.bodyMedium
                             )

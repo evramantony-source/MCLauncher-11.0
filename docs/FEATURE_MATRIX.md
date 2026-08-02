@@ -1,10 +1,10 @@
-# MCLauncher 11.0 Alpha 12 feature matrix
+# MCLauncher 11.0 Alpha 13 feature matrix
 
 | Area | Current status |
 |---|---|
 | Mojang version/client/library/assets download | Source implemented; JVM tests |
-| Vanilla, Fabric and Quilt | Source implemented; device validation required |
-| Forge/NeoForge installer execution | Source implemented; device validation required |
+| Vanilla, Fabric and Quilt | Exact loader artifact verified before install completes; device validation required |
+| Forge/NeoForge installer execution | Exact generated loader profile verified; device validation required |
 | Offline and Microsoft accounts | Source implemented |
 | Separate instances and favourite/recent ordering | Source implemented; per-instance launch settings included |
 | Modrinth content | Browsing/install/update, icons and installed state implemented |
@@ -18,6 +18,6 @@
 | Optional renderer/driver packs | Manifest-driven custom packs plus verified one-tap packages with canonical built-in identity; missing saved choices fall back safely |
 | Touch | Cursor-free direct menu/inventory taps, held finger drag, tappable nine-slot hotbar, editable controls, swipe look and optional look stick; device proof required |
 | Keyboard, mouse, controller and gyro | Raw keyboard path, absolute/relative mouse and menu/gamepad contexts implemented; device proof required |
-| Launcher theme | System, dark and light modes implemented |
+| Launcher theme | System, green midnight-black dark mode and light mode implemented |
 | FPS limit and performance settings | Global and per-instance settings implemented |
 | Logs/crash diagnosis/screenshots | Source implemented |

@@ -146,8 +146,8 @@ if openltw.get("patch") != "vendor/patches/ltw-minecraft-26.2.patch":
 
 require_contains(
     "app/build.gradle.kts",
-    'versionName = "11.0.0-alpha12"',
-    'versionCode = 22',
+    'versionName = "11.0.0-alpha13"',
+    'versionCode = 23',
     'mclauncherAbi',
     'abiFilters += targetAbi',
     'CURSEFORGE_API_KEY',
@@ -160,7 +160,7 @@ require_contains(
     "scripts/source_sanity.py",
     'assembleNoruntimeDebug',
     'assembleDebug -PmclauncherAbi=',
-    'MCLauncher-11.0-alpha12-',
+    'MCLauncher-11.0-alpha13-',
     'mojo-pointer-click-position.patch',
     "Build pinned OpenLTW with Minecraft 26.2 compatibility",
     "--ltw-aar",
@@ -177,7 +177,7 @@ require_contains(
     'No Android LWJGL substitution is defined',
     'prepareAndroidNatives',
     'applyMinecraftOptions',
-    '-Dmclauncher.version=11.0.0-alpha12',
+    '-Dmclauncher.version=11.0.0-alpha13',
     'authSession?.accessToken ?: "0"',
     'AccountType.MICROSOFT) "msa" else "legacy"',
 )
@@ -190,6 +190,7 @@ require_contains(
     "memory_order_release",
     "_glfwInputCursorPos",
     "_glfwInputMouseClick",
+    "sendMouseEventAt0",
 )
 require_contains(
     "app/src/main/java/com/mclauncher/app/engine/NativeEngineCoordinator.kt",
@@ -207,6 +208,8 @@ require_contains(
     "app/src/main/cpp/native_engine.cpp",
     'getenv("MCLAUNCHER_RENDERER_TOKEN")',
     'unsetenv("POJAV_RENDERER")',
+    'gMojoSendMouseAt',
+    'nativeSendTouchButton',
 )
 require_contains(
     "app/build.gradle.kts",
@@ -370,6 +373,7 @@ require_contains(
     'handleDirectTouch',
     'directTouchCaptureEnabled',
     'directTouchButtonDown',
+    'nativeSendTouchButton',
     'MOUSE_CLICK_HOLD_MILLIS = 33L',
     'fun clickMouseButton(button:',
 )
@@ -387,6 +391,30 @@ require_contains(
     "SOURCE_TOUCHSCREEN",
     "launcherOverlayOwnsTouch",
     "!gameMenuRequested",
+    "getLocationInWindow",
+)
+require_absent(
+    "app/src/main/java/com/mclauncher/app/GameActivity.kt",
+    "event.rawX - event.x",
+    "event.rawY - event.y",
+)
+require_contains(
+    "core-minecraft/src/main/kotlin/com/mclauncher/minecraft/ModpackInstallers.kt",
+    "fun exactLoaderVersion()",
+    "does not declare an exact",
+    "version range",
+)
+require_contains(
+    "core-minecraft/src/main/kotlin/com/mclauncher/minecraft/LoaderInstaller.kt",
+    "profileDeclaresExactLoader",
+    "verifyInstalledProfile",
+    "net.fabricmc:fabric-loader:",
+)
+require_contains(
+    "app/src/main/java/com/mclauncher/app/ui/theme/MCLauncherTheme.kt",
+    "secondaryContainer = Color(0xFF124326)",
+    "tertiaryContainer = Color(0xFF124326)",
+    "background = Color(0xFF06080B)",
 )
 require_contains(
     "app/src/main/cpp/native_engine.cpp",

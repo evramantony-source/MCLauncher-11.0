@@ -10,6 +10,7 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 
 class ModpackRuntimeSpecTest {
     @Test
@@ -70,6 +71,62 @@ class ModpackRuntimeSpecTest {
             assertEquals("1.20.1", spec.minecraftVersion)
             assertEquals(ModLoader.FORGE, spec.loader)
             assertEquals("47.2.0", spec.loaderVersion)
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun rejectsModrinthLoaderWithoutAnExactVersion() = runBlocking {
+        val root = Files.createTempDirectory("mclauncher-mrpack-no-loader-version").toFile()
+        try {
+            val archive = File(root, "pack.mrpack")
+            zipText(
+                archive,
+                "modrinth.index.json",
+                """
+                {
+                  "name": "Broken Pack",
+                  "files": [],
+                  "dependencies": {
+                    "minecraft": "1.20.1",
+                    "fabric-loader": ""
+                  }
+                }
+                """.trimIndent()
+            )
+
+            assertFailsWith<IllegalStateException> {
+                ModrinthPackInstaller(MinecraftLayout(root)).inspect(archive)
+            }
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun rejectsModrinthLoaderVersionRangesInsteadOfPickingLatest() = runBlocking {
+        val root = Files.createTempDirectory("mclauncher-mrpack-loader-range").toFile()
+        try {
+            val archive = File(root, "pack.mrpack")
+            zipText(
+                archive,
+                "modrinth.index.json",
+                """
+                {
+                  "name": "Ranged Pack",
+                  "files": [],
+                  "dependencies": {
+                    "minecraft": "1.20.1",
+                    "fabric-loader": ">=0.15.11"
+                  }
+                }
+                """.trimIndent()
+            )
+
+            assertFailsWith<IllegalArgumentException> {
+                ModrinthPackInstaller(MinecraftLayout(root)).inspect(archive)
+            }
         } finally {
             root.deleteRecursively()
         }

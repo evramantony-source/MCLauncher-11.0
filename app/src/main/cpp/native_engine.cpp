@@ -57,6 +57,7 @@ using MojoSendMouse = void (*)(JNIEnv*, jclass, jint, jint, jint);
 using MojoSendUnicode = void (*)(JNIEnv*, jclass, jstring, jint);
 using MojoSendScroll = void (*)(JNIEnv*, jclass, jdouble, jdouble);
 using MojoSendMousePosition = void (*)(JNIEnv*, jclass, jdouble, jdouble);
+using MojoSendMouseAt = void (*)(JNIEnv*, jclass, jint, jint, jint, jdouble, jdouble);
 MojoInitialize gMojoInitialize = nullptr;
 MojoSurfaceCreated gMojoSurfaceCreated = nullptr;
 MojoSurfaceDestroyed gMojoSurfaceDestroyed = nullptr;
@@ -67,10 +68,12 @@ MojoSendMouse gMojoSendMouse = nullptr;
 MojoSendUnicode gMojoSendUnicode = nullptr;
 MojoSendScroll gMojoSendScroll = nullptr;
 MojoSendMousePosition gMojoSendMousePosition = nullptr;
+MojoSendMouseAt gMojoSendMouseAt = nullptr;
 bool gMojoGlfwAvailable = false;
 bool gMojoSurfaceAttached = false;
 std::atomic<bool> gLoggedMouseButtonInput{false};
 std::atomic<bool> gLoggedAbsolutePointerInput{false};
+std::atomic<bool> gLoggedDirectTouchInput{false};
 
 std::atomic<bool> gLaunchRunning{false};
 std::atomic<bool> gPipeReaderRunning{false};
@@ -223,10 +226,12 @@ void initializeMojoGlfw(JNIEnv* env, const std::string& path, void* handle) {
         dlsym(handle, "Java_git_artdeell_dnbootstrap_glfw_GLFW_sendScrollEvent"));
     gMojoSendMousePosition = reinterpret_cast<MojoSendMousePosition>(
         dlsym(handle, "Java_git_artdeell_dnbootstrap_glfw_GLFW_sendMousePosition0__DD"));
+    gMojoSendMouseAt = reinterpret_cast<MojoSendMouseAt>(
+        dlsym(handle, "Java_git_artdeell_dnbootstrap_glfw_GLFW_sendMouseEventAt0"));
     gMojoGlfwAvailable = gMojoInitialize && gMojoSurfaceCreated && gMojoSurfaceDestroyed &&
                          gMojoSendKey && gMojoSendRawKey &&
                          gMojoSendMouse && gMojoSendUnicode && gMojoSendScroll &&
-                         gMojoSendMousePosition;
+                         gMojoSendMousePosition && gMojoSendMouseAt;
     if (gMojoGlfwAvailable) {
         jclass glfwClass = env->FindClass("git/artdeell/dnbootstrap/glfw/GLFW");
         if (glfwClass == nullptr) {
@@ -1043,6 +1048,65 @@ Java_com_mclauncher_app_engine_NativeLaunchBridge_nativeSendCursorPosition(
         if (!env->ExceptionCheck()) return;
         env->ExceptionClear();
     }
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_mclauncher_app_engine_NativeLaunchBridge_nativeSendTouchButton(
+        JNIEnv* env, jobject, jdouble x, jdouble y,
+        jint button, jint action, jint modifiers) {
+    const double cursorX = std::clamp(x, 0.0, 1.0);
+    const double cursorY = std::clamp(y, 0.0, 1.0);
+    {
+        std::lock_guard<std::mutex> cursorLock(gCursorMutex);
+        gForwardCursorX = cursorX;
+        gForwardCursorY = cursorY;
+    }
+    if (!gLoggedDirectTouchInput.exchange(true)) {
+        char detail[160];
+        std::snprintf(
+            detail,
+            sizeof(detail),
+            "First atomic direct-touch event reached GLFW at normalized %.4f,%.4f",
+            cursorX,
+            cursorY
+        );
+        pushLog(detail);
+    }
+    if (gMojoGlfwAvailable && gMojoSendMouseAt != nullptr) {
+        gMojoSendMouseAt(env, nullptr, button, action, modifiers, cursorX, cursorY);
+        return;
+    }
+    if (gUpstreamAndroidJniInitialized &&
+        gCallbackSendCursorPos != nullptr &&
+        gCallbackSendMouseButton != nullptr) {
+        env->CallStaticVoidMethod(
+            gCallbackBridgeClass,
+            gCallbackSendCursorPos,
+            static_cast<jfloat>(cursorX),
+            static_cast<jfloat>(cursorY)
+        );
+        if (env->ExceptionCheck()) {
+            env->ExceptionClear();
+        } else {
+            env->CallStaticVoidMethod(
+                gCallbackBridgeClass,
+                gCallbackSendMouseButton,
+                button,
+                action,
+                modifiers
+            );
+            if (!env->ExceptionCheck()) return;
+            env->ExceptionClear();
+        }
+    }
+    InputEvent event{};
+    event.type = InputEventType::MouseButton;
+    event.code = button;
+    event.action = action;
+    event.modifiers = modifiers;
+    event.x = cursorX;
+    event.y = cursorY;
+    pushInput(event);
 }
 
 extern "C" JNIEXPORT void JNICALL

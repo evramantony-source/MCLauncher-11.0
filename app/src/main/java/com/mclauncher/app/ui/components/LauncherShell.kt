@@ -313,7 +313,7 @@ private fun QuickInstanceButton(instance: MinecraftInstance, onClick: () -> Unit
                 overflow = TextOverflow.Ellipsis
             )
             Text(
-                text = instance.versionId,
+                text = instance.runtimeLabel(),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,

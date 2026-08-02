@@ -46,6 +46,13 @@ object NativeLaunchBridge {
     external fun nativeSendMouseButton(button: Int, action: Int, modifiers: Int)
     external fun nativeSendCursorDelta(dx: Float, dy: Float)
     external fun nativeSendCursorPosition(x: Double, y: Double)
+    external fun nativeSendTouchButton(
+        x: Double,
+        y: Double,
+        button: Int,
+        action: Int,
+        modifiers: Int
+    )
     external fun nativeSyncPointerState(x: Double, y: Double, grabbing: Boolean)
     external fun nativeSendScroll(dx: Float, dy: Float)
     external fun nativeSendGamepadAxis(axis: Int, value: Float)
