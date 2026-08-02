@@ -146,8 +146,8 @@ if openltw.get("patch") != "vendor/patches/ltw-minecraft-26.2.patch":
 
 require_contains(
     "app/build.gradle.kts",
-    'versionName = "11.0.0-alpha09"',
-    'versionCode = 19',
+    'versionName = "11.0.0-alpha10"',
+    'versionCode = 20',
     'mclauncherAbi',
     'abiFilters += targetAbi',
     'CURSEFORGE_API_KEY',
@@ -160,7 +160,7 @@ require_contains(
     "scripts/source_sanity.py",
     'assembleNoruntimeDebug',
     'assembleDebug -PmclauncherAbi=',
-    'MCLauncher-11.0-alpha09-',
+    'MCLauncher-11.0-alpha10-',
     'mojo-pointer-click-position.patch',
     "Build pinned OpenLTW with Minecraft 26.2 compatibility",
     "--ltw-aar",
@@ -177,7 +177,9 @@ require_contains(
     'No Android LWJGL substitution is defined',
     'prepareAndroidNatives',
     'applyMinecraftOptions',
-    '-Dmclauncher.version=11.0.0-alpha09',
+    '-Dmclauncher.version=11.0.0-alpha10',
+    'authSession?.accessToken ?: "0"',
+    'AccountType.MICROSOFT) "msa" else "legacy"',
 )
 require_contains(
     "vendor/patches/mojo-pointer-click-position.patch",
@@ -218,6 +220,24 @@ require_contains(
 require_contains(
     "app/src/main/java/com/mclauncher/app/ui/screens/AccountsScreen.kt",
     "BuildConfig.PUBLIC_ALPHA_SIGNER",
+)
+require_contains(
+    "app/src/main/java/com/mclauncher/app/engine/MCLauncherAndroidEngine.kt",
+    "interface AndroidLauncherEngine",
+    'override val id: String = "mclauncher-android-native-v1"',
+    "launchPlanBuilder.build",
+    "launchPlanBuilder.save",
+)
+require_contains(
+    "app/src/main/java/com/mclauncher/app/ui/components/LauncherShell.kt",
+    'text = "QUICK INSTANCES"',
+    'LauncherDestination("discover", "Browse"',
+    "quickInstances.take(6)",
+)
+require_contains(
+    "docs/MODRINTH_ANDROID_PORT.md",
+    "8b753a52ad5ca2a820bc4189e207728e405d7870",
+    "OfflinePlayer:<username>",
 )
 require_contains(
     "app/src/main/java/com/mclauncher/app/engine/NativeEngineCoordinator.kt",

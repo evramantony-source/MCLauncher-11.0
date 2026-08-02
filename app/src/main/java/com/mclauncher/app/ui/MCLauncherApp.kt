@@ -91,13 +91,16 @@ fun MCLauncherApp(launcherViewModel: LauncherViewModel = viewModel()) {
     MCLauncherTheme(themeMode = state.snapshot.settings.themeMode) {
         LauncherShell(
             currentRoute = currentRoute,
+            quickInstances = state.orderedInstances,
+            activeAccountName = state.selectedAccount?.username,
             onNavigate = { destination ->
                 navController.navigate(destination.route) {
                     popUpTo(LauncherDestination.Home.route) { saveState = true }
                     launchSingleTop = true
                     restoreState = true
                 }
-            }
+            },
+            onOpenInstance = { navController.navigate("instance/$it") }
         ) {
             NavHost(navController = navController, startDestination = LauncherDestination.Home.route) {
             composable(LauncherDestination.Home.route) {

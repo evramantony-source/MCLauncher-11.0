@@ -27,4 +27,15 @@ class OfflineAccountFactoryTest {
         assertTrue(OfflineAccountFactory.validateUsername("x").isFailure)
         assertTrue(OfflineAccountFactory.validateUsername("spaces fail").isFailure)
     }
+
+    @Test
+    fun `local profile never carries an online identity`() {
+        val account = OfflineAccountFactory.create("LocalTester", nowEpochMs = 1234L)
+
+        assertEquals(AccountType.OFFLINE, account.type)
+        assertEquals(account.id, account.profileId)
+        assertEquals(null, account.xuid)
+        assertEquals(null, account.clientId)
+        assertEquals(null, account.tokenExpiresAtEpochMs)
+    }
 }

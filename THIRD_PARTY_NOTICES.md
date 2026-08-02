@@ -4,6 +4,9 @@ MCLauncher's interface, storage, instance management, account flow, download orc
 
 The standalone APK build uses third-party components including:
 
+- Modrinth App source and UI workflow reference — GPL-3.0-only, reviewed at
+  commit `8b753a52ad5ca2a820bc4189e207728e405d7870`. MCLauncher does not include
+  Modrinth's restricted name, logo, wordmark or other branding assets.
 - MojoLauncher Android launch-engine portions — LGPL-3.0; built from the exact commit in `vendor/engine-lock.json`.
 - dnbootstrap/Android GLFW — its upstream GLFW licence and component notices.
 - Android OpenJDK runtime packages for Java 8, 17, 21 and 25 — their upstream OpenJDK/GPL-with-Classpath-Exception terms and included notices.

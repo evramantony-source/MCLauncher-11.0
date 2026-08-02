@@ -1,5 +1,12 @@
 # Changelog
 
+## 11.0.0-alpha10
+
+- Added a responsive Modrinth-style tablet sidebar with primary navigation, quick instances, active account and settings while retaining compact Android bottom navigation.
+- Added an explicit `AndroidLauncherEngine` boundary so the application shell prepares launches through MCLauncher's proven Android-native engine rather than Modrinth's desktop process launcher.
+- Preserved deterministic local/offline accounts as first-class selectable profiles for single-player and offline-mode testing.
+- Recorded the exact Modrinth App upstream revision used for workflow and information-architecture mapping, while excluding its restricted name, logo and branding assets.
+
 ## 11.0.0-alpha09
 
 - Queued every virtual-mouse position through GLFW before its matching button event, keeping Minecraft hover and the visible cursor in the same coordinate stream.

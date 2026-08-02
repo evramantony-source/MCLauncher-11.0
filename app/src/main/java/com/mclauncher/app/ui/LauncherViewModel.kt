@@ -16,6 +16,7 @@ import com.mclauncher.app.engine.ComponentPackage
 import com.mclauncher.app.engine.ComponentPackageType
 import com.mclauncher.app.engine.EngineEnvironmentState
 import com.mclauncher.app.engine.EnginePackManager
+import com.mclauncher.app.engine.MCLauncherAndroidEngine
 import com.mclauncher.app.engine.NativeEngineCoordinator
 import com.mclauncher.app.engine.NativeLaunchBridge
 import com.mclauncher.app.engine.PackageCatalogManager
@@ -117,6 +118,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     private val installer = VanillaInstaller(layout)
     private val loaderInstaller = LoaderInstaller(layout)
     private val launchPlanBuilder = LaunchPlanBuilder(layout)
+    private val launcherEngine = MCLauncherAndroidEngine(launchPlanBuilder)
     private val enginePackManager = EnginePackManager(app, layout)
     private val modrinth = ModrinthRepository(layout)
     private val curseForge = CurseForgeRepository(layout)
@@ -818,14 +820,13 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                     _state.update { it.copy(engineOperation = null) }
                 }
                 val authSession = if (account.type == AccountType.MICROSOFT) microsoftAuth.refresh(account) else null
-                val plan = launchPlanBuilder.build(
+                launcherEngine.prepareLaunch(
                     instance = instance,
                     account = account,
                     settings = effectiveSettings,
                     authSession = authSession,
                     architecture = architecture
                 )
-                launchPlanBuilder.save(plan)
             }.onSuccess { file ->
                 val now = System.currentTimeMillis()
                 val current = _state.value.snapshot
