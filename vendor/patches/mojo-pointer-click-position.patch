@@ -1,18 +1,106 @@
 diff --git a/glfw/src/android_input_queue.c b/glfw/src/android_input_queue.c
 --- a/glfw/src/android_input_queue.c
 +++ b/glfw/src/android_input_queue.c
-@@ -38,7 +38,10 @@ void _input_queue_wait_unlock(queue_top_t* top) {
- 
- void _input_queue_push(queue_top_t* top, input_event_t* event) {
-     queue_t *current = &top->queues[atomic_load(&top->index)];
--    uint16_t ev_idx = atomic_fetch_add(&current->events_total, 1);
-+    uint16_t ev_idx = atomic_load(&current->events_total);
-+    while(ev_idx < 512 &&
-+          !atomic_compare_exchange_weak(&current->events_total, &ev_idx, ev_idx + 1)) {}
-+    if(ev_idx >= 512) return;
-     input_event_t *put_event = &current->events[ev_idx];
-     memcpy(put_event, event, sizeof(input_event_t));
+@@ -8,8 +8,9 @@
+ #include "android_input_queue.h"
+
+ bool _input_queue_init(queue_top_t* top) {
+-    top->index = 0;
+-    for(int i = 0; i < 2; i++) top->queues[i].events_total = 0;
++    atomic_store(&top->index, 0);
++    for(int i = 0; i < 2; i++)
++        atomic_store(&top->queues[i].events_total, 0);
+     if(pthread_mutex_init(&top->wait_mutex, NULL) != 0) return false;
+
+     pthread_condattr_t attr;
+@@ -33,42 +34,70 @@ void _input_queue_destroy(queue_top_t* top) {
+ }
+
+ void _input_queue_wait_unlock(queue_top_t* top) {
++    pthread_mutex_lock(&top->wait_mutex);
      pthread_cond_broadcast(&top->wait_cond);
++    pthread_mutex_unlock(&top->wait_mutex);
+ }
+
+ void _input_queue_push(queue_top_t* top, input_event_t* event) {
+-    queue_t *current = &top->queues[atomic_load(&top->index)];
+-    uint16_t ev_idx = atomic_fetch_add(&current->events_total, 1);
+-    input_event_t *put_event = &current->events[ev_idx];
+-    memcpy(put_event, event, sizeof(input_event_t));
+-    pthread_cond_broadcast(&top->wait_cond);
++    pthread_mutex_lock(&top->wait_mutex);
++    queue_t *current = &top->queues[atomic_load_explicit(
++            &top->index, memory_order_relaxed)];
++    uint16_t ev_idx = atomic_load_explicit(
++            &current->events_total, memory_order_relaxed);
++    if(ev_idx < 512) {
++        // Publish the count only after the complete event is visible. The old
++        // atomic_fetch_add made the GLFW thread race an unfinished memcpy and
++        // could also reset a producer's newly queued mouse position to zero.
++        memcpy(&current->events[ev_idx], event, sizeof(input_event_t));
++        atomic_store_explicit(
++                &current->events_total, ev_idx + 1, memory_order_release);
++        pthread_cond_broadcast(&top->wait_cond);
++    }
++    pthread_mutex_unlock(&top->wait_mutex);
+ }
+
+ void _input_queue_dequeue(queue_top_t* top, dequeue_callback_t cb) {
+-    // Atomically switch queue 0 to 1 (or 1 to 0) by flipping the bit
+-    queue_t *current = &top->queues[atomic_fetch_xor(&top->index, 0b1)];
+-    for(uint16_t i = 0; i < current->events_total; i++) {
++    // Switching buffers and detaching their published count must be atomic
++    // with respect to producers. Callbacks run after unlocking so Android UI
++    // input never waits on Minecraft's event handlers.
++    pthread_mutex_lock(&top->wait_mutex);
++    unsigned char current_index = atomic_load_explicit(
++            &top->index, memory_order_relaxed);
++    queue_t *current = &top->queues[current_index];
++    atomic_store_explicit(
++            &top->index, current_index ^ 0b1, memory_order_relaxed);
++    uint16_t events_total = atomic_exchange_explicit(
++            &current->events_total, 0, memory_order_acquire);
++    pthread_mutex_unlock(&top->wait_mutex);
++
++    for(uint16_t i = 0; i < events_total; i++) {
+         cb(&current->events[i]);
+     }
+-    current->events_total = 0;
+ }
+
+ void _input_queue_timedwait(queue_top_t* top, dequeue_callback_t cb, struct timespec* timeout) {
+-    queue_t *current = &top->queues[top->index];
+-    if(current->events_total == 0) {
+-        pthread_mutex_lock(&top->wait_mutex);
++    pthread_mutex_lock(&top->wait_mutex);
++    queue_t *current = &top->queues[atomic_load_explicit(
++            &top->index, memory_order_relaxed)];
++    if(atomic_load_explicit(
++            &current->events_total, memory_order_acquire) == 0) {
+         pthread_cond_timedwait(&top->wait_cond, &top->wait_mutex, timeout);
+-        pthread_mutex_unlock(&top->wait_mutex);
+     }
++    pthread_mutex_unlock(&top->wait_mutex);
+     _input_queue_dequeue(top, cb);
+ }
+
+ void _input_queue_wait(queue_top_t* top, dequeue_callback_t cb) {
+-    queue_t *current = &top->queues[top->index];
+-    if(current->events_total == 0) {
+-        pthread_mutex_lock(&top->wait_mutex);
++    pthread_mutex_lock(&top->wait_mutex);
++    queue_t *current = &top->queues[atomic_load_explicit(
++            &top->index, memory_order_relaxed)];
++    while(atomic_load_explicit(
++            &current->events_total, memory_order_acquire) == 0) {
+         pthread_cond_wait(&top->wait_cond, &top->wait_mutex);
+-        pthread_mutex_unlock(&top->wait_mutex);
++        current = &top->queues[atomic_load_explicit(
++                &top->index, memory_order_relaxed)];
+     }
++    pthread_mutex_unlock(&top->wait_mutex);
+     _input_queue_dequeue(top, cb);
+ }
 diff --git a/glfw/src/android_input_queue.h b/glfw/src/android_input_queue.h
 --- a/glfw/src/android_input_queue.h
 +++ b/glfw/src/android_input_queue.h
@@ -34,19 +122,35 @@ diff --git a/glfw/src/android_window.c b/glfw/src/android_window.c
  #define GLFW_ANDROID_EVENT_TYPE_MOUSE_SCROLL 5
  #define GLFW_ANDROID_EVENT_TYPE_JOYSTICK_STATE 6
 +#define GLFW_ANDROID_EVENT_TYPE_MOUSE_POSITION 7
- 
+
  #define FLAG_MOUSE_POS (1 >> 0)
  #define FLAG_APP_FOCUS (1 >> 1)
-@@ -236,6 +237,8 @@ static int translate_android_action_button(int32_t actionButton) {
- 
+@@ -80,6 +81,15 @@ static struct {
+     double x, y;
+ } cursor_unscaled;
+
++// Input producers and the GLFW consumer run on different threads. Keep the
++// latest requested Android cursor separate from the position most recently
++// applied by GLFW, otherwise dequeuing an older move can make a later click
++// snapshot that stale coordinate.
++static pthread_mutex_t cursor_request_mutex = PTHREAD_MUTEX_INITIALIZER;
++static struct {
++    double x, y;
++} cursor_requested = { .x = 0.5, .y = 0.5 };
++
+ static struct {
+     JavaVM *vm;
+     jclass glfw_class;
+@@ -236,6 +246,8 @@ static int translate_android_action_button(int32_t actionButton) {
+
  extern void _glfwUpdateJoystickConnectSate(void);
- 
+
 +static void computeCursorPos();
 +
  static void android_dequeue_event(input_event_t* evp) {
      input_event_t event = *evp;
      if(surfaceOwner == NULL) return;
-@@ -247,8 +250,18 @@ static void android_dequeue_event(input_event_t* evp) {
+@@ -247,8 +259,18 @@ static void android_dequeue_event(input_event_t* evp) {
              if(event.k.codepoint != 0) _glfwInputChar(surfaceOwner, event.k.codepoint, event.k.mods, true);
              break;
          case GLFW_ANDROID_EVENT_TYPE_MOUSE_BUTTONS:
@@ -65,29 +169,53 @@ diff --git a/glfw/src/android_window.c b/glfw/src/android_window.c
          case GLFW_ANDROID_EVENT_TYPE_UNICODE_CHARS:
              for(int32_t i = 0; i < event.u.length; i++) {
                  _glfwInputChar(surfaceOwner, event.u.codepoints[i], event.u.mods, true);
-@@ -1345,8 +1358,12 @@ Java_git_artdeell_dnbootstrap_glfw_GLFW_sendMousePosition0__DD(JNIEnv *env, jcla
-     if(cursor_unscaled.x == v1 && cursor_unscaled.y == v2) return;
-     cursor_unscaled.x = v1;
-     cursor_unscaled.y = v2;
+@@ -881,6 +903,10 @@ void _glfwSetCursorPosAndroid(_GLFWwindow* window, double x, double y)
+                                         jni.method_receiveCursorPos,
+                                         scaled_cursor_x, scaled_cursor_y);
+
++    pthread_mutex_lock(&cursor_request_mutex);
++    cursor_requested.x = scaled_cursor_x;
++    cursor_requested.y = scaled_cursor_y;
++    pthread_mutex_unlock(&cursor_request_mutex);
+     cursor_unscaled.x = scaled_cursor_x;
+     cursor_unscaled.y = scaled_cursor_y;
+     if(window == surfaceOwner) {
+@@ -1342,11 +1368,16 @@ Java_git_artdeell_dnbootstrap_glfw_GLFW_nativeSurfaceDestroyed(JNIEnv *env,
+ JNIEXPORT void JNICALL
+ Java_git_artdeell_dnbootstrap_glfw_GLFW_sendMousePosition0__DD(JNIEnv *env, jclass clazz,
+                                                           jdouble v1, jdouble v2) {
+-    if(cursor_unscaled.x == v1 && cursor_unscaled.y == v2) return;
+-    cursor_unscaled.x = v1;
+-    cursor_unscaled.y = v2;
 -    update_flags |= FLAG_MOUSE_POS;
 -    _input_queue_wait_unlock(&input_queue);
++    pthread_mutex_lock(&cursor_request_mutex);
++    cursor_requested.x = v1;
++    cursor_requested.y = v2;
 +    input_event_t event = {
 +            .type = GLFW_ANDROID_EVENT_TYPE_MOUSE_POSITION,
 +            .p.cursor_x = v1,
 +            .p.cursor_y = v2
 +    };
 +    android_send_event(&event);
++    pthread_mutex_unlock(&cursor_request_mutex);
  }
- 
+
  JNIEXPORT void JNICALL
-@@ -1399,7 +1416,9 @@ Java_git_artdeell_dnbootstrap_glfw_GLFW_sendMouseEvent(JNIEnv *env, jclass clazz
+@@ -1395,11 +1426,15 @@ Java_git_artdeell_dnbootstrap_glfw_GLFW_sendRawKeyEvent(JNIEnv *env, jclass claz
+ JNIEXPORT void JNICALL
+ Java_git_artdeell_dnbootstrap_glfw_GLFW_sendMouseEvent(JNIEnv *env, jclass clazz,
+                                                        jint glfw_mouse_key, jint state, jint mods) {
++    pthread_mutex_lock(&cursor_request_mutex);
+     input_event_t event = {
              .type = GLFW_ANDROID_EVENT_TYPE_MOUSE_BUTTONS,
              .m.button = glfw_mouse_key,
              .m.state = state,
 -            .m.mods = mods
 +            .m.mods = mods,
-+            .m.cursor_x = cursor_unscaled.x,
-+            .m.cursor_y = cursor_unscaled.y
++            .m.cursor_x = cursor_requested.x,
++            .m.cursor_y = cursor_requested.y
      };
      android_send_event(&event);
++    pthread_mutex_unlock(&cursor_request_mutex);
  }

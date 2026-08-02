@@ -1,5 +1,11 @@
 # Changelog
 
+## 11.0.0-alpha11
+
+- Restored the pinned Android GLFW grab-release contract so opening an inventory or menu recenters both MCLauncher's visible arrow and Minecraft's hover cursor together.
+- Separated the latest requested pointer from GLFW's last-applied pointer, preventing an older queued move from changing the coordinate captured by a newer click.
+- Serialized input-queue publication and buffer swaps so position and button events cannot be lost, observed half-written or reset during concurrent Android/GLFW access.
+
 ## 11.0.0-alpha10
 
 - Added a responsive Modrinth-style tablet sidebar with primary navigation, quick instances, active account and settings while retaining compact Android bottom navigation.

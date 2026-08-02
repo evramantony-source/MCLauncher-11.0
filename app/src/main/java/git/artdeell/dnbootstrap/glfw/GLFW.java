@@ -82,9 +82,23 @@ public final class GLFW {
     @SuppressWarnings("unused") // Called from bundled native GLFW.
     @Keep
     private static void receiveGrabState(boolean value) {
+        boolean wasGrabbing = grabbing;
         grabbing = value;
+
+        // Match the pinned GLFW Android contract: Minecraft owns a centered
+        // cursor when it releases pointer grab (for example, opening an
+        // inventory). Re-queue that center after any pending look events so
+        // the Compose arrow and Minecraft's hover target cannot split apart.
+        boolean centerOnRelease = !value && wasGrabbing;
+        if (centerOnRelease) {
+            cursorX = 0.5;
+            cursorY = 0.5;
+        }
         GameInputBridge.INSTANCE.syncPointerState(cursorX, cursorY, grabbing);
         NativeLaunchBridge.INSTANCE.nativeSyncPointerState(cursorX, cursorY, grabbing);
+        if (centerOnRelease) {
+            NativeLaunchBridge.INSTANCE.nativeSendCursorPosition(cursorX, cursorY);
+        }
         GrabListener listener = grabListener;
         if (listener != null) MAIN.post(() -> listener.onGrabChanged(value));
     }

@@ -146,8 +146,8 @@ if openltw.get("patch") != "vendor/patches/ltw-minecraft-26.2.patch":
 
 require_contains(
     "app/build.gradle.kts",
-    'versionName = "11.0.0-alpha10"',
-    'versionCode = 20',
+    'versionName = "11.0.0-alpha11"',
+    'versionCode = 21',
     'mclauncherAbi',
     'abiFilters += targetAbi',
     'CURSEFORGE_API_KEY',
@@ -160,7 +160,7 @@ require_contains(
     "scripts/source_sanity.py",
     'assembleNoruntimeDebug',
     'assembleDebug -PmclauncherAbi=',
-    'MCLauncher-11.0-alpha10-',
+    'MCLauncher-11.0-alpha11-',
     'mojo-pointer-click-position.patch',
     "Build pinned OpenLTW with Minecraft 26.2 compatibility",
     "--ltw-aar",
@@ -177,7 +177,7 @@ require_contains(
     'No Android LWJGL substitution is defined',
     'prepareAndroidNatives',
     'applyMinecraftOptions',
-    '-Dmclauncher.version=11.0.0-alpha10',
+    '-Dmclauncher.version=11.0.0-alpha11',
     'authSession?.accessToken ?: "0"',
     'AccountType.MICROSOFT) "msa" else "legacy"',
 )
@@ -185,6 +185,9 @@ require_contains(
     "vendor/patches/mojo-pointer-click-position.patch",
     "cursor_x",
     "cursor_y",
+    "cursor_requested",
+    "cursor_request_mutex",
+    "memory_order_release",
     "_glfwInputCursorPos",
     "_glfwInputMouseClick",
 )
@@ -355,6 +358,12 @@ require_contains(
     'virtualMouseCaptureEnabled',
     'VIRTUAL_MOUSE_CLICK_HOLD_MILLIS = 33L',
     'clickMouseButton(button)',
+)
+require_contains(
+    "app/src/main/java/git/artdeell/dnbootstrap/glfw/GLFW.java",
+    "boolean wasGrabbing = grabbing",
+    "boolean centerOnRelease = !value && wasGrabbing",
+    "nativeSendCursorPosition(cursorX, cursorY)",
 )
 require_contains(
     "app/src/main/java/com/mclauncher/app/GameActivity.kt",
