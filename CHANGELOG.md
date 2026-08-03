@@ -1,5 +1,12 @@
 # Changelog
 
+## 11.0.0-alpha14
+
+- Deliver direct touchscreen events to the game SurfaceView itself so taps use coordinates already local to the rendered Minecraft content instead of reconstructing them from Activity/window offsets.
+- Match the pinned Android launcher's proven GUI gesture behavior: position on finger-down, click on confirmed tap release, and begin a held-button inventory drag only after Android touch slop is crossed.
+- Keep direct-touch menus active even when the visible in-world controls are hidden, and release every pending tap or drag safely across focus and mode changes.
+- Add gesture-state regression tests plus bounded native traces containing normalized, surface-pixel and press/release information for device-only diagnosis.
+
 ## 11.0.0-alpha13
 
 - Made modpack runtime setup fail closed unless the archive declares one exact loader version, and verify the downloaded/generated profile contains that exact Fabric, Quilt, Forge or NeoForge artifact before marking the instance installed.

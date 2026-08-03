@@ -73,7 +73,7 @@ bool gMojoGlfwAvailable = false;
 bool gMojoSurfaceAttached = false;
 std::atomic<bool> gLoggedMouseButtonInput{false};
 std::atomic<bool> gLoggedAbsolutePointerInput{false};
-std::atomic<bool> gLoggedDirectTouchInput{false};
+std::atomic<int> gDirectTouchTraceCount{0};
 
 std::atomic<bool> gLaunchRunning{false};
 std::atomic<bool> gPipeReaderRunning{false};
@@ -1061,14 +1061,24 @@ Java_com_mclauncher_app_engine_NativeLaunchBridge_nativeSendTouchButton(
         gForwardCursorX = cursorX;
         gForwardCursorY = cursorY;
     }
-    if (!gLoggedDirectTouchInput.exchange(true)) {
-        char detail[160];
+    const int traceIndex = gDirectTouchTraceCount.fetch_add(1);
+    if (traceIndex < 12) {
+        const int nativeWidth = std::max(1, mclauncher_window_width());
+        const int nativeHeight = std::max(1, mclauncher_window_height());
+        char detail[240];
         std::snprintf(
             detail,
             sizeof(detail),
-            "First atomic direct-touch event reached GLFW at normalized %.4f,%.4f",
+            "%s atomic direct-touch event reached GLFW at normalized %.4f,%.4f "
+            "(action=%s, native surface %dx%d, cursor %.1f,%.1f)",
+            traceIndex == 0 ? "First" : "Next",
             cursorX,
-            cursorY
+            cursorY,
+            action == 1 ? "press" : "release",
+            nativeWidth,
+            nativeHeight,
+            cursorX * nativeWidth,
+            cursorY * nativeHeight
         );
         pushLog(detail);
     }

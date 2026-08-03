@@ -44,10 +44,8 @@ object GameInputBridge {
     private var lastMouseY: Float? = null
     private var lastTriggerLeft = false
     private var lastTriggerRight = false
-    private var directTouchPointerId = MotionEvent.INVALID_POINTER_ID
-    private var directTouchButtonDown = false
-    private var directTouchX = 0.5f
-    private var directTouchY = 0.5f
+    private val directTouchGesture = DirectTouchGesture()
+    private var pendingDirectTouchRelease: PendingDirectTouchRelease? = null
 
     fun configure(bindings: List<ControllerBinding>, sensitivity: Float, controllerDeadZone: Float = 0.18f) {
         controllerBindings = bindings.associateBy(ControllerBinding::androidKeyCode)
@@ -218,8 +216,6 @@ object GameInputBridge {
         if (!NativeLaunchBridge.isAvailable) return
         val normalizedX = x.coerceIn(0f, 1f)
         val normalizedY = y.coerceIn(0f, 1f)
-        directTouchX = normalizedX
-        directTouchY = normalizedY
         updateAbsolutePointer(normalizedX, normalizedY)
         synchronized(pressedMouseButtons) {
             if (pressed) pressedMouseButtons += MOUSE_LEFT else pressedMouseButtons -= MOUSE_LEFT
@@ -231,6 +227,44 @@ object GameInputBridge {
             action = if (pressed) ACTION_PRESS else ACTION_RELEASE,
             modifiers = 0
         )
+    }
+
+    private fun tapDirectTouchAt(point: DirectTouchPoint) {
+        cancelPendingDirectTouchRelease(releaseButton = true)
+        directTouchButtonAtNormalized(point.normalizedX, point.normalizedY, pressed = true)
+
+        lateinit var release: Runnable
+        release = Runnable {
+            val ownsRelease = synchronized(this) {
+                if (pendingDirectTouchRelease?.runnable === release) {
+                    pendingDirectTouchRelease = null
+                    true
+                } else {
+                    false
+                }
+            }
+            if (ownsRelease) {
+                directTouchButtonAtNormalized(point.normalizedX, point.normalizedY, pressed = false)
+            }
+        }
+        synchronized(this) {
+            pendingDirectTouchRelease = PendingDirectTouchRelease(point, release)
+        }
+        mainHandler.postDelayed(release, MOUSE_CLICK_HOLD_MILLIS)
+    }
+
+    private fun cancelPendingDirectTouchRelease(releaseButton: Boolean) {
+        val pending = synchronized(this) {
+            pendingDirectTouchRelease.also { pendingDirectTouchRelease = null }
+        } ?: return
+        mainHandler.removeCallbacks(pending.runnable)
+        if (releaseButton) {
+            directTouchButtonAtNormalized(
+                pending.point.normalizedX,
+                pending.point.normalizedY,
+                pressed = false
+            )
+        }
     }
 
     private fun updateAbsolutePointer(normalizedX: Float, normalizedY: Float) {
@@ -422,44 +456,45 @@ object GameInputBridge {
     }
 
     /**
-     * Handles direct touchscreen menu and inventory input before Compose can consume it.
+     * Handles direct touchscreen menu and inventory input on the SurfaceView itself.
      *
-     * Coordinates use the Activity window's coordinate space and are converted to
-     * the SurfaceView's normalized space. Finger-down presses Minecraft's left
-     * mouse button, movement drags while it remains held, and finger-up releases it.
-     * Minecraft still receives ordinary GLFW events, but the player never manages
-     * a separate virtual cursor.
+     * MotionEvent coordinates are already local to the SurfaceView. A tap positions
+     * the pointer and clicks on release; crossing Android's touch slop begins a real
+     * left-button drag from the original down point for inventory drag-and-drop.
      */
     fun handleDirectTouch(
         event: MotionEvent,
-        surfaceLeft: Float,
-        surfaceTop: Float,
         width: Int,
-        height: Int
+        height: Int,
+        dragThresholdPixels: Float
     ): Boolean {
-        if (!directTouchCaptureEnabled) return false
+        if (!directTouchCaptureEnabled || width <= 0 || height <= 0) return false
 
         fun pointerPosition(pointerIndex: Int): DirectTouchPoint = DirectTouchGeometry.map(
-            windowX = event.getX(pointerIndex),
-            windowY = event.getY(pointerIndex),
-            surfaceLeftInWindow = surfaceLeft,
-            surfaceTopInWindow = surfaceTop,
+            localX = event.getX(pointerIndex),
+            localY = event.getY(pointerIndex),
             surfaceWidth = width,
             surfaceHeight = height
         )
 
-        fun movePointer(point: DirectTouchPoint) {
-            directTouchX = point.normalizedX
-            directTouchY = point.normalizedY
-            cursorPositionNormalized(directTouchX, directTouchY)
-        }
-
-        fun sendTouchButton(point: DirectTouchPoint, pressed: Boolean) {
-            directTouchButtonAtNormalized(
-                x = point.normalizedX,
-                y = point.normalizedY,
-                pressed = pressed
-            )
+        fun dispatch(commands: List<DirectTouchCommand>) {
+            commands.forEach { command ->
+                when (command) {
+                    is DirectTouchCommand.Move -> cursorPositionNormalized(
+                        command.point.normalizedX,
+                        command.point.normalizedY
+                    )
+                    is DirectTouchCommand.Button -> {
+                        if (command.pressed) cancelPendingDirectTouchRelease(releaseButton = true)
+                        directTouchButtonAtNormalized(
+                            command.point.normalizedX,
+                            command.point.normalizedY,
+                            command.pressed
+                        )
+                    }
+                    is DirectTouchCommand.Tap -> tapDirectTouchAt(command.point)
+                }
+            }
         }
 
         return when (event.actionMasked) {
@@ -468,54 +503,65 @@ object GameInputBridge {
                 if (!point.insideSurface) {
                     false
                 } else {
-                    resetDirectTouch(releaseButton = true)
-                    directTouchPointerId = event.getPointerId(event.actionIndex)
-                    directTouchButtonDown = true
-                    sendTouchButton(point, pressed = true)
+                    cancelPendingDirectTouchRelease(releaseButton = true)
+                    dispatch(
+                        directTouchGesture.down(
+                            pointerId = event.getPointerId(event.actionIndex),
+                            point = point,
+                            dragThresholdPixels = dragThresholdPixels
+                        )
+                    )
                     true
                 }
             }
             MotionEvent.ACTION_MOVE -> {
-                val pointerIndex = event.findPointerIndex(directTouchPointerId)
+                val pointerIndex = event.findPointerIndex(directTouchGesture.activePointerId)
                 if (pointerIndex < 0) {
                     false
                 } else {
-                    movePointer(pointerPosition(pointerIndex))
+                    dispatch(
+                        directTouchGesture.move(
+                            directTouchGesture.activePointerId,
+                            pointerPosition(pointerIndex)
+                        )
+                    )
                     true
                 }
             }
             MotionEvent.ACTION_UP -> {
-                val pointerIndex = event.findPointerIndex(directTouchPointerId)
+                val pointerId = directTouchGesture.activePointerId
+                val pointerIndex = event.findPointerIndex(pointerId)
                     .takeIf { it >= 0 } ?: event.actionIndex
-                val active = directTouchPointerId != MotionEvent.INVALID_POINTER_ID
+                val active = directTouchGesture.isActive
                 if (active) {
-                    sendTouchButton(pointerPosition(pointerIndex), pressed = false)
-                    directTouchButtonDown = false
+                    dispatch(directTouchGesture.up(pointerId, pointerPosition(pointerIndex)))
                 }
-                resetDirectTouch(releaseButton = false)
                 active
             }
             MotionEvent.ACTION_CANCEL -> {
-                val active = directTouchPointerId != MotionEvent.INVALID_POINTER_ID
+                val active = directTouchGesture.isActive
                 resetDirectTouch(releaseButton = true)
                 active
             }
             MotionEvent.ACTION_POINTER_DOWN -> {
-                directTouchPointerId != MotionEvent.INVALID_POINTER_ID
+                directTouchGesture.isActive
             }
             MotionEvent.ACTION_POINTER_UP -> {
-                val active = directTouchPointerId != MotionEvent.INVALID_POINTER_ID
+                val active = directTouchGesture.isActive
                 if (
                     active &&
-                    event.getPointerId(event.actionIndex) == directTouchPointerId
+                    event.getPointerId(event.actionIndex) == directTouchGesture.activePointerId
                 ) {
-                    sendTouchButton(pointerPosition(event.actionIndex), pressed = false)
-                    directTouchButtonDown = false
-                    resetDirectTouch(releaseButton = false)
+                    dispatch(
+                        directTouchGesture.up(
+                            directTouchGesture.activePointerId,
+                            pointerPosition(event.actionIndex)
+                        )
+                    )
                 }
                 active
             }
-            else -> directTouchPointerId != MotionEvent.INVALID_POINTER_ID
+            else -> directTouchGesture.isActive
         }
     }
 
@@ -529,21 +575,32 @@ object GameInputBridge {
             pendingClickReleases.values.toList().also { pendingClickReleases.clear() }
         }
         pendingReleases.forEach(mainHandler::removeCallbacks)
+        resetDirectTouch(releaseButton = true)
         synchronized(pressedKeys) { pressedKeys.toList() }.forEach { setKeyState(it, false) }
         synchronized(pressedMouseButtons) { pressedMouseButtons.toList() }.forEach { setMouseButtonState(it, false) }
         lastTriggerLeft = false
         lastTriggerRight = false
         resetPointerPosition()
-        resetDirectTouch(releaseButton = false)
     }
 
     private fun resetDirectTouch(releaseButton: Boolean) {
-        if (releaseButton && directTouchButtonDown) {
-            directTouchButtonAtNormalized(directTouchX, directTouchY, pressed = false)
+        val commands = directTouchGesture.cancel()
+        if (releaseButton) {
+            commands.filterIsInstance<DirectTouchCommand.Button>().forEach { command ->
+                directTouchButtonAtNormalized(
+                    command.point.normalizedX,
+                    command.point.normalizedY,
+                    command.pressed
+                )
+            }
         }
-        directTouchButtonDown = false
-        directTouchPointerId = MotionEvent.INVALID_POINTER_ID
+        cancelPendingDirectTouchRelease(releaseButton)
     }
+
+    private data class PendingDirectTouchRelease(
+        val point: DirectTouchPoint,
+        val runnable: Runnable
+    )
 
     private fun filteredAxis(event: MotionEvent, axis: Int): Float {
         val value = event.getAxisValue(axis)

@@ -67,13 +67,6 @@ fun GameTouchOverlay(
             GameInputBridge.releaseMovement()
         }
     }
-    DisposableEffect(directTouchActive) {
-        GameInputBridge.setDirectTouchCaptureEnabled(directTouchActive)
-        onDispose {
-            GameInputBridge.setDirectTouchCaptureEnabled(false)
-        }
-    }
-
     BoxWithConstraints(modifier = modifier.fillMaxSize()) {
         val shortSide = if (maxWidth < maxHeight) maxWidth else maxHeight
         val joystickDiameter = shortSide * settings.joystickSize.coerceIn(0.14f, 0.34f)

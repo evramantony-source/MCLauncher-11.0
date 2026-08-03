@@ -43,6 +43,15 @@
 - [x] Replace purple selection roles with green and use a midnight-black dark palette.
 - [ ] Verify exact modpack runtime and direct taps on the Redmi Pad Pro.
 
+## Alpha 14 — SurfaceView-local direct touch
+
+- [x] Stop reconstructing SurfaceView coordinates from Activity/window offsets.
+- [x] Deliver touch events directly to the rendered game view in its local coordinate space.
+- [x] Position on finger-down, click on confirmed tap release and begin inventory drag only after touch slop.
+- [x] Keep direct-touch menus active when the visible in-world control overlay is hidden.
+- [x] Add pure gesture-state regression tests and bounded native coordinate traces.
+- [ ] Verify exact menu targets and inventory drag on the Redmi Pad Pro.
+
 ## After main-menu confirmation
 
 - Pin the observed Java 8 release ZIP digest in `vendor/engine-lock.json`.

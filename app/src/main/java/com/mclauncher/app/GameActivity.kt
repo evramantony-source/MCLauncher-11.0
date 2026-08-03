@@ -12,6 +12,7 @@ import android.view.Surface
 import android.view.SurfaceHolder
 import android.view.SurfaceView
 import android.view.View
+import android.view.ViewConfiguration
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -123,7 +124,7 @@ class GameActivity : ComponentActivity() {
         val dataRoot = File(planPath).parentFile?.parentFile ?: filesDir
         val sessionLog = File(dataRoot, "logs/latest-session.log").apply {
             parentFile?.mkdirs()
-            writeText("MCLauncher 11.0 alpha13 session ${System.currentTimeMillis()}\n")
+            writeText("MCLauncher 11.0 alpha14 session ${System.currentTimeMillis()}\n")
         }
 
         setContent {
@@ -136,9 +137,21 @@ class GameActivity : ComponentActivity() {
                 var gameMenuRequested by remember { mutableStateOf(false) }
                 val logs = remember { mutableStateListOf<String>() }
                 val pointerState by GameInputBridge.pointerState.collectAsState()
+                val directTouchEnabled = running &&
+                    !launchOverlayVisible &&
+                    !gameMenuRequested &&
+                    launcherSettings.virtualMouseEnabled &&
+                    !pointerState.grabbed
 
                 SideEffect {
                     launcherOverlayOwnsTouch = launchOverlayVisible || gameMenuRequested
+                }
+
+                DisposableEffect(directTouchEnabled) {
+                    GameInputBridge.setDirectTouchCaptureEnabled(directTouchEnabled)
+                    onDispose {
+                        GameInputBridge.setDirectTouchCaptureEnabled(false)
+                    }
                 }
 
                 LaunchedEffect(externalInputDetected) {
@@ -257,6 +270,24 @@ class GameActivity : ComponentActivity() {
                                 view.isFocusable = true
                                 view.isFocusableInTouchMode = true
                                 view.requestFocus()
+                                val directTouchSlop = ViewConfiguration.get(context).scaledTouchSlop.toFloat()
+                                // Keep touchscreen coordinates in the SurfaceView's own
+                                // coordinate space. Reconstructing them at Activity level
+                                // introduces status-bar and compatibility-mode offsets on
+                                // large-screen Android devices.
+                                view.setOnTouchListener { _, event ->
+                                    val touchSource = event.isFromSource(InputDevice.SOURCE_TOUCHSCREEN) ||
+                                        event.isFromSource(InputDevice.SOURCE_STYLUS)
+                                    touchSource &&
+                                        !launcherOverlayOwnsTouch &&
+                                        GameInputBridge.isDirectTouchCaptureEnabled() &&
+                                        GameInputBridge.handleDirectTouch(
+                                            event = event,
+                                            width = view.width,
+                                            height = view.height,
+                                            dragThresholdPixels = directTouchSlop
+                                        )
+                                }
                                 view.holder.addCallback(object : SurfaceHolder.Callback {
                                     override fun surfaceCreated(holder: SurfaceHolder) {
                                         surface = holder.surface
@@ -430,43 +461,6 @@ class GameActivity : ComponentActivity() {
     }
 
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
-        val touchSource = event.isFromSource(InputDevice.SOURCE_TOUCHSCREEN) ||
-            event.isFromSource(InputDevice.SOURCE_STYLUS)
-        if (
-            touchSource &&
-            !launcherOverlayOwnsTouch &&
-            GameInputBridge.isDirectTouchCaptureEnabled()
-        ) {
-            val view = gameSurfaceView
-            if (view != null && view.width > 0 && view.height > 0) {
-                // Activity MotionEvents and getLocationInWindow use the same
-                // window coordinate space. Do not mix raw screen coordinates into
-                // this calculation: status/navigation insets and Android 16
-                // compatibility transforms can otherwise shift a tap to the next
-                // Minecraft control.
-                val location = IntArray(2)
-                view.getLocationInWindow(location)
-                val surfaceLeftInEventSpace = location[0].toFloat()
-                val surfaceTopInEventSpace = location[1].toFloat()
-                val localY = event.y - surfaceTopInEventSpace
-                val topControlExclusion = 60f * resources.displayMetrics.density
-                val startsOnOverlayControls =
-                    event.actionMasked == MotionEvent.ACTION_DOWN &&
-                        localY in 0f..topControlExclusion
-                if (
-                    !startsOnOverlayControls &&
-                    GameInputBridge.handleDirectTouch(
-                        event = event,
-                        surfaceLeft = surfaceLeftInEventSpace,
-                        surfaceTop = surfaceTopInEventSpace,
-                        width = view.width,
-                        height = view.height
-                    )
-                ) {
-                    return true
-                }
-            }
-        }
         if (event.isFromSource(InputDevice.SOURCE_MOUSE)) {
             externalInputDetected = true
             if (physicalMouseCapture && GLFW.isGrabbing() && event.actionMasked == MotionEvent.ACTION_DOWN) {

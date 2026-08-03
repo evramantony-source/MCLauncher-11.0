@@ -146,8 +146,8 @@ if openltw.get("patch") != "vendor/patches/ltw-minecraft-26.2.patch":
 
 require_contains(
     "app/build.gradle.kts",
-    'versionName = "11.0.0-alpha13"',
-    'versionCode = 23',
+    'versionName = "11.0.0-alpha14"',
+    'versionCode = 24',
     'mclauncherAbi',
     'abiFilters += targetAbi',
     'CURSEFORGE_API_KEY',
@@ -160,7 +160,7 @@ require_contains(
     "scripts/source_sanity.py",
     'assembleNoruntimeDebug',
     'assembleDebug -PmclauncherAbi=',
-    'MCLauncher-11.0-alpha13-',
+    'MCLauncher-11.0-alpha14-',
     'mojo-pointer-click-position.patch',
     "Build pinned OpenLTW with Minecraft 26.2 compatibility",
     "--ltw-aar",
@@ -177,7 +177,7 @@ require_contains(
     'No Android LWJGL substitution is defined',
     'prepareAndroidNatives',
     'applyMinecraftOptions',
-    '-Dmclauncher.version=11.0.0-alpha13',
+    '-Dmclauncher.version=11.0.0-alpha14',
     'authSession?.accessToken ?: "0"',
     'AccountType.MICROSOFT) "msa" else "legacy"',
 )
@@ -340,7 +340,6 @@ require_contains(
     'HotbarTouchLayout.widthPixels',
     'directTouchActive',
     'virtualMouseEnabled',
-    'setDirectTouchCaptureEnabled',
 )
 require_absent(
     "app/src/main/java/com/mclauncher/app/ui/game/TouchControls.kt",
@@ -372,7 +371,9 @@ require_contains(
     'cursorPositionNormalized',
     'handleDirectTouch',
     'directTouchCaptureEnabled',
-    'directTouchButtonDown',
+    'DirectTouchGesture',
+    'pendingDirectTouchRelease',
+    'dragThresholdPixels',
     'nativeSendTouchButton',
     'MOUSE_CLICK_HOLD_MILLIS = 33L',
     'fun clickMouseButton(button:',
@@ -387,16 +388,24 @@ require_contains(
     "app/src/main/java/com/mclauncher/app/GameActivity.kt",
     "GameInputBridge.handleDirectTouch",
     "GameInputBridge.isDirectTouchCaptureEnabled",
-    "topControlExclusion",
+    "GameInputBridge.setDirectTouchCaptureEnabled",
     "SOURCE_TOUCHSCREEN",
     "launcherOverlayOwnsTouch",
     "!gameMenuRequested",
-    "getLocationInWindow",
+    "setOnTouchListener",
+    "ViewConfiguration.get(context).scaledTouchSlop",
 )
 require_absent(
     "app/src/main/java/com/mclauncher/app/GameActivity.kt",
     "event.rawX - event.x",
     "event.rawY - event.y",
+    "getLocationInWindow",
+)
+require_contains(
+    "app/src/main/java/com/mclauncher/app/engine/DirectTouchGesture.kt",
+    "DirectTouchCommand.Tap",
+    "dragThresholdPixels",
+    "DirectTouchCommand.Button(start, pressed = true)",
 )
 require_contains(
     "core-minecraft/src/main/kotlin/com/mclauncher/minecraft/ModpackInstallers.kt",
@@ -470,8 +479,11 @@ require_contains(
     '"invalid session"',
 )
 require_contains(
-    "app/src/main/java/com/mclauncher/app/ui/game/TouchControls.kt",
+    "app/src/main/java/com/mclauncher/app/GameActivity.kt",
     "GameInputBridge.setDirectTouchCaptureEnabled",
+)
+require_contains(
+    "app/src/main/java/com/mclauncher/app/ui/game/TouchControls.kt",
     "pointerState.grabbed && !directTouchActive && settings.movementJoystickEnabled",
 )
 require_contains(
