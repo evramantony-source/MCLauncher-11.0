@@ -1,5 +1,12 @@
 # Changelog
 
+## 11.0.0-alpha15
+
+- Anchor every ordinary touchscreen press and release to the original finger-down coordinate, preventing a noisy or displaced Android `ACTION_UP` from selecting a different Minecraft button or inventory slot.
+- Require a deliberate system-length hold plus movement beyond touch slop before forwarding inventory drag movement; quick gestures remain reliable taps while held drag-and-drop still works.
+- Keep the SurfaceView's touch stream owned for the full gesture and add bounded raw/local Android event traces for exact on-device verification.
+- Make the patched GLFW input queue reject events before initialization and after termination without destroying its process-lifetime synchronization primitives, fixing the shutdown-time `pthread_mutex_lock called on a destroyed mutex` abort captured by Alpha 14.
+
 ## 11.0.0-alpha14
 
 - Deliver direct touchscreen events to the game SurfaceView itself so taps use coordinates already local to the rendered Minecraft content instead of reconstructing them from Activity/window offsets.

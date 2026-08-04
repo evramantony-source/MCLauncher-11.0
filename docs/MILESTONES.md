@@ -52,6 +52,15 @@
 - [x] Add pure gesture-state regression tests and bounded native coordinate traces.
 - [ ] Verify exact menu targets and inventory drag on the Redmi Pad Pro.
 
+## Alpha 15 — anchored mobile taps
+
+- [x] Press immediately at finger-down and release quick gestures at that same coordinate.
+- [x] Start inventory pointer movement only after a deliberate hold plus Android touch slop.
+- [x] Prevent Compose parents from intercepting an active SurfaceView touch stream.
+- [x] Record bounded Android local/raw gesture traces in the exported session log.
+- [x] Reject GLFW input after queue shutdown without touching destroyed synchronization primitives.
+- [ ] Verify quick menu taps, held inventory drag and clean game exit on the Redmi Pad Pro.
+
 ## After main-menu confirmation
 
 - Pin the observed Java 8 release ZIP digest in `vendor/engine-lock.json`.

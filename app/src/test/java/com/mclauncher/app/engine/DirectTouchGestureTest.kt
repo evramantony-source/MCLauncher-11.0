@@ -14,37 +14,68 @@ class DirectTouchGestureTest {
         surfaceHeight = 500
     )
 
-    @Test
-    fun `tap positions on down and clicks once on up`() {
-        val gesture = DirectTouchGesture()
+    private fun down(
+        gesture: DirectTouchGesture,
+        pointerId: Int,
+        point: DirectTouchPoint,
+        eventTimeMillis: Long = 1_000L
+    ) = gesture.down(
+        pointerId = pointerId,
+        point = point,
+        eventTimeMillis = eventTimeMillis,
+        dragThresholdPixels = 12f,
+        dragActivationDelayMillis = 400L
+    )
 
-        val down = gesture.down(pointerId = 7, point = point(250f, 100f), dragThresholdPixels = 12f)
+    @Test
+    fun `tap presses immediately and releases at original coordinate`() {
+        val gesture = DirectTouchGesture()
+        val start = point(250f, 100f)
+
+        val down = down(gesture, pointerId = 7, point = start)
         val up = gesture.up(pointerId = 7, point = point(252f, 103f))
 
-        assertEquals(1, down.size)
-        assertIs<DirectTouchCommand.Move>(down.single())
-        assertEquals(1, up.size)
-        assertIs<DirectTouchCommand.Tap>(up.single())
-        assertEquals(0.252f, up.single().point.normalizedX)
-        assertEquals(0.206f, up.single().point.normalizedY)
+        val press = assertIs<DirectTouchCommand.Button>(down.single())
+        assertTrue(press.pressed)
+        assertEquals(start, press.point)
+        val release = assertIs<DirectTouchCommand.Button>(up.single())
+        assertFalse(release.pressed)
+        assertEquals(start, release.point)
         assertFalse(gesture.isActive)
     }
 
     @Test
-    fun `crossing touch slop presses at down point and preserves inventory drag`() {
+    fun `quick coordinate jump remains a tap at finger down`() {
+        val gesture = DirectTouchGesture()
+        val start = point(205.8f, 303.75f)
+        down(gesture, pointerId = 3, point = start, eventTimeMillis = 2_000L)
+
+        val move = gesture.move(
+            pointerId = 3,
+            point = point(104.2f, 75.7f),
+            eventTimeMillis = 2_090L
+        )
+        val up = gesture.up(pointerId = 3, point = point(104.2f, 75.7f))
+
+        assertTrue(move.isEmpty())
+        val release = assertIs<DirectTouchCommand.Button>(up.single())
+        assertFalse(release.pressed)
+        assertEquals(start, release.point)
+    }
+
+    @Test
+    fun `deliberate hold plus movement preserves inventory drag`() {
         val gesture = DirectTouchGesture()
         val start = point(200f, 100f)
         val current = point(260f, 170f)
-        gesture.down(pointerId = 3, point = start, dragThresholdPixels = 10f)
+        down(gesture, pointerId = 3, point = start, eventTimeMillis = 5_000L)
 
-        val move = gesture.move(pointerId = 3, point = current)
+        val earlyMove = gesture.move(pointerId = 3, point = current, eventTimeMillis = 5_150L)
+        val heldMove = gesture.move(pointerId = 3, point = current, eventTimeMillis = 5_450L)
         val up = gesture.up(pointerId = 3, point = point(300f, 200f))
 
-        assertEquals(2, move.size)
-        val press = assertIs<DirectTouchCommand.Button>(move[0])
-        assertTrue(press.pressed)
-        assertEquals(start, press.point)
-        assertIs<DirectTouchCommand.Move>(move[1])
+        assertTrue(earlyMove.isEmpty())
+        assertIs<DirectTouchCommand.Move>(heldMove.single())
         assertEquals(2, up.size)
         assertIs<DirectTouchCommand.Move>(up[0])
         val release = assertIs<DirectTouchCommand.Button>(up[1])
@@ -54,10 +85,27 @@ class DirectTouchGestureTest {
     }
 
     @Test
+    fun `holding still does not begin a drag`() {
+        val gesture = DirectTouchGesture()
+        val start = point(200f, 100f)
+        down(gesture, pointerId = 1, point = start, eventTimeMillis = 8_000L)
+
+        val move = gesture.move(
+            pointerId = 1,
+            point = point(205f, 104f),
+            eventTimeMillis = 8_900L
+        )
+        val up = gesture.up(pointerId = 1, point = point(205f, 104f))
+
+        assertTrue(move.isEmpty())
+        assertEquals(start, assertIs<DirectTouchCommand.Button>(up.single()).point)
+    }
+
+    @Test
     fun `cancel releases an active drag at its latest point`() {
         val gesture = DirectTouchGesture()
-        gesture.down(pointerId = 1, point = point(100f, 100f), dragThresholdPixels = 4f)
-        gesture.move(pointerId = 1, point = point(150f, 150f))
+        down(gesture, pointerId = 1, point = point(100f, 100f), eventTimeMillis = 10_000L)
+        gesture.move(pointerId = 1, point = point(150f, 150f), eventTimeMillis = 10_500L)
 
         val cancel = gesture.cancel()
 
@@ -71,31 +119,34 @@ class DirectTouchGestureTest {
     @Test
     fun `secondary pointers cannot move or release the primary gesture`() {
         val gesture = DirectTouchGesture()
-        gesture.down(pointerId = 9, point = point(400f, 200f), dragThresholdPixels = 8f)
+        down(gesture, pointerId = 9, point = point(400f, 200f))
 
-        assertTrue(gesture.move(pointerId = 10, point = point(900f, 400f)).isEmpty())
+        assertTrue(
+            gesture.move(pointerId = 10, point = point(900f, 400f), eventTimeMillis = 2_000L).isEmpty()
+        )
         assertTrue(gesture.up(pointerId = 10, point = point(900f, 400f)).isEmpty())
         assertTrue(gesture.isActive)
         assertEquals(9, gesture.activePointerId)
     }
 
     @Test
-    fun `a new primary touch releases an unfinished drag before moving`() {
+    fun `a new primary touch releases the old press before pressing again`() {
         val gesture = DirectTouchGesture()
-        gesture.down(pointerId = 2, point = point(100f, 100f), dragThresholdPixels = 5f)
-        gesture.move(pointerId = 2, point = point(180f, 160f))
+        val first = point(100f, 100f)
+        down(gesture, pointerId = 2, point = first)
 
-        val nextDown = gesture.down(
+        val nextDown = down(
+            gesture,
             pointerId = 4,
             point = point(700f, 300f),
-            dragThresholdPixels = 5f
+            eventTimeMillis = 2_000L
         )
 
         val release = assertIs<DirectTouchCommand.Button>(nextDown[0])
         assertFalse(release.pressed)
-        assertEquals(0.18f, release.point.normalizedX)
-        assertEquals(0.32f, release.point.normalizedY)
-        assertIs<DirectTouchCommand.Move>(nextDown[1])
+        assertEquals(first, release.point)
+        val press = assertIs<DirectTouchCommand.Button>(nextDown[1])
+        assertTrue(press.pressed)
         assertEquals(4, gesture.activePointerId)
     }
 }

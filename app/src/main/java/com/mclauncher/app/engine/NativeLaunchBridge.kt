@@ -53,6 +53,18 @@ object NativeLaunchBridge {
         action: Int,
         modifiers: Int
     )
+    external fun nativeTraceDirectTouchEvent(
+        action: Int,
+        pointerId: Int,
+        localX: Float,
+        localY: Float,
+        rawX: Float,
+        rawY: Float,
+        width: Int,
+        height: Int,
+        pointerCount: Int,
+        elapsedMillis: Long
+    )
     external fun nativeSyncPointerState(x: Double, y: Double, grabbing: Boolean)
     external fun nativeSendScroll(dx: Float, dy: Float)
     external fun nativeSendGamepadAxis(axis: Int, value: Float)

@@ -7,16 +7,16 @@ internal sealed interface DirectTouchCommand {
 
     data class Move(override val point: DirectTouchPoint) : DirectTouchCommand
     data class Button(override val point: DirectTouchPoint, val pressed: Boolean) : DirectTouchCommand
-    data class Tap(override val point: DirectTouchPoint) : DirectTouchCommand
 }
 
 /**
  * Converts one-finger SurfaceView input into desktop-style menu input.
  *
- * A normal tap moves first and clicks only after Android confirms the tap. A
- * drag presses at the original finger-down position once touch slop is crossed,
- * then follows the finger until release. This mirrors the pinned launch engine's
- * proven GUI behavior and keeps inventory drag-and-drop available.
+ * Press and release are anchored to the finger-down coordinate so a quick tap
+ * cannot become a click on a different Minecraft control if Android reports a
+ * noisy final coordinate. Pointer movement is forwarded only after a deliberate
+ * hold plus touch slop, which keeps inventory drag-and-drop available without
+ * turning ordinary taps into accidental drags.
  */
 internal class DirectTouchGesture {
     var activePointerId: Int = INVALID_POINTER_ID
@@ -24,7 +24,9 @@ internal class DirectTouchGesture {
 
     private var downPoint: DirectTouchPoint? = null
     private var lastPoint: DirectTouchPoint? = null
+    private var downEventTimeMillis = 0L
     private var dragThresholdPixels = 0f
+    private var dragActivationDelayMillis = 0L
     private var dragging = false
 
     val isActive: Boolean
@@ -33,29 +35,39 @@ internal class DirectTouchGesture {
     fun down(
         pointerId: Int,
         point: DirectTouchPoint,
-        dragThresholdPixels: Float
+        eventTimeMillis: Long,
+        dragThresholdPixels: Float,
+        dragActivationDelayMillis: Long
     ): List<DirectTouchCommand> {
         val commands = cancel().toMutableList()
         activePointerId = pointerId
         downPoint = point
         lastPoint = point
+        downEventTimeMillis = eventTimeMillis
         this.dragThresholdPixels = dragThresholdPixels.coerceAtLeast(0f)
+        this.dragActivationDelayMillis = dragActivationDelayMillis.coerceAtLeast(0L)
         dragging = false
-        commands += DirectTouchCommand.Move(point)
+        commands += DirectTouchCommand.Button(point, pressed = true)
         return commands
     }
 
-    fun move(pointerId: Int, point: DirectTouchPoint): List<DirectTouchCommand> {
+    fun move(
+        pointerId: Int,
+        point: DirectTouchPoint,
+        eventTimeMillis: Long
+    ): List<DirectTouchCommand> {
         if (pointerId != activePointerId) return emptyList()
         val start = downPoint ?: return emptyList()
-        val commands = mutableListOf<DirectTouchCommand>()
-        if (!dragging && hypot(point.localX - start.localX, point.localY - start.localY) >= dragThresholdPixels) {
-            dragging = true
-            commands += DirectTouchCommand.Button(start, pressed = true)
-        }
         lastPoint = point
-        commands += DirectTouchCommand.Move(point)
-        return commands
+        if (!dragging) {
+            val elapsed = (eventTimeMillis - downEventTimeMillis).coerceAtLeast(0L)
+            val distance = hypot(point.localX - start.localX, point.localY - start.localY)
+            if (elapsed < dragActivationDelayMillis || distance < dragThresholdPixels) {
+                return emptyList()
+            }
+            dragging = true
+        }
+        return listOf(DirectTouchCommand.Move(point))
     }
 
     fun up(pointerId: Int, point: DirectTouchPoint): List<DirectTouchCommand> {
@@ -66,18 +78,17 @@ internal class DirectTouchGesture {
                 DirectTouchCommand.Button(point, pressed = false)
             )
         } else {
-            listOf(DirectTouchCommand.Tap(point))
+            downPoint?.let { listOf(DirectTouchCommand.Button(it, pressed = false)) }.orEmpty()
         }
         clear()
         return commands
     }
 
     fun cancel(): List<DirectTouchCommand> {
-        val commands = if (isActive && dragging) {
-            lastPoint?.let { listOf(DirectTouchCommand.Button(it, pressed = false)) }.orEmpty()
-        } else {
-            emptyList()
-        }
+        val releasePoint = if (dragging) lastPoint else downPoint
+        val commands = if (isActive) {
+            releasePoint?.let { listOf(DirectTouchCommand.Button(it, pressed = false)) }.orEmpty()
+        } else emptyList()
         clear()
         return commands
     }
@@ -86,7 +97,9 @@ internal class DirectTouchGesture {
         activePointerId = INVALID_POINTER_ID
         downPoint = null
         lastPoint = null
+        downEventTimeMillis = 0L
         dragThresholdPixels = 0f
+        dragActivationDelayMillis = 0L
         dragging = false
     }
 

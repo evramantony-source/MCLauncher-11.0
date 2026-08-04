@@ -1,24 +1,85 @@
 diff --git a/glfw/src/android_input_queue.c b/glfw/src/android_input_queue.c
 --- a/glfw/src/android_input_queue.c
 +++ b/glfw/src/android_input_queue.c
-@@ -8,8 +8,9 @@
+@@ -7,69 +7,139 @@
+
  #include "android_input_queue.h"
 
- bool _input_queue_init(queue_top_t* top) {
+-bool _input_queue_init(queue_top_t* top) {
 -    top->index = 0;
 -    for(int i = 0; i < 2; i++) top->queues[i].events_total = 0;
+-    if(pthread_mutex_init(&top->wait_mutex, NULL) != 0) return false;
++// GLFW can terminate while Android still has an ACTION_UP in flight. Keep the
++// process-lifetime synchronization primitives alive and reject events whenever
++// the queue is not accepting input; otherwise a late release locks a destroyed
++// mutex and Android's FORTIFY aborts the Minecraft process.
++static atomic_bool input_queue_synchronization_initialized = false;
++static atomic_bool input_queue_accepting_events = false;
+
+-    pthread_condattr_t attr;
+-    if(pthread_condattr_init(&attr) != 0) goto fail;
+-    if(pthread_condattr_setclock(&attr, CLOCK_MONOTONIC) != 0) goto fail2;
++bool _input_queue_init(queue_top_t* top) {
++    if(!atomic_load_explicit(
++            &input_queue_synchronization_initialized, memory_order_acquire)) {
++        if(pthread_mutex_init(&top->wait_mutex, NULL) != 0) return false;
+
+-    if(pthread_cond_init(&top->wait_cond, &attr) != 0) goto fail2;
++        pthread_condattr_t attr;
++        if(pthread_condattr_init(&attr) != 0) {
++            pthread_mutex_destroy(&top->wait_mutex);
++            return false;
++        }
++        if(pthread_condattr_setclock(&attr, CLOCK_MONOTONIC) != 0) {
++            pthread_condattr_destroy(&attr);
++            pthread_mutex_destroy(&top->wait_mutex);
++            return false;
++        }
++        if(pthread_cond_init(&top->wait_cond, &attr) != 0) {
++            pthread_condattr_destroy(&attr);
++            pthread_mutex_destroy(&top->wait_mutex);
++            return false;
++        }
++        pthread_condattr_destroy(&attr);
++        atomic_store_explicit(
++                &input_queue_synchronization_initialized, true, memory_order_release);
++    }
+
+-    pthread_condattr_destroy(&attr);
++    pthread_mutex_lock(&top->wait_mutex);
 +    atomic_store(&top->index, 0);
 +    for(int i = 0; i < 2; i++)
 +        atomic_store(&top->queues[i].events_total, 0);
-     if(pthread_mutex_init(&top->wait_mutex, NULL) != 0) return false;
++    atomic_store_explicit(&input_queue_accepting_events, true, memory_order_release);
++    pthread_mutex_unlock(&top->wait_mutex);
+     return true;
+-    fail2:
+-    pthread_condattr_destroy(&attr);
+-    fail:
+-    pthread_mutex_destroy(&top->wait_mutex);
+-    return false;
+ }
 
-     pthread_condattr_t attr;
-@@ -33,42 +34,70 @@ void _input_queue_destroy(queue_top_t* top) {
+ void _input_queue_destroy(queue_top_t* top) {
+-    pthread_mutex_destroy(&top->wait_mutex);
+-    pthread_cond_destroy(&top->wait_cond);
++    if(!atomic_load_explicit(
++            &input_queue_synchronization_initialized, memory_order_acquire)) return;
++    pthread_mutex_lock(&top->wait_mutex);
++    atomic_store_explicit(&input_queue_accepting_events, false, memory_order_release);
++    for(int i = 0; i < 2; i++)
++        atomic_store(&top->queues[i].events_total, 0);
++    pthread_cond_broadcast(&top->wait_cond);
++    pthread_mutex_unlock(&top->wait_mutex);
  }
 
  void _input_queue_wait_unlock(queue_top_t* top) {
+-    pthread_cond_broadcast(&top->wait_cond);
++    if(!atomic_load_explicit(
++            &input_queue_synchronization_initialized, memory_order_acquire)) return;
 +    pthread_mutex_lock(&top->wait_mutex);
-     pthread_cond_broadcast(&top->wait_cond);
++    if(atomic_load_explicit(&input_queue_accepting_events, memory_order_acquire))
++        pthread_cond_broadcast(&top->wait_cond);
 +    pthread_mutex_unlock(&top->wait_mutex);
  }
 
@@ -28,7 +89,13 @@ diff --git a/glfw/src/android_input_queue.c b/glfw/src/android_input_queue.c
 -    input_event_t *put_event = &current->events[ev_idx];
 -    memcpy(put_event, event, sizeof(input_event_t));
 -    pthread_cond_broadcast(&top->wait_cond);
++    if(!atomic_load_explicit(
++            &input_queue_synchronization_initialized, memory_order_acquire)) return;
 +    pthread_mutex_lock(&top->wait_mutex);
++    if(!atomic_load_explicit(&input_queue_accepting_events, memory_order_acquire)) {
++        pthread_mutex_unlock(&top->wait_mutex);
++        return;
++    }
 +    queue_t *current = &top->queues[atomic_load_explicit(
 +            &top->index, memory_order_relaxed)];
 +    uint16_t ev_idx = atomic_load_explicit(
@@ -49,6 +116,8 @@ diff --git a/glfw/src/android_input_queue.c b/glfw/src/android_input_queue.c
 -    // Atomically switch queue 0 to 1 (or 1 to 0) by flipping the bit
 -    queue_t *current = &top->queues[atomic_fetch_xor(&top->index, 0b1)];
 -    for(uint16_t i = 0; i < current->events_total; i++) {
++    if(!atomic_load_explicit(
++            &input_queue_synchronization_initialized, memory_order_acquire)) return;
 +    // Switching buffers and detaching their published count must be atomic
 +    // with respect to producers. Callbacks run after unlocking so Android UI
 +    // input never waits on Minecraft's event handlers.
@@ -72,11 +141,13 @@ diff --git a/glfw/src/android_input_queue.c b/glfw/src/android_input_queue.c
 -    queue_t *current = &top->queues[top->index];
 -    if(current->events_total == 0) {
 -        pthread_mutex_lock(&top->wait_mutex);
++    if(!atomic_load_explicit(
++            &input_queue_synchronization_initialized, memory_order_acquire)) return;
 +    pthread_mutex_lock(&top->wait_mutex);
 +    queue_t *current = &top->queues[atomic_load_explicit(
 +            &top->index, memory_order_relaxed)];
-+    if(atomic_load_explicit(
-+            &current->events_total, memory_order_acquire) == 0) {
++    if(atomic_load_explicit(&input_queue_accepting_events, memory_order_acquire) &&
++       atomic_load_explicit(&current->events_total, memory_order_acquire) == 0) {
          pthread_cond_timedwait(&top->wait_cond, &top->wait_mutex, timeout);
 -        pthread_mutex_unlock(&top->wait_mutex);
      }
@@ -88,10 +159,13 @@ diff --git a/glfw/src/android_input_queue.c b/glfw/src/android_input_queue.c
 -    queue_t *current = &top->queues[top->index];
 -    if(current->events_total == 0) {
 -        pthread_mutex_lock(&top->wait_mutex);
++    if(!atomic_load_explicit(
++            &input_queue_synchronization_initialized, memory_order_acquire)) return;
 +    pthread_mutex_lock(&top->wait_mutex);
 +    queue_t *current = &top->queues[atomic_load_explicit(
 +            &top->index, memory_order_relaxed)];
-+    while(atomic_load_explicit(
++    while(atomic_load_explicit(&input_queue_accepting_events, memory_order_acquire) &&
++          atomic_load_explicit(
 +            &current->events_total, memory_order_acquire) == 0) {
          pthread_cond_wait(&top->wait_cond, &top->wait_mutex);
 -        pthread_mutex_unlock(&top->wait_mutex);
@@ -101,6 +175,7 @@ diff --git a/glfw/src/android_input_queue.c b/glfw/src/android_input_queue.c
 +    pthread_mutex_unlock(&top->wait_mutex);
      _input_queue_dequeue(top, cb);
  }
+-
 diff --git a/glfw/src/android_input_queue.h b/glfw/src/android_input_queue.h
 --- a/glfw/src/android_input_queue.h
 +++ b/glfw/src/android_input_queue.h

@@ -74,6 +74,7 @@ bool gMojoSurfaceAttached = false;
 std::atomic<bool> gLoggedMouseButtonInput{false};
 std::atomic<bool> gLoggedAbsolutePointerInput{false};
 std::atomic<int> gDirectTouchTraceCount{0};
+std::atomic<int> gAndroidTouchTraceCount{0};
 
 std::atomic<bool> gLaunchRunning{false};
 std::atomic<bool> gPipeReaderRunning{false};
@@ -654,6 +655,10 @@ Java_com_mclauncher_app_engine_NativeLaunchBridge_nativeStart(
     }
     LaunchGuard launchGuard;
     mclauncher_clear_input_events();
+    gLoggedMouseButtonInput = false;
+    gLoggedAbsolutePointerInput = false;
+    gDirectTouchTraceCount = 0;
+    gAndroidTouchTraceCount = 0;
 
     const std::string javaHome = jstringToString(env, javaHomeValue);
     const std::string workingDirectory = jstringToString(env, workingDirectoryValue);
@@ -1117,6 +1122,46 @@ Java_com_mclauncher_app_engine_NativeLaunchBridge_nativeSendTouchButton(
     event.x = cursorX;
     event.y = cursorY;
     pushInput(event);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_mclauncher_app_engine_NativeLaunchBridge_nativeTraceDirectTouchEvent(
+        JNIEnv*, jobject, jint action, jint pointerId,
+        jfloat localX, jfloat localY, jfloat rawX, jfloat rawY,
+        jint width, jint height, jint pointerCount, jlong elapsedMillis) {
+    if (!gLaunchRunning.load()) return;
+    const int traceIndex = gAndroidTouchTraceCount.fetch_add(1);
+    if (traceIndex >= 32) return;
+
+    const char* actionName = "other";
+    switch (action) {
+        case 0: actionName = "down"; break;
+        case 1: actionName = "up"; break;
+        case 2: actionName = "move"; break;
+        case 3: actionName = "cancel"; break;
+        case 5: actionName = "pointer-down"; break;
+        case 6: actionName = "pointer-up"; break;
+        default: break;
+    }
+
+    char detail[320];
+    std::snprintf(
+        detail,
+        sizeof(detail),
+        "Android direct-touch %s pointer=%d local=%.1f,%.1f raw=%.1f,%.1f "
+        "view=%dx%d pointers=%d elapsed=%lldms",
+        actionName,
+        pointerId,
+        localX,
+        localY,
+        rawX,
+        rawY,
+        width,
+        height,
+        pointerCount,
+        static_cast<long long>(elapsedMillis)
+    );
+    pushLog(detail);
 }
 
 extern "C" JNIEXPORT void JNICALL

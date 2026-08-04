@@ -1,14 +1,14 @@
 # First device test
 
-Use a clean MCLauncher 11.0 Alpha 14 installation.
+Use a clean MCLauncher 11.0 Alpha 15 installation.
 
-1. Install the GitHub Actions `MCLauncher-11.0-alpha14-arm64-v8a.apk`.
+1. Install the GitHub Actions `MCLauncher-11.0-alpha15-arm64-v8a.apk`.
 2. Allow file access requested by Android.
 3. Create an offline account for the first launch test.
 4. Install a clean vanilla Minecraft version without mods.
 5. Keep the default renderer selection and conservative RAM allocation.
 6. Launch and wait for the main menu.
-7. Tap several main-menu buttons directly. Open an inventory, tap multiple slots, drag an item between slots with one continuous finger gesture, and confirm no virtual cursor is drawn.
+7. Tap several main-menu buttons directly, including quick taps with slight finger movement, and confirm the touched button always opens. Open an inventory, tap multiple slots, then hold briefly before dragging an item between slots; confirm no virtual cursor is drawn.
 8. Create a test world and check rendering, sound, movement, swipe look and configurable touch buttons. Tap the first, middle and last visible hotbar slots and confirm Minecraft selects slots 1, 5 and 9.
 9. Test a physical keyboard for at least 15 minutes, then test mouse and controller input in both menus and a world.
 10. Install one Modrinth project and verify its icon and `Installed` state survive a launcher restart.

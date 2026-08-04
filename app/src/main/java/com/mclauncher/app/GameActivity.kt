@@ -124,7 +124,7 @@ class GameActivity : ComponentActivity() {
         val dataRoot = File(planPath).parentFile?.parentFile ?: filesDir
         val sessionLog = File(dataRoot, "logs/latest-session.log").apply {
             parentFile?.mkdirs()
-            writeText("MCLauncher 11.0 alpha14 session ${System.currentTimeMillis()}\n")
+            writeText("MCLauncher 11.0 alpha15 session ${System.currentTimeMillis()}\n")
         }
 
         setContent {
@@ -271,6 +271,7 @@ class GameActivity : ComponentActivity() {
                                 view.isFocusableInTouchMode = true
                                 view.requestFocus()
                                 val directTouchSlop = ViewConfiguration.get(context).scaledTouchSlop.toFloat()
+                                val directTouchDragHold = ViewConfiguration.getLongPressTimeout().toLong()
                                 // Keep touchscreen coordinates in the SurfaceView's own
                                 // coordinate space. Reconstructing them at Activity level
                                 // introduces status-bar and compatibility-mode offsets on
@@ -278,15 +279,30 @@ class GameActivity : ComponentActivity() {
                                 view.setOnTouchListener { _, event ->
                                     val touchSource = event.isFromSource(InputDevice.SOURCE_TOUCHSCREEN) ||
                                         event.isFromSource(InputDevice.SOURCE_STYLUS)
-                                    touchSource &&
+                                    val canHandle = touchSource &&
                                         !launcherOverlayOwnsTouch &&
-                                        GameInputBridge.isDirectTouchCaptureEnabled() &&
-                                        GameInputBridge.handleDirectTouch(
+                                        GameInputBridge.isDirectTouchCaptureEnabled()
+                                    if (!canHandle) {
+                                        false
+                                    } else {
+                                        if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+                                            view.parent?.requestDisallowInterceptTouchEvent(true)
+                                        }
+                                        val handled = GameInputBridge.handleDirectTouch(
                                             event = event,
                                             width = view.width,
                                             height = view.height,
-                                            dragThresholdPixels = directTouchSlop
+                                            dragThresholdPixels = directTouchSlop,
+                                            dragActivationDelayMillis = directTouchDragHold
                                         )
+                                        if (
+                                            event.actionMasked == MotionEvent.ACTION_UP ||
+                                            event.actionMasked == MotionEvent.ACTION_CANCEL
+                                        ) {
+                                            view.parent?.requestDisallowInterceptTouchEvent(false)
+                                        }
+                                        handled
+                                    }
                                 }
                                 view.holder.addCallback(object : SurfaceHolder.Callback {
                                     override fun surfaceCreated(holder: SurfaceHolder) {

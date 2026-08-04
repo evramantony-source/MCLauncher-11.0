@@ -146,8 +146,8 @@ if openltw.get("patch") != "vendor/patches/ltw-minecraft-26.2.patch":
 
 require_contains(
     "app/build.gradle.kts",
-    'versionName = "11.0.0-alpha14"',
-    'versionCode = 24',
+    'versionName = "11.0.0-alpha15"',
+    'versionCode = 25',
     'mclauncherAbi',
     'abiFilters += targetAbi',
     'CURSEFORGE_API_KEY',
@@ -160,7 +160,7 @@ require_contains(
     "scripts/source_sanity.py",
     'assembleNoruntimeDebug',
     'assembleDebug -PmclauncherAbi=',
-    'MCLauncher-11.0-alpha14-',
+    'MCLauncher-11.0-alpha15-',
     'mojo-pointer-click-position.patch',
     "Build pinned OpenLTW with Minecraft 26.2 compatibility",
     "--ltw-aar",
@@ -177,7 +177,7 @@ require_contains(
     'No Android LWJGL substitution is defined',
     'prepareAndroidNatives',
     'applyMinecraftOptions',
-    '-Dmclauncher.version=11.0.0-alpha14',
+    '-Dmclauncher.version=11.0.0-alpha15',
     'authSession?.accessToken ?: "0"',
     'AccountType.MICROSOFT) "msa" else "legacy"',
 )
@@ -188,6 +188,9 @@ require_contains(
     "cursor_requested",
     "cursor_request_mutex",
     "memory_order_release",
+    "input_queue_accepting_events",
+    "input_queue_synchronization_initialized",
+    "FORTIFY aborts the Minecraft process",
     "_glfwInputCursorPos",
     "_glfwInputMouseClick",
     "sendMouseEventAt0",
@@ -372,9 +375,10 @@ require_contains(
     'handleDirectTouch',
     'directTouchCaptureEnabled',
     'DirectTouchGesture',
-    'pendingDirectTouchRelease',
     'dragThresholdPixels',
+    'dragActivationDelayMillis',
     'nativeSendTouchButton',
+    'nativeTraceDirectTouchEvent',
     'MOUSE_CLICK_HOLD_MILLIS = 33L',
     'fun clickMouseButton(button:',
 )
@@ -394,6 +398,8 @@ require_contains(
     "!gameMenuRequested",
     "setOnTouchListener",
     "ViewConfiguration.get(context).scaledTouchSlop",
+    "ViewConfiguration.getLongPressTimeout()",
+    "requestDisallowInterceptTouchEvent(true)",
 )
 require_absent(
     "app/src/main/java/com/mclauncher/app/GameActivity.kt",
@@ -403,9 +409,10 @@ require_absent(
 )
 require_contains(
     "app/src/main/java/com/mclauncher/app/engine/DirectTouchGesture.kt",
-    "DirectTouchCommand.Tap",
+    "eventTimeMillis",
     "dragThresholdPixels",
-    "DirectTouchCommand.Button(start, pressed = true)",
+    "dragActivationDelayMillis",
+    "commands += DirectTouchCommand.Button(point, pressed = true)",
 )
 require_contains(
     "core-minecraft/src/main/kotlin/com/mclauncher/minecraft/ModpackInstallers.kt",
