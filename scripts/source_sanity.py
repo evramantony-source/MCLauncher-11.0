@@ -146,8 +146,8 @@ if openltw.get("patch") != "vendor/patches/ltw-minecraft-26.2.patch":
 
 require_contains(
     "app/build.gradle.kts",
-    'versionName = "11.0.0-alpha16"',
-    'versionCode = 26',
+    'versionName = "11.0.0-alpha17"',
+    'versionCode = 27',
     'mclauncherAbi',
     'abiFilters += targetAbi',
     'CURSEFORGE_API_KEY',
@@ -160,7 +160,7 @@ require_contains(
     "scripts/source_sanity.py",
     'assembleNoruntimeDebug',
     'assembleDebug -PmclauncherAbi=',
-    'MCLauncher-11.0-alpha16-',
+    'MCLauncher-11.0-alpha17-',
     'mojo-pointer-click-position.patch',
     "Build pinned OpenLTW with Minecraft 26.2 compatibility",
     "--ltw-aar",
@@ -177,7 +177,7 @@ require_contains(
     'No Android LWJGL substitution is defined',
     'prepareAndroidNatives',
     'applyMinecraftOptions',
-    '-Dmclauncher.version=11.0.0-alpha16',
+    '-Dmclauncher.version=11.0.0-alpha17',
     'authSession?.accessToken ?: "0"',
     'AccountType.MICROSOFT) "msa" else "legacy"',
 )
@@ -379,6 +379,10 @@ require_contains(
     'dragActivationDelayMillis',
     'nativeSendTouchButton',
     'nativeTraceDirectTouchEvent',
+    'setInputViewSize',
+    'setGameBufferSize',
+    'bufferDeltaX',
+    'bufferDeltaY',
     'MOUSE_CLICK_HOLD_MILLIS = 33L',
     'tapDirectTouchAt',
     'pendingDirectTouchRelease',
@@ -403,6 +407,17 @@ require_contains(
     "ViewConfiguration.get(context).scaledTouchSlop",
     "ViewConfiguration.getLongPressTimeout()",
     "requestDisallowInterceptTouchEvent(true)",
+    "holder.setFixedSize(targetBufferWidth, targetBufferHeight)",
+    "Android game surface input=",
+)
+require_contains(
+    "app/src/main/java/com/mclauncher/app/engine/GameSurfaceMetrics.kt",
+    "viewWidth",
+    "viewHeight",
+    "bufferWidth",
+    "bufferHeight",
+    "bufferDeltaX",
+    "bufferDeltaY",
 )
 require_absent(
     "app/src/main/java/com/mclauncher/app/GameActivity.kt",

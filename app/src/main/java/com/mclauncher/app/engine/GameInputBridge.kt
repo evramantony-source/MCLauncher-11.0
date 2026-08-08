@@ -28,8 +28,7 @@ object GameInputBridge {
     @Volatile private var controllerBindings: Map<Int, ControllerBinding> = emptyMap()
     @Volatile private var lookSensitivity: Float = 1f
     @Volatile private var gamepadDeadZone: Float = 0.18f
-    @Volatile private var surfaceWidth: Int = 1
-    @Volatile private var surfaceHeight: Int = 1
+    @Volatile private var surfaceMetrics = GameSurfaceMetrics()
     @Volatile private var directTouchCaptureEnabled: Boolean = false
 
     private const val MOUSE_CLICK_HOLD_MILLIS = 33L
@@ -54,9 +53,14 @@ object GameInputBridge {
         gamepadDeadZone = controllerDeadZone.coerceIn(0.05f, 0.60f)
     }
 
-    fun setSurfaceSize(width: Int, height: Int) {
-        surfaceWidth = width.coerceAtLeast(1)
-        surfaceHeight = height.coerceAtLeast(1)
+    @Synchronized
+    fun setInputViewSize(width: Int, height: Int) {
+        surfaceMetrics = surfaceMetrics.withViewSize(width, height)
+    }
+
+    @Synchronized
+    fun setGameBufferSize(width: Int, height: Int) {
+        surfaceMetrics = surfaceMetrics.withBufferSize(width, height)
     }
 
     fun setDirectTouchCaptureEnabled(enabled: Boolean) {
@@ -179,24 +183,29 @@ object GameInputBridge {
             val multiplier = if (applySensitivity) lookSensitivity else 1f
             val scaledX = dx * multiplier
             val scaledY = dy * multiplier
+            val metrics = surfaceMetrics
             val current = _pointerState.value
             if (!current.grabbed) {
                 val next = current.copy(
-                    x = (current.x + scaledX / surfaceWidth).coerceIn(0f, 1f),
-                    y = (current.y + scaledY / surfaceHeight).coerceIn(0f, 1f)
+                    x = (current.x + metrics.normalizedX(scaledX)).coerceIn(0f, 1f),
+                    y = (current.y + metrics.normalizedY(scaledY)).coerceIn(0f, 1f)
                 )
                 _pointerState.value = next
                 GLFW.cursorX = next.x.toDouble()
                 GLFW.cursorY = next.y.toDouble()
             }
-            NativeLaunchBridge.nativeSendCursorDelta(scaledX, scaledY)
+            NativeLaunchBridge.nativeSendCursorDelta(
+                metrics.bufferDeltaX(scaledX),
+                metrics.bufferDeltaY(scaledY)
+            )
         }
     }
 
     fun cursorPosition(x: Float, y: Float) {
+        val metrics = surfaceMetrics
         cursorPositionNormalized(
-            x = x / surfaceWidth,
-            y = y / surfaceHeight
+            x = metrics.normalizedX(x),
+            y = metrics.normalizedY(y)
         )
     }
 

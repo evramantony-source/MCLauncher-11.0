@@ -43,8 +43,8 @@ android {
         applicationId = "com.mclauncher.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 26
-        versionName = "11.0.0-alpha16"
+        versionCode = 27
+        versionName = "11.0.0-alpha17"
         buildConfigField("boolean", "PUBLIC_ALPHA_SIGNER", (!privateAccountBuild).toString())
         buildConfigField("String", "CURSEFORGE_API_KEY", "\"$escapedCurseForgeApiKey\"")
 

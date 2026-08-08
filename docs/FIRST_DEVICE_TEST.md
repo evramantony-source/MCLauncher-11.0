@@ -1,8 +1,8 @@
 # First device test
 
-Use a clean MCLauncher 11.0 Alpha 16 installation.
+Use a clean MCLauncher 11.0 Alpha 17 installation.
 
-1. Install the GitHub Actions `MCLauncher-11.0-alpha16-arm64-v8a.apk`.
+1. Install the GitHub Actions `MCLauncher-11.0-alpha17-arm64-v8a.apk`.
 2. Allow file access requested by Android.
 3. Create an offline account for the first launch test.
 4. Install a clean vanilla Minecraft version without mods.
@@ -17,6 +17,7 @@ Use a clean MCLauncher 11.0 Alpha 16 installation.
 13. Confirm the session log reports the patched bundled OpenLTW and reaches the main menu without an `nglGetFloatv` failure.
 14. Switch the same instance to **Prefer Vulkan (experimental)** and verify the selected API in F3 if the device driver supports it.
 15. Confirm that changing that instance does not change the global graphics API, renderer or RAM settings.
-16. If launch or input fails, export `latest-session.log` before changing settings.
+16. Export `latest-session.log` and confirm its `Android game surface input=... buffer=...` line reports the tablet View separately from the configured render buffer (for the reported Alpha 16 setup this should be approximately `input=2560x1600 buffer=896x504`).
+17. If launch or input fails, export that `latest-session.log` before changing settings.
 
 Record the Android version, device model, Minecraft version, selected Java version, renderer and the final visible error.

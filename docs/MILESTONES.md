@@ -67,6 +67,14 @@
 - [x] Convert an ordinary finger-up into a coordinate-bound press/release at the original touch point with a 33 ms hold.
 - [x] Keep deliberate hold-plus-touch-slop movement as a real inventory drag with stable Android pointer-ID tracking.
 - [x] Retain Alpha 15's atomic cursor-plus-button native event and shutdown-safe GLFW queue.
+- [x] Capture a Redmi Pad Pro trace proving Android and native receive identical tap coordinates and exposing the `2560×1600` Surface versus `896×504` game-window mismatch.
+
+## Alpha 17 — one Surface/input coordinate model
+
+- [x] Fix the Android Surface buffer to Minecraft's configured render resolution before launch.
+- [x] Keep full-screen Android View coordinates separate from the smaller game-buffer coordinate space.
+- [x] Scale relative mouse/look/gyro motion into the game buffer while keeping absolute direct touch normalized to the visible View.
+- [x] Add the exact Redmi Pad Pro `2560×1600` input → `896×504` buffer trace as a regression test.
 - [ ] Verify exact menu and inventory targets on the Redmi Pad Pro.
 
 ## After main-menu confirmation

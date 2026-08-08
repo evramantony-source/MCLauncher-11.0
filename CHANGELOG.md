@@ -1,5 +1,12 @@
 # Changelog
 
+## 11.0.0-alpha17
+
+- Fix the on-device input/render-size split exposed by the Alpha 16 Redmi Pad Pro trace: Minecraft was launched at `896×504` while Android silently supplied a `2560×1600` game Surface.
+- Fix the SurfaceHolder to the exact configured Minecraft render resolution so GLFW's window, framebuffer and cursor coordinate space begin with one size instead of being resized underneath the game.
+- Track Android View pixels and game-buffer pixels separately; absolute touch/mouse input stays normalized to the visible View while relative mouse, look and gyro deltas are scaled into the render buffer.
+- Add the exact `2560×1600` → `896×504` device case as a regression test and log both View and buffer dimensions in every test session.
+
 ## 11.0.0-alpha16
 
 - Position Minecraft's GUI cursor on finger-down without pressing the mouse button, then emit the click only after Android confirms an ordinary tap.

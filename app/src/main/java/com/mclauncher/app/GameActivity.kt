@@ -58,10 +58,12 @@ import com.mclauncher.app.engine.NativeEngineCoordinator
 import com.mclauncher.app.engine.NativeLaunchBridge
 import com.mclauncher.app.ui.game.GameTouchOverlay
 import com.mclauncher.app.ui.theme.MCLauncherTheme
+import com.mclauncher.minecraft.LaunchPlan
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.json.Json
 import java.io.File
 import git.artdeell.dnbootstrap.glfw.GLFW
 
@@ -81,6 +83,16 @@ class GameActivity : ComponentActivity() {
         enterImmersiveMode()
 
         val planPath = intent.getStringExtra(EXTRA_PLAN_PATH).orEmpty()
+        val launchPlan = runBlocking(Dispatchers.IO) {
+            runCatching {
+                Json { ignoreUnknownKeys = true }.decodeFromString(
+                    LaunchPlan.serializer(),
+                    File(planPath).readText()
+                )
+            }.getOrNull()
+        }
+        val targetBufferWidth = launchPlan?.windowWidth?.coerceAtLeast(1)
+        val targetBufferHeight = launchPlan?.windowHeight?.coerceAtLeast(1)
         val launcherSettings = runBlocking(Dispatchers.IO) {
             (application as MCLauncherApplication).launcherStore.load().settings
         }
@@ -124,7 +136,7 @@ class GameActivity : ComponentActivity() {
         val dataRoot = File(planPath).parentFile?.parentFile ?: filesDir
         val sessionLog = File(dataRoot, "logs/latest-session.log").apply {
             parentFile?.mkdirs()
-            writeText("MCLauncher 11.0 alpha16 session ${System.currentTimeMillis()}\n")
+            writeText("MCLauncher 11.0 alpha17 session ${System.currentTimeMillis()}\n")
         }
 
         setContent {
@@ -270,6 +282,15 @@ class GameActivity : ComponentActivity() {
                                 view.isFocusable = true
                                 view.isFocusableInTouchMode = true
                                 view.requestFocus()
+                                if (targetBufferWidth != null && targetBufferHeight != null) {
+                                    // Keep the native buffer in the exact resolution Minecraft was
+                                    // launched with. The SurfaceView itself still fills the tablet;
+                                    // input is transformed between these two coordinate spaces.
+                                    view.holder.setFixedSize(targetBufferWidth, targetBufferHeight)
+                                }
+                                view.addOnLayoutChangeListener { _, left, top, right, bottom, _, _, _, _ ->
+                                    GameInputBridge.setInputViewSize(right - left, bottom - top)
+                                }
                                 val directTouchSlop = ViewConfiguration.get(context).scaledTouchSlop.toFloat()
                                 val directTouchDragHold = ViewConfiguration.getLongPressTimeout().toLong()
                                 // Keep touchscreen coordinates in the SurfaceView's own
@@ -307,7 +328,11 @@ class GameActivity : ComponentActivity() {
                                 view.holder.addCallback(object : SurfaceHolder.Callback {
                                     override fun surfaceCreated(holder: SurfaceHolder) {
                                         surface = holder.surface
-                                        GameInputBridge.setSurfaceSize(view.width, view.height)
+                                        GameInputBridge.setInputViewSize(view.width, view.height)
+                                        GameInputBridge.setGameBufferSize(
+                                            targetBufferWidth ?: view.width,
+                                            targetBufferHeight ?: view.height
+                                        )
                                         if (NativeLaunchBridge.isAvailable) {
                                             runCatching { NativeLaunchBridge.nativeSetSurface(holder.surface) }
                                         }
@@ -322,7 +347,14 @@ class GameActivity : ComponentActivity() {
                                         height: Int
                                     ) {
                                         surface = holder.surface
-                                        GameInputBridge.setSurfaceSize(width, height)
+                                        GameInputBridge.setInputViewSize(view.width, view.height)
+                                        GameInputBridge.setGameBufferSize(width, height)
+                                        runCatching {
+                                            sessionLog.appendText(
+                                                "Android game surface input=${view.width}x${view.height} " +
+                                                    "buffer=${width}x${height}\n"
+                                            )
+                                        }
                                         if (NativeLaunchBridge.isAvailable) {
                                             runCatching { NativeLaunchBridge.nativeSetSurface(holder.surface) }
                                         }
