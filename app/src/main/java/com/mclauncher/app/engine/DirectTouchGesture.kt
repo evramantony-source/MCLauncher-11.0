@@ -7,16 +7,17 @@ internal sealed interface DirectTouchCommand {
 
     data class Move(override val point: DirectTouchPoint) : DirectTouchCommand
     data class Button(override val point: DirectTouchPoint, val pressed: Boolean) : DirectTouchCommand
+    data class Tap(override val point: DirectTouchPoint) : DirectTouchCommand
 }
 
 /**
  * Converts one-finger SurfaceView input into desktop-style menu input.
  *
- * Press and release are anchored to the finger-down coordinate so a quick tap
- * cannot become a click on a different Minecraft control if Android reports a
- * noisy final coordinate. Pointer movement is forwarded only after a deliberate
- * hold plus touch slop, which keeps inventory drag-and-drop available without
- * turning ordinary taps into accidental drags.
+ * A finger-down positions the Minecraft cursor but does not press a mouse button.
+ * Once Android confirms a normal tap, the click is anchored to that original
+ * finger-down coordinate. A held gesture must also cross touch slop before it
+ * becomes a real mouse drag, preserving inventory drag-and-drop without letting
+ * noisy quick-tap coordinates click a different control.
  */
 internal class DirectTouchGesture {
     var activePointerId: Int = INVALID_POINTER_ID
@@ -47,7 +48,7 @@ internal class DirectTouchGesture {
         this.dragThresholdPixels = dragThresholdPixels.coerceAtLeast(0f)
         this.dragActivationDelayMillis = dragActivationDelayMillis.coerceAtLeast(0L)
         dragging = false
-        commands += DirectTouchCommand.Button(point, pressed = true)
+        commands += DirectTouchCommand.Move(point)
         return commands
     }
 
@@ -59,6 +60,7 @@ internal class DirectTouchGesture {
         if (pointerId != activePointerId) return emptyList()
         val start = downPoint ?: return emptyList()
         lastPoint = point
+        val commands = mutableListOf<DirectTouchCommand>()
         if (!dragging) {
             val elapsed = (eventTimeMillis - downEventTimeMillis).coerceAtLeast(0L)
             val distance = hypot(point.localX - start.localX, point.localY - start.localY)
@@ -66,8 +68,10 @@ internal class DirectTouchGesture {
                 return emptyList()
             }
             dragging = true
+            commands += DirectTouchCommand.Button(start, pressed = true)
         }
-        return listOf(DirectTouchCommand.Move(point))
+        commands += DirectTouchCommand.Move(point)
+        return commands
     }
 
     fun up(pointerId: Int, point: DirectTouchPoint): List<DirectTouchCommand> {
@@ -78,17 +82,20 @@ internal class DirectTouchGesture {
                 DirectTouchCommand.Button(point, pressed = false)
             )
         } else {
-            downPoint?.let { listOf(DirectTouchCommand.Button(it, pressed = false)) }.orEmpty()
+            downPoint?.let { listOf(DirectTouchCommand.Tap(it)) }.orEmpty()
         }
         clear()
         return commands
     }
 
     fun cancel(): List<DirectTouchCommand> {
-        val releasePoint = if (dragging) lastPoint else downPoint
-        val commands = if (isActive) {
-            releasePoint?.let { listOf(DirectTouchCommand.Button(it, pressed = false)) }.orEmpty()
-        } else emptyList()
+        val commands = if (isActive && dragging) {
+            (lastPoint ?: downPoint)?.let {
+                listOf(DirectTouchCommand.Button(it, pressed = false))
+            }.orEmpty()
+        } else {
+            emptyList()
+        }
         clear()
         return commands
     }

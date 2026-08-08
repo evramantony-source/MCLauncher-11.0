@@ -61,6 +61,14 @@
 - [x] Reject GLFW input after queue shutdown without touching destroyed synchronization primitives.
 - [ ] Verify quick menu taps, held inventory drag and clean game exit on the Redmi Pad Pro.
 
+## Alpha 16 — confirmed coordinate-bound taps
+
+- [x] Position the GUI cursor on finger-down without holding Minecraft's left mouse button for the whole finger gesture.
+- [x] Convert an ordinary finger-up into a coordinate-bound press/release at the original touch point with a 33 ms hold.
+- [x] Keep deliberate hold-plus-touch-slop movement as a real inventory drag with stable Android pointer-ID tracking.
+- [x] Retain Alpha 15's atomic cursor-plus-button native event and shutdown-safe GLFW queue.
+- [ ] Verify exact menu and inventory targets on the Redmi Pad Pro.
+
 ## After main-menu confirmation
 
 - Pin the observed Java 8 release ZIP digest in `vendor/engine-lock.json`.

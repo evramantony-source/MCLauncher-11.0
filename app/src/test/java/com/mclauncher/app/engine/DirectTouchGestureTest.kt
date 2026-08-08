@@ -28,19 +28,17 @@ class DirectTouchGestureTest {
     )
 
     @Test
-    fun `tap presses immediately and releases at original coordinate`() {
+    fun `tap positions first and clicks original coordinate after release`() {
         val gesture = DirectTouchGesture()
         val start = point(250f, 100f)
 
         val down = down(gesture, pointerId = 7, point = start)
         val up = gesture.up(pointerId = 7, point = point(252f, 103f))
 
-        val press = assertIs<DirectTouchCommand.Button>(down.single())
-        assertTrue(press.pressed)
-        assertEquals(start, press.point)
-        val release = assertIs<DirectTouchCommand.Button>(up.single())
-        assertFalse(release.pressed)
-        assertEquals(start, release.point)
+        val move = assertIs<DirectTouchCommand.Move>(down.single())
+        assertEquals(start, move.point)
+        val tap = assertIs<DirectTouchCommand.Tap>(up.single())
+        assertEquals(start, tap.point)
         assertFalse(gesture.isActive)
     }
 
@@ -58,9 +56,8 @@ class DirectTouchGestureTest {
         val up = gesture.up(pointerId = 3, point = point(104.2f, 75.7f))
 
         assertTrue(move.isEmpty())
-        val release = assertIs<DirectTouchCommand.Button>(up.single())
-        assertFalse(release.pressed)
-        assertEquals(start, release.point)
+        val tap = assertIs<DirectTouchCommand.Tap>(up.single())
+        assertEquals(start, tap.point)
     }
 
     @Test
@@ -75,7 +72,11 @@ class DirectTouchGestureTest {
         val up = gesture.up(pointerId = 3, point = point(300f, 200f))
 
         assertTrue(earlyMove.isEmpty())
-        assertIs<DirectTouchCommand.Move>(heldMove.single())
+        assertEquals(2, heldMove.size)
+        val press = assertIs<DirectTouchCommand.Button>(heldMove[0])
+        assertTrue(press.pressed)
+        assertEquals(start, press.point)
+        assertIs<DirectTouchCommand.Move>(heldMove[1])
         assertEquals(2, up.size)
         assertIs<DirectTouchCommand.Move>(up[0])
         val release = assertIs<DirectTouchCommand.Button>(up[1])
@@ -98,7 +99,7 @@ class DirectTouchGestureTest {
         val up = gesture.up(pointerId = 1, point = point(205f, 104f))
 
         assertTrue(move.isEmpty())
-        assertEquals(start, assertIs<DirectTouchCommand.Button>(up.single()).point)
+        assertEquals(start, assertIs<DirectTouchCommand.Tap>(up.single()).point)
     }
 
     @Test
@@ -130,10 +131,26 @@ class DirectTouchGestureTest {
     }
 
     @Test
-    fun `a new primary touch releases the old press before pressing again`() {
+    fun `canceling an ordinary tap does not invent a mouse release`() {
+        val gesture = DirectTouchGesture()
+        down(gesture, pointerId = 2, point = point(100f, 100f))
+
+        val cancel = gesture.cancel()
+
+        assertTrue(cancel.isEmpty())
+        assertFalse(gesture.isActive)
+    }
+
+    @Test
+    fun `a new primary touch releases an active drag before positioning again`() {
         val gesture = DirectTouchGesture()
         val first = point(100f, 100f)
-        down(gesture, pointerId = 2, point = first)
+        down(gesture, pointerId = 2, point = first, eventTimeMillis = 1_000L)
+        gesture.move(
+            pointerId = 2,
+            point = point(150f, 150f),
+            eventTimeMillis = 1_500L
+        )
 
         val nextDown = down(
             gesture,
@@ -144,9 +161,9 @@ class DirectTouchGestureTest {
 
         val release = assertIs<DirectTouchCommand.Button>(nextDown[0])
         assertFalse(release.pressed)
-        assertEquals(first, release.point)
-        val press = assertIs<DirectTouchCommand.Button>(nextDown[1])
-        assertTrue(press.pressed)
+        assertEquals(point(150f, 150f), release.point)
+        val move = assertIs<DirectTouchCommand.Move>(nextDown[1])
+        assertEquals(point(700f, 300f), move.point)
         assertEquals(4, gesture.activePointerId)
     }
 }

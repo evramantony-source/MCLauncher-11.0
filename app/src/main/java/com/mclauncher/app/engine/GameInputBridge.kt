@@ -45,6 +45,8 @@ object GameInputBridge {
     private var lastTriggerLeft = false
     private var lastTriggerRight = false
     private val directTouchGesture = DirectTouchGesture()
+    private val directTouchClickLock = Any()
+    private var pendingDirectTouchRelease: PendingDirectTouchRelease? = null
 
     fun configure(bindings: List<ControllerBinding>, sensitivity: Float, controllerDeadZone: Float = 0.18f) {
         controllerBindings = bindings.associateBy(ControllerBinding::androidKeyCode)
@@ -226,6 +228,53 @@ object GameInputBridge {
             action = if (pressed) ACTION_PRESS else ACTION_RELEASE,
             modifiers = 0
         )
+    }
+
+    /**
+     * Sends a tap as one short coordinate-bound desktop click after Android has
+     * confirmed the gesture. Both edges carry the exact same cursor position,
+     * matching the maintained Pojav/Amethyst GUI input contract.
+     */
+    private fun tapDirectTouchAt(point: DirectTouchPoint) {
+        cancelPendingDirectTouchRelease(releaseButton = true)
+        directTouchButtonAtNormalized(point.normalizedX, point.normalizedY, pressed = true)
+
+        lateinit var release: Runnable
+        release = Runnable {
+            val ownsRelease = synchronized(directTouchClickLock) {
+                if (pendingDirectTouchRelease?.runnable === release) {
+                    pendingDirectTouchRelease = null
+                    true
+                } else {
+                    false
+                }
+            }
+            if (ownsRelease) {
+                directTouchButtonAtNormalized(
+                    point.normalizedX,
+                    point.normalizedY,
+                    pressed = false
+                )
+            }
+        }
+        synchronized(directTouchClickLock) {
+            pendingDirectTouchRelease = PendingDirectTouchRelease(point, release)
+        }
+        mainHandler.postDelayed(release, MOUSE_CLICK_HOLD_MILLIS)
+    }
+
+    private fun cancelPendingDirectTouchRelease(releaseButton: Boolean) {
+        val pending = synchronized(directTouchClickLock) {
+            pendingDirectTouchRelease.also { pendingDirectTouchRelease = null }
+        } ?: return
+        mainHandler.removeCallbacks(pending.runnable)
+        if (releaseButton) {
+            directTouchButtonAtNormalized(
+                pending.point.normalizedX,
+                pending.point.normalizedY,
+                pressed = false
+            )
+        }
     }
 
     private fun updateAbsolutePointer(normalizedX: Float, normalizedY: Float) {
@@ -453,6 +502,7 @@ object GameInputBridge {
                             command.pressed
                         )
                     }
+                    is DirectTouchCommand.Tap -> tapDirectTouchAt(command.point)
                 }
             }
         }
@@ -483,6 +533,9 @@ object GameInputBridge {
                 if (!point.insideSurface) {
                     false
                 } else {
+                    // Finish the previous frame-delayed tap before moving the
+                    // cursor for a new finger gesture.
+                    cancelPendingDirectTouchRelease(releaseButton = true)
                     dispatch(
                         directTouchGesture.down(
                             pointerId = event.getPointerId(event.actionIndex),
@@ -576,7 +629,13 @@ object GameInputBridge {
                 )
             }
         }
+        cancelPendingDirectTouchRelease(releaseButton)
     }
+
+    private data class PendingDirectTouchRelease(
+        val point: DirectTouchPoint,
+        val runnable: Runnable
+    )
 
     private fun filteredAxis(event: MotionEvent, axis: Int): Float {
         val value = event.getAxisValue(axis)

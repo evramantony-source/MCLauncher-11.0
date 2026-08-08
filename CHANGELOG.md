@@ -1,5 +1,12 @@
 # Changelog
 
+## 11.0.0-alpha16
+
+- Position Minecraft's GUI cursor on finger-down without pressing the mouse button, then emit the click only after Android confirms an ordinary tap.
+- Keep both click edges anchored to the original finger-down coordinate and separate press/release by 33 ms, so every quick tap reaches GLFW as a short coordinate-bound desktop click instead of a finger-duration hold.
+- Preserve Alpha 15's Android pointer-ID tracking and deliberate hold-plus-touch-slop inventory drag, including safe release on cancellation and mode changes.
+- Add regression coverage that distinguishes tap positioning, confirmed taps and real held drags so press-on-down behavior cannot silently return.
+
 ## 11.0.0-alpha15
 
 - Anchor every ordinary touchscreen press and release to the original finger-down coordinate, preventing a noisy or displaced Android `ACTION_UP` from selecting a different Minecraft button or inventory slot.

@@ -124,7 +124,7 @@ class GameActivity : ComponentActivity() {
         val dataRoot = File(planPath).parentFile?.parentFile ?: filesDir
         val sessionLog = File(dataRoot, "logs/latest-session.log").apply {
             parentFile?.mkdirs()
-            writeText("MCLauncher 11.0 alpha15 session ${System.currentTimeMillis()}\n")
+            writeText("MCLauncher 11.0 alpha16 session ${System.currentTimeMillis()}\n")
         }
 
         setContent {

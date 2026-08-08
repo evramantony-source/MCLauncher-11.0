@@ -146,8 +146,8 @@ if openltw.get("patch") != "vendor/patches/ltw-minecraft-26.2.patch":
 
 require_contains(
     "app/build.gradle.kts",
-    'versionName = "11.0.0-alpha15"',
-    'versionCode = 25',
+    'versionName = "11.0.0-alpha16"',
+    'versionCode = 26',
     'mclauncherAbi',
     'abiFilters += targetAbi',
     'CURSEFORGE_API_KEY',
@@ -160,7 +160,7 @@ require_contains(
     "scripts/source_sanity.py",
     'assembleNoruntimeDebug',
     'assembleDebug -PmclauncherAbi=',
-    'MCLauncher-11.0-alpha15-',
+    'MCLauncher-11.0-alpha16-',
     'mojo-pointer-click-position.patch',
     "Build pinned OpenLTW with Minecraft 26.2 compatibility",
     "--ltw-aar",
@@ -177,7 +177,7 @@ require_contains(
     'No Android LWJGL substitution is defined',
     'prepareAndroidNatives',
     'applyMinecraftOptions',
-    '-Dmclauncher.version=11.0.0-alpha15',
+    '-Dmclauncher.version=11.0.0-alpha16',
     'authSession?.accessToken ?: "0"',
     'AccountType.MICROSOFT) "msa" else "legacy"',
 )
@@ -380,6 +380,9 @@ require_contains(
     'nativeSendTouchButton',
     'nativeTraceDirectTouchEvent',
     'MOUSE_CLICK_HOLD_MILLIS = 33L',
+    'tapDirectTouchAt',
+    'pendingDirectTouchRelease',
+    'mainHandler.postDelayed(release, MOUSE_CLICK_HOLD_MILLIS)',
     'fun clickMouseButton(button:',
 )
 require_contains(
@@ -412,7 +415,9 @@ require_contains(
     "eventTimeMillis",
     "dragThresholdPixels",
     "dragActivationDelayMillis",
-    "commands += DirectTouchCommand.Button(point, pressed = true)",
+    "commands += DirectTouchCommand.Move(point)",
+    "commands += DirectTouchCommand.Button(start, pressed = true)",
+    "DirectTouchCommand.Tap(it)",
 )
 require_contains(
     "core-minecraft/src/main/kotlin/com/mclauncher/minecraft/ModpackInstallers.kt",
