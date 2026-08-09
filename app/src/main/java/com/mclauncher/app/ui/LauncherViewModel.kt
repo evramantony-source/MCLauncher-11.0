@@ -341,7 +341,8 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                     )
                 }
             } catch (error: Throwable) {
-                createdInstance?.let(::rollbackImportedInstance)
+                val failedInstance = createdInstance
+                if (failedInstance != null) rollbackImportedInstance(failedInstance)
                 _state.update {
                     it.copy(
                         engineOperation = null,
@@ -1380,7 +1381,10 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
             val roots = withContext(Dispatchers.IO) {
                 runCatching {
                     ZipFile(archive).use { zip ->
-                        zip.getEntry("modrinth.index.json") != null to (zip.getEntry("manifest.json") != null)
+                        Pair(
+                            zip.getEntry("modrinth.index.json") != null,
+                            zip.getEntry("manifest.json") != null
+                        )
                     }
                 }.getOrDefault(false to false)
             }
