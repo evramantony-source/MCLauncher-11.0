@@ -1,6 +1,7 @@
 package com.mclauncher.minecraft
 
 import com.mclauncher.model.ContentType
+import com.mclauncher.model.ContentSource
 import com.mclauncher.model.InstallProgress
 import com.mclauncher.model.InstallStage
 import com.mclauncher.model.MinecraftInstance
@@ -19,6 +20,8 @@ class ModrinthRepository(
     private val downloader: HttpDownloader = HttpDownloader(),
     private val json: Json = Json { ignoreUnknownKeys = true; encodeDefaults = true; prettyPrint = true }
 ) {
+    private val contentIndex = ContentIndexStore(layout, json)
+
     suspend fun search(
         query: String,
         contentType: ContentType,
@@ -157,7 +160,13 @@ class ModrinthRepository(
             versionNumber = version.version_number,
             loader = version.loaders.firstOrNull(),
             gameVersion = baseGameVersion(instance),
-            sha1 = file.hashes.sha1
+            sha1 = file.hashes.sha1,
+            sha512 = file.hashes.sha512,
+            downloadUrls = listOf(file.url),
+            fileSize = file.size,
+            clientEnvironment = project.client_side,
+            serverEnvironment = project.server_side,
+            source = ContentSource.MODRINTH
         )
         updateIndex(gameDir) { current -> current.filterNot { it.projectId == project.project_id } + installed }
 
@@ -189,7 +198,7 @@ class ModrinthRepository(
     }
 
     suspend fun listInstalled(instance: MinecraftInstance): List<InstalledContent> = withContext(Dispatchers.IO) {
-        readIndex(layout.instanceGameDirectory(instance.gameDirectoryName)).items
+        contentIndex.read(instance).items
     }
 
     suspend fun setEnabled(instance: MinecraftInstance, item: InstalledContent, enabled: Boolean) = withContext(Dispatchers.IO) {
@@ -253,7 +262,9 @@ class ModrinthRepository(
             description = detail["description"]?.jsonPrimitive?.content ?: "",
             categories = detail["categories"]?.jsonArray?.map { it.jsonPrimitive.content }.orEmpty(),
             downloads = detail["downloads"]?.jsonPrimitive?.content?.toLongOrNull() ?: 0,
-            icon_url = detail["icon_url"]?.jsonPrimitive?.contentOrNull
+            icon_url = detail["icon_url"]?.jsonPrimitive?.contentOrNull,
+            client_side = detail["client_side"]?.jsonPrimitive?.contentOrNull,
+            server_side = detail["server_side"]?.jsonPrimitive?.contentOrNull
         )
     }
 
@@ -265,17 +276,7 @@ class ModrinthRepository(
         else -> null
     }
 
-    private fun readIndex(gameDir: File): ContentIndex {
-        val file = File(gameDir, ".mclauncher/content-index.json")
-        return if (!file.isFile) ContentIndex() else runCatching {
-            json.decodeFromString<ContentIndex>(file.readText())
-        }.getOrDefault(ContentIndex())
-    }
-
     private fun updateIndex(gameDir: File, transform: (List<InstalledContent>) -> List<InstalledContent>) {
-        val file = File(gameDir, ".mclauncher/content-index.json")
-        file.parentFile?.mkdirs()
-        val current = readIndex(gameDir)
-        file.writeText(json.encodeToString(ContentIndex(transform(current.items))))
+        contentIndex.update(gameDir, transform)
     }
 }

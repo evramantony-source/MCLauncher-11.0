@@ -1,4 +1,4 @@
-# MCLauncher 11.0 Alpha 17 feature matrix
+# MCLauncher 11.0 Alpha 18 feature matrix
 
 | Area | Current status |
 |---|---|
@@ -9,6 +9,7 @@
 | Separate instances and favourite/recent ordering | Source implemented; per-instance launch settings included |
 | Modrinth content | Browsing/install/update, icons and installed state implemented |
 | CurseForge content | Browsing/install/update and icons implemented; official API key required |
+| Modpack import/export | Local `.mrpack` and CurseForge profile ZIP import; validated provider-native export with exact references and overrides |
 | Java 8/17/21/25 | CI packaging required |
 | Java 17/21/25 archive authenticity | RSA signature verification in CI |
 | Patched LWJGL/GLFW | Coordinate-mapped CI packaging required |
@@ -16,7 +17,7 @@
 | MobileGlues default and GL4ES/OpenLTW fallback | Hash-pinned; exports and payload enforced by verifier |
 | Android JNA compatibility | Version-selected JNA 6/7 dispatch libraries |
 | Optional renderer/driver packs | Manifest-driven custom packs plus verified one-tap packages with canonical built-in identity; missing saved choices fall back safely |
-| Touch | SurfaceView input and fixed game-buffer coordinates are separated; confirmed coordinate-bound 33 ms taps, hold-plus-slop inventory drag, tappable nine-slot hotbar, editable controls, swipe look and optional look stick; Alpha 17 device proof required |
+| Touch | Direct taps are Redmi Pad Pro-confirmed with separate SurfaceView input and game-buffer coordinates; the fixed-buffer resolution/aspect regression remains open |
 | Keyboard, mouse, controller and gyro | Raw keyboard path, absolute/relative mouse and menu/gamepad contexts implemented; device proof required |
 | Launcher theme | System, green midnight-black dark mode and light mode implemented |
 | FPS limit and performance settings | Global and per-instance settings implemented |

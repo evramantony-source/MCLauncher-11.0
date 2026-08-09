@@ -86,6 +86,7 @@ class ModpackRuntimeSpecTest {
                 "modrinth.index.json",
                 """
                 {
+                  "versionId": "broken-1",
                   "name": "Broken Pack",
                   "files": [],
                   "dependencies": {
@@ -114,6 +115,7 @@ class ModpackRuntimeSpecTest {
                 "modrinth.index.json",
                 """
                 {
+                  "versionId": "ranged-1",
                   "name": "Ranged Pack",
                   "files": [],
                   "dependencies": {

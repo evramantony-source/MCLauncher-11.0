@@ -1,5 +1,8 @@
 package com.mclauncher.app.ui.screens
 
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
@@ -24,6 +27,7 @@ import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -53,6 +57,7 @@ import com.mclauncher.app.ui.LauncherUiState
 import com.mclauncher.app.ui.components.LauncherCard
 import com.mclauncher.minecraft.InstalledContent
 import com.mclauncher.minecraft.MinecraftVersionCapabilities
+import com.mclauncher.minecraft.ModpackExportFormat
 import com.mclauncher.model.GraphicsDriver
 import com.mclauncher.model.InstanceLaunchSettings
 import com.mclauncher.model.JavaVersion
@@ -79,10 +84,28 @@ fun InstanceDetailScreen(
     onToggleContent: (InstalledContent) -> Unit,
     onRemoveContent: (InstalledContent) -> Unit,
     onOpenScreenshot: (File) -> Unit,
+    onExportModpack: (String, ModpackExportFormat, Uri) -> Unit,
     snackbarHost: @Composable () -> Unit
 ) {
     val instance = state.snapshot.instances.firstOrNull { it.id == instanceId }
     var section by remember { mutableStateOf(InstanceSection.OVERVIEW) }
+    val suggestedName = instance?.name
+        ?.trim()
+        ?.replace(Regex("[^A-Za-z0-9._-]+"), "-")
+        ?.trim('-', '.', '_')
+        ?.take(80)
+        ?.ifBlank { "modpack" }
+        ?: "modpack"
+    val modrinthExport = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument(ModpackExportFormat.MODRINTH.mimeType)
+    ) { uri ->
+        uri?.let { onExportModpack(instanceId, ModpackExportFormat.MODRINTH, it) }
+    }
+    val curseForgeExport = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument(ModpackExportFormat.CURSEFORGE.mimeType)
+    ) { uri ->
+        uri?.let { onExportModpack(instanceId, ModpackExportFormat.CURSEFORGE, it) }
+    }
 
     LaunchedEffect(instanceId) { onLoadContent(instanceId) }
 
@@ -127,7 +150,19 @@ fun InstanceDetailScreen(
             }
 
             when (section) {
-                InstanceSection.OVERVIEW -> overviewItems(instance, state, onPlay, onDelete, onUpdateInstance)
+                InstanceSection.OVERVIEW -> overviewItems(
+                    instance = instance,
+                    state = state,
+                    onPlay = onPlay,
+                    onDelete = onDelete,
+                    onUpdateInstance = onUpdateInstance,
+                    onChooseExport = { format ->
+                        when (format) {
+                            ModpackExportFormat.MODRINTH -> modrinthExport.launch("$suggestedName.mrpack")
+                            ModpackExportFormat.CURSEFORGE -> curseForgeExport.launch("$suggestedName-curseforge.zip")
+                        }
+                    }
+                )
                 InstanceSection.SETTINGS -> settingsItems(instance, state, onUpdateInstance)
                 InstanceSection.CONTENT -> contentItems(instance.id, state.installedContent, onUpdateContent, onToggleContent, onRemoveContent)
                 InstanceSection.SCREENSHOTS -> screenshotItems(screenshots, onOpenScreenshot)
@@ -141,7 +176,8 @@ private fun androidx.compose.foundation.lazy.LazyListScope.overviewItems(
     state: LauncherUiState,
     onPlay: (String) -> Unit,
     onDelete: (String) -> Unit,
-    onUpdateInstance: (String, (MinecraftInstance) -> MinecraftInstance) -> Unit
+    onUpdateInstance: (String, (MinecraftInstance) -> MinecraftInstance) -> Unit,
+    onChooseExport: (ModpackExportFormat) -> Unit
 ) {
     val effectiveSettings = instance.launchSettings.applyTo(state.snapshot.settings)
     val supportsGraphicsApi =
@@ -179,6 +215,41 @@ private fun androidx.compose.foundation.lazy.LazyListScope.overviewItems(
                     Icon(Icons.Rounded.PlayArrow, contentDescription = null)
                     Text("Play", modifier = Modifier.padding(start = 5.dp))
                 }
+            }
+        }
+    }
+
+    item {
+        LauncherCard(modifier = Modifier.fillMaxWidth()) {
+            Text("Export modpack", style = MaterialTheme.typography.titleLarge)
+            Text(
+                "Create a validated Modrinth .mrpack or CurseForge profile ZIP. Provider files are referenced by exact version; configs and local files are placed in overrides.",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(vertical = 8.dp)
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedButton(
+                    onClick = { onChooseExport(ModpackExportFormat.MODRINTH) },
+                    enabled = instance.installed && state.engineOperation == null
+                ) {
+                    Icon(Icons.Rounded.Share, contentDescription = null)
+                    Text("Modrinth .mrpack", modifier = Modifier.padding(start = 6.dp))
+                }
+                OutlinedButton(
+                    onClick = { onChooseExport(ModpackExportFormat.CURSEFORGE) },
+                    enabled = instance.installed && state.engineOperation == null
+                ) {
+                    Icon(Icons.Rounded.Share, contentDescription = null)
+                    Text("CurseForge ZIP", modifier = Modifier.padding(start = 6.dp))
+                }
+            }
+            state.engineOperation?.takeIf { it.startsWith("Exporting ") }?.let { operation ->
+                Text(
+                    operation,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(top = 8.dp)
+                )
             }
         }
     }

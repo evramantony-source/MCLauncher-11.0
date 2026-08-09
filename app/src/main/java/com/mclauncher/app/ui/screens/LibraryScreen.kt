@@ -1,5 +1,8 @@
 package com.mclauncher.app.ui.screens
 
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -21,6 +24,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -43,8 +47,12 @@ fun LibraryScreen(
     onPlay: (String) -> Unit,
     onOpenInstance: (String) -> Unit,
     onDiscover: () -> Unit,
+    onImportModpack: (Uri) -> Unit,
     snackbarHost: @Composable () -> Unit
 ) {
+    val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri?.let(onImportModpack)
+    }
     Scaffold(snackbarHost = snackbarHost) { padding ->
         LazyColumn(
             modifier = Modifier
@@ -58,9 +66,18 @@ fun LibraryScreen(
                     title = "Library",
                     subtitle = "Separate game directories and settings for every instance",
                     action = {
-                        FilledTonalButton(onClick = onDiscover) {
-                            Icon(Icons.Rounded.Download, contentDescription = null)
-                            Text("Add", modifier = Modifier.padding(start = 6.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton(
+                                onClick = { importLauncher.launch(arrayOf("*/*")) },
+                                enabled = state.engineOperation == null
+                            ) {
+                                Icon(Icons.Rounded.Download, contentDescription = null)
+                                Text("Import", modifier = Modifier.padding(start = 6.dp))
+                            }
+                            FilledTonalButton(onClick = onDiscover) {
+                                Icon(Icons.Rounded.Download, contentDescription = null)
+                                Text("Add", modifier = Modifier.padding(start = 6.dp))
+                            }
                         }
                     }
                 )

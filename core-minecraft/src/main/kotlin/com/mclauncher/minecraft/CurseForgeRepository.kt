@@ -1,6 +1,7 @@
 package com.mclauncher.minecraft
 
 import com.mclauncher.model.ContentType
+import com.mclauncher.model.ContentSource
 import com.mclauncher.model.InstallProgress
 import com.mclauncher.model.InstallStage
 import com.mclauncher.model.MinecraftInstance
@@ -16,6 +17,8 @@ class CurseForgeRepository(
     private val downloader: HttpDownloader = HttpDownloader(),
     private val json: Json = Json { ignoreUnknownKeys = true; encodeDefaults = true; prettyPrint = true }
 ) {
+    private val contentIndex = ContentIndexStore(layout, json)
+
     suspend fun search(
         apiKey: String,
         query: String,
@@ -94,23 +97,7 @@ class CurseForgeRepository(
         downloadArchive(apiKey, mod, file, target, onProgress)
 
         if (contentType == ContentType.MODPACK) {
-            onProgress(InstallProgress(stage = InstallStage.PACK_FILES, message = "Reading ${mod.name} manifest"))
-            val manifest = CurseForgePackInstaller(layout, json).readManifest(instance, target)
-            val required = manifest.files.filter { it.required }
-            required.forEachIndexed { index, entry ->
-                onProgress(
-                    InstallProgress(
-                        stage = InstallStage.PACK_FILES,
-                        completedFiles = index,
-                        totalFiles = required.size,
-                        message = "Installing pack mod ${index + 1}/${required.size}"
-                    )
-                )
-                val childMod = mod(apiKey, entry.projectId)
-                val childFile = file(apiKey, entry.projectId, entry.fileId)
-                val childTarget = File(gameDir, "mods/${childFile.fileName}")
-                downloadFile(apiKey, childMod.id, childFile, childTarget)
-            }
+            installPack(apiKey, instance, target, onProgress)
         } else if (installDependencies) {
             installRequiredDependencies(
                 apiKey = apiKey,
@@ -122,21 +109,57 @@ class CurseForgeRepository(
             )
         }
 
-        val sha1 = file.hashes.firstOrNull { it.algo == 1 }?.value
-        val installed = InstalledContent(
-            projectId = "curseforge:${mod.id}",
-            versionId = file.id.toString(),
-            contentType = contentType,
-            fileName = target.name,
-            title = mod.name,
-            iconUrl = mod.logo?.thumbnailUrl ?: mod.logo?.url,
-            versionNumber = file.displayName,
-            loader = instance.loader.id,
-            gameVersion = gameVersion,
-            sha1 = sha1
-        )
+        val installed = installedRecord(instance, mod, file, contentType, gameVersion)
         updateIndex(gameDir) { current -> current.filterNot { it.projectId == installed.projectId } + installed }
         return installed
+    }
+
+    /** Installs a standards-compliant CurseForge profile ZIP selected from local storage. */
+    suspend fun installPack(
+        apiKey: String,
+        instance: MinecraftInstance,
+        archive: File,
+        onProgress: (InstallProgress) -> Unit = {}
+    ): CurseForgePackManifest = withContext(Dispatchers.IO) {
+        onProgress(InstallProgress(stage = InstallStage.PACK_FILES, message = "Reading CurseForge manifest"))
+        val manifest = CurseForgePackInstaller(layout, json).readManifest(instance, archive)
+        val required = manifest.files.filter { it.required }
+        if (required.isNotEmpty()) requireApiKey(apiKey)
+        val gameDir = layout.instanceGameDirectory(instance.gameDirectoryName)
+        required.forEachIndexed { index, entry ->
+            onProgress(
+                InstallProgress(
+                    stage = InstallStage.PACK_FILES,
+                    completedFiles = index,
+                    totalFiles = required.size,
+                    message = "Installing pack file ${index + 1}/${required.size}"
+                )
+            )
+            val childMod = mod(apiKey, entry.projectId)
+            val childFile = file(apiKey, entry.projectId, entry.fileId)
+            val type = contentType(childMod)
+            val childTarget = File(gameDir, "${type.folderName}/${childFile.fileName}")
+            downloadFile(apiKey, childMod.id, childFile, childTarget)
+            val installed = installedRecord(
+                instance = instance,
+                mod = childMod,
+                file = childFile,
+                contentType = type,
+                gameVersion = manifest.minecraft.version
+            )
+            updateIndex(gameDir) { current ->
+                current.filterNot { it.projectId == installed.projectId } + installed
+            }
+        }
+        onProgress(
+            InstallProgress(
+                stage = InstallStage.PACK_FILES,
+                completedFiles = required.size,
+                totalFiles = required.size,
+                message = "${manifest.name} installed"
+            )
+        )
+        manifest
     }
 
     suspend fun updateAvailable(
@@ -171,7 +194,17 @@ class CurseForgeRepository(
             val dependencyFile = files(apiKey, dependency.modId, gameVersion).firstOrNull()
                 ?: error("No compatible file for required dependency ${dependencyMod.name}")
             val gameDir = layout.instanceGameDirectory(instance.gameDirectoryName)
-            downloadFile(apiKey, dependencyMod.id, dependencyFile, File(gameDir, "mods/${dependencyFile.fileName}"))
+            val type = contentType(dependencyMod)
+            downloadFile(
+                apiKey,
+                dependencyMod.id,
+                dependencyFile,
+                File(gameDir, "${type.folderName}/${dependencyFile.fileName}")
+            )
+            val installed = installedRecord(instance, dependencyMod, dependencyFile, type, gameVersion)
+            updateIndex(gameDir) { current ->
+                current.filterNot { it.projectId == installed.projectId } + installed
+            }
             installRequiredDependencies(apiKey, instance, dependencyFile, gameVersion, visited, onProgress)
         }
     }
@@ -248,17 +281,36 @@ class CurseForgeRepository(
         )
     }
 
-    private fun readIndex(gameDir: File): ContentIndex {
-        val file = File(gameDir, ".mclauncher/content-index.json")
-        return if (!file.isFile) ContentIndex() else runCatching {
-            json.decodeFromString<ContentIndex>(file.readText())
-        }.getOrDefault(ContentIndex())
+    private fun updateIndex(gameDir: File, transform: (List<InstalledContent>) -> List<InstalledContent>) {
+        contentIndex.update(gameDir, transform)
     }
 
-    private fun updateIndex(gameDir: File, transform: (List<InstalledContent>) -> List<InstalledContent>) {
-        val file = File(gameDir, ".mclauncher/content-index.json")
-        file.parentFile?.mkdirs()
-        file.writeText(json.encodeToString(ContentIndex(transform(readIndex(gameDir).items))))
+    private fun installedRecord(
+        instance: MinecraftInstance,
+        mod: CurseForgeMod,
+        file: CurseForgeFile,
+        contentType: ContentType,
+        gameVersion: String
+    ) = InstalledContent(
+        projectId = "curseforge:${mod.id}",
+        versionId = file.id.toString(),
+        contentType = contentType,
+        fileName = file.fileName,
+        title = mod.name,
+        iconUrl = mod.logo?.thumbnailUrl ?: mod.logo?.url,
+        versionNumber = file.displayName,
+        loader = instance.loader.id,
+        gameVersion = gameVersion,
+        sha1 = file.hashes.firstOrNull { it.algo == 1 }?.value,
+        fileSize = file.fileLength,
+        source = ContentSource.CURSEFORGE
+    )
+
+    private fun contentType(mod: CurseForgeMod): ContentType = when (mod.classId) {
+        12 -> ContentType.RESOURCE_PACK
+        6552 -> ContentType.SHADER
+        4471 -> ContentType.MODPACK
+        else -> ContentType.MOD
     }
 
     private fun requireApiKey(apiKey: String) {

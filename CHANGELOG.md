@@ -1,5 +1,13 @@
 # Changelog
 
+## 11.0.0-alpha18
+
+- Add local Modrinth `.mrpack` and CurseForge profile-ZIP import from Android's document picker, creating a separate instance with the exact Minecraft and loader versions declared by the archive.
+- Add per-instance Modrinth and CurseForge exports through Android's save picker, with format-specific root manifests, exact loader metadata, provider project/file references, portable overrides and post-write archive validation.
+- Persist Modrinth URLs, SHA-1/SHA-512 hashes, environment metadata and CurseForge project/file provenance; recover older pack metadata from the original archive before exporting an Alpha 17 instance.
+- Embed changed, local and cross-provider files instead of emitting broken remote references, while excluding worlds, logs, crash reports, screenshots, server lists and launcher-private metadata.
+- Roll back a newly created imported instance if runtime or pack installation fails, and retain safe ZIP path checks for both downloaded files and overrides.
+
 ## 11.0.0-alpha17
 
 - Fix the on-device input/render-size split exposed by the Alpha 16 Redmi Pad Pro trace: Minecraft was launched at `896×504` while Android silently supplied a `2560×1600` game Surface.

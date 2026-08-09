@@ -1,8 +1,8 @@
 # First device test
 
-Use a clean MCLauncher 11.0 Alpha 17 installation.
+Use a clean MCLauncher 11.0 Alpha 18 installation.
 
-1. Install the GitHub Actions `MCLauncher-11.0-alpha17-arm64-v8a.apk`.
+1. Install the GitHub Actions `MCLauncher-11.0-alpha18-arm64-v8a.apk`.
 2. Allow file access requested by Android.
 3. Create an offline account for the first launch test.
 4. Install a clean vanilla Minecraft version without mods.
@@ -19,5 +19,8 @@ Use a clean MCLauncher 11.0 Alpha 17 installation.
 15. Confirm that changing that instance does not change the global graphics API, renderer or RAM settings.
 16. Export `latest-session.log` and confirm its `Android game surface input=... buffer=...` line reports the tablet View separately from the configured render buffer (for the reported Alpha 16 setup this should be approximately `input=2560x1600 buffer=896x504`).
 17. If launch or input fails, export that `latest-session.log` before changing settings.
+18. Open an installed instance and export both a Modrinth `.mrpack` and a CurseForge ZIP; verify Android creates non-empty files with the requested extensions.
+19. Import each exported file from Library and confirm a new instance is created with the same Minecraft and exact loader versions.
+20. Launch both round-trip instances and confirm configs plus managed mods are present. A CurseForge import containing provider references requires the configured API key.
 
 Record the Android version, device model, Minecraft version, selected Java version, renderer and the final visible error.

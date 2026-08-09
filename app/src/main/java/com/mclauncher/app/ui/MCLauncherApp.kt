@@ -119,6 +119,7 @@ fun MCLauncherApp(launcherViewModel: LauncherViewModel = viewModel()) {
                     onPlay = launcherViewModel::play,
                     onOpenInstance = { navController.navigate("instance/$it") },
                     onDiscover = { navController.navigate(LauncherDestination.Discover.route) },
+                    onImportModpack = launcherViewModel::importModpack,
                     snackbarHost = { SnackbarHost(snackbarHostState) }
                 )
             }
@@ -204,6 +205,7 @@ fun MCLauncherApp(launcherViewModel: LauncherViewModel = viewModel()) {
                     onToggleContent = launcherViewModel::toggleContent,
                     onRemoveContent = launcherViewModel::removeContent,
                     onOpenScreenshot = launcherViewModel::openScreenshot,
+                    onExportModpack = launcherViewModel::exportModpack,
                     snackbarHost = { SnackbarHost(snackbarHostState) }
                 )
             }

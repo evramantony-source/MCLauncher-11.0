@@ -2,6 +2,8 @@ package com.mclauncher.minecraft
 
 import com.mclauncher.model.MinecraftInstance
 import com.mclauncher.model.ModLoader
+import com.mclauncher.model.ContentSource
+import com.mclauncher.model.ContentType
 import com.mclauncher.model.InstallProgress
 import com.mclauncher.model.InstallStage
 import kotlinx.coroutines.Dispatchers
@@ -10,6 +12,7 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import java.io.File
+import java.net.URI
 import java.util.zip.ZipFile
 
 @Serializable
@@ -99,15 +102,29 @@ class ModrinthPackInstaller(
     private val downloader: HttpDownloader = HttpDownloader(),
     private val json: Json = Json { ignoreUnknownKeys = true }
 ) {
-    suspend fun inspect(archive: File): PackRuntimeSpec = withContext(Dispatchers.IO) {
+    private val contentIndex = ContentIndexStore(layout, json)
+
+    suspend fun readIndex(archive: File): ModrinthPackIndex = withContext(Dispatchers.IO) {
         require(archive.isFile) { "Modrinth pack file is missing" }
-        ZipFile(archive).use { zip ->
-            val indexEntry = zip.getEntry("modrinth.index.json") ?: error("This .mrpack has no modrinth.index.json")
-            val index = zip.getInputStream(indexEntry).bufferedReader().use {
-                json.decodeFromString<ModrinthPackIndex>(it.readText())
+        ZipFile(archive).use { zip -> readAndValidateIndex(zip) }
+    }
+
+    suspend fun inspect(archive: File): PackRuntimeSpec = withContext(Dispatchers.IO) {
+        runtimeSpec(readIndex(archive).dependencies)
+    }
+
+    suspend fun recoverInstalledContent(
+        instance: MinecraftInstance,
+        archive: File
+    ): List<InstalledContent> = withContext(Dispatchers.IO) {
+        val gameDirectory = layout.instanceGameDirectory(instance.gameDirectoryName)
+        readIndex(archive).files
+            .filterNot { it.env.client.equals("unsupported", true) }
+            .mapNotNull { entry ->
+                val destination = runCatching { safeChild(gameDirectory, entry.path) }.getOrNull()
+                    ?.takeIf(File::isFile) ?: return@mapNotNull null
+                installedEntry(instance, entry, destination)
             }
-            runtimeSpec(index.dependencies)
-        }
     }
 
     suspend fun install(
@@ -118,12 +135,11 @@ class ModrinthPackInstaller(
         require(archive.isFile) { "Modrinth pack file is missing" }
         val gameDir = layout.instanceGameDirectory(instance.gameDirectoryName).apply { mkdirs() }
         ZipFile(archive).use { zip ->
-            val indexEntry = zip.getEntry("modrinth.index.json") ?: error("This .mrpack has no modrinth.index.json")
-            val index = zip.getInputStream(indexEntry).bufferedReader().use { json.decodeFromString<ModrinthPackIndex>(it.readText()) }
-            require(index.game.equals("minecraft", true)) { "Unsupported Modrinth pack game: ${index.game}" }
+            val index = readAndValidateIndex(zip)
             validatePackCompatibility(instance, index.dependencies)
 
             val eligible = index.files.filterNot { it.env.client.equals("unsupported", true) }
+            val installedEntries = mutableListOf<InstalledContent>()
             val totalBytes = eligible.map { it.fileSize }.takeIf { sizes -> sizes.all { it > 0L } }?.sum()
             var downloadedBytes = 0L
             eligible.forEachIndexed { position, entry ->
@@ -175,10 +191,17 @@ class ModrinthPackInstaller(
                     failure = result.exceptionOrNull()
                 }
                 if (failure != null) throw IllegalStateException("Could not download ${entry.path}: ${failure.message}", failure)
+                installedEntry(instance, entry, destination)?.let(installedEntries::add)
             }
 
             extractDirectory(zip, "overrides/", gameDir)
             extractDirectory(zip, "client-overrides/", gameDir)
+            if (installedEntries.isNotEmpty()) {
+                contentIndex.update(gameDir) { current ->
+                    val importedIds = installedEntries.mapTo(mutableSetOf()) { it.projectId }
+                    current.filterNot { it.projectId in importedIds } + installedEntries
+                }
+            }
             onProgress(
                 InstallProgress(
                     stage = InstallStage.PACK_FILES,
@@ -191,6 +214,85 @@ class ModrinthPackInstaller(
             )
             index
         }
+    }
+
+    private fun readAndValidateIndex(zip: ZipFile): ModrinthPackIndex {
+        val indexEntry = zip.getEntry("modrinth.index.json")
+            ?: error("This .mrpack has no modrinth.index.json")
+        val index = zip.getInputStream(indexEntry).bufferedReader(Charsets.UTF_8).use {
+            json.decodeFromString<ModrinthPackIndex>(it.readText())
+        }
+        require(index.formatVersion == 1) { "Unsupported Modrinth pack format ${index.formatVersion}" }
+        require(index.game.equals("minecraft", true)) { "Unsupported Modrinth pack game: ${index.game}" }
+        require(index.name.isNotBlank()) { "Modrinth pack name is missing" }
+        require(index.versionId.isNotBlank()) { "Modrinth pack version ID is missing" }
+        val paths = mutableSetOf<String>()
+        index.files.forEach { entry ->
+            require(paths.add(entry.path)) { "Duplicate Modrinth pack path: ${entry.path}" }
+            safeChild(layout.root, entry.path)
+            require(entry.downloads.isNotEmpty()) { "No download URL for ${entry.path}" }
+            entry.downloads.forEach { url ->
+                val uri = runCatching { URI(url) }.getOrNull()
+                require(uri?.scheme.equals("https", true) && !uri?.host.isNullOrBlank()) {
+                    "Invalid HTTPS download URL for ${entry.path}"
+                }
+            }
+            require(entry.hashes.sha1?.matches(Regex("[0-9a-fA-F]{40}")) == true) {
+                "${entry.path} does not declare a valid SHA-1 hash"
+            }
+            require(entry.hashes.sha512?.matches(Regex("[0-9a-fA-F]{128}")) == true) {
+                "${entry.path} does not declare a valid SHA-512 hash"
+            }
+            require(entry.fileSize >= 0) { "Negative file size for ${entry.path}" }
+            listOf(entry.env.client, entry.env.server).forEach { environment ->
+                require(environment in setOf("required", "optional", "unsupported")) {
+                    "Unsupported Modrinth environment value: $environment"
+                }
+            }
+        }
+        return index
+    }
+
+    private fun installedEntry(
+        instance: MinecraftInstance,
+        entry: ModrinthPackEntry,
+        destination: File
+    ): InstalledContent? {
+        val contentType = when (entry.path.substringBefore('/')) {
+            ContentType.MOD.folderName -> ContentType.MOD
+            ContentType.RESOURCE_PACK.folderName -> ContentType.RESOURCE_PACK
+            ContentType.SHADER.folderName -> ContentType.SHADER
+            else -> null
+        } ?: return null
+        val origin = entry.downloads.firstNotNullOfOrNull(::modrinthOrigin) ?: return null
+        return InstalledContent(
+            projectId = origin.first,
+            versionId = origin.second,
+            contentType = contentType,
+            fileName = destination.name,
+            title = destination.nameWithoutExtension,
+            versionNumber = origin.second,
+            loader = instance.loader.id,
+            gameVersion = baseGameVersion(instance),
+            sha1 = entry.hashes.sha1,
+            sha512 = entry.hashes.sha512,
+            downloadUrls = entry.downloads,
+            fileSize = destination.length(),
+            clientEnvironment = entry.env.client,
+            serverEnvironment = entry.env.server,
+            source = ContentSource.MODRINTH
+        )
+    }
+
+    private fun modrinthOrigin(url: String): Pair<String, String>? {
+        val uri = runCatching { URI(url) }.getOrNull() ?: return null
+        if (!uri.host.equals("cdn.modrinth.com", true)) return null
+        val parts = uri.path.trim('/').split('/')
+        val dataIndex = parts.indexOf("data")
+        if (dataIndex < 0 || parts.getOrNull(dataIndex + 2) != "versions") return null
+        val projectId = parts.getOrNull(dataIndex + 1)?.takeIf(String::isNotBlank) ?: return null
+        val versionId = parts.getOrNull(dataIndex + 3)?.takeIf(String::isNotBlank) ?: return null
+        return projectId to versionId
     }
 
     private fun validatePackCompatibility(instance: MinecraftInstance, dependencies: Map<String, String>) {
@@ -233,21 +335,18 @@ class CurseForgePackInstaller(
     private val layout: MinecraftLayout,
     private val json: Json = Json { ignoreUnknownKeys = true }
 ) {
-    suspend fun inspect(archive: File): PackRuntimeSpec = withContext(Dispatchers.IO) {
+    suspend fun readManifest(archive: File): CurseForgePackManifest = withContext(Dispatchers.IO) {
         require(archive.isFile) { "CurseForge pack file is missing" }
-        ZipFile(archive).use { zip ->
-            val entry = zip.getEntry("manifest.json") ?: error("This CurseForge pack has no manifest.json")
-            val manifest = zip.getInputStream(entry).bufferedReader().use {
-                json.decodeFromString<CurseForgePackManifest>(it.readText())
-            }
-            runtimeSpec(manifest)
-        }
+        ZipFile(archive).use { zip -> readAndValidateManifest(zip) }
+    }
+
+    suspend fun inspect(archive: File): PackRuntimeSpec = withContext(Dispatchers.IO) {
+        runtimeSpec(readManifest(archive))
     }
 
     suspend fun readManifest(instance: MinecraftInstance, archive: File): CurseForgePackManifest = withContext(Dispatchers.IO) {
         ZipFile(archive).use { zip ->
-            val entry = zip.getEntry("manifest.json") ?: error("This CurseForge pack has no manifest.json")
-            val manifest = zip.getInputStream(entry).bufferedReader().use { json.decodeFromString<CurseForgePackManifest>(it.readText()) }
+            val manifest = readAndValidateManifest(zip)
             val current = baseGameVersion(instance)
             require(manifest.minecraft.version == current) {
                 "Pack requires Minecraft ${manifest.minecraft.version}, but ${instance.name} uses $current"
@@ -263,6 +362,30 @@ class CurseForgePackInstaller(
             extractDirectory(zip, manifest.overrides.trim('/') + "/", layout.instanceGameDirectory(instance.gameDirectoryName))
             manifest
         }
+    }
+
+    private fun readAndValidateManifest(zip: ZipFile): CurseForgePackManifest {
+        val entry = zip.getEntry("manifest.json")
+            ?: error("This CurseForge pack has no manifest.json")
+        val manifest = zip.getInputStream(entry).bufferedReader(Charsets.UTF_8).use {
+            json.decodeFromString<CurseForgePackManifest>(it.readText())
+        }
+        require(manifest.manifestType == "minecraftModpack") {
+            "Unsupported CurseForge manifest type ${manifest.manifestType}"
+        }
+        require(manifest.manifestVersion == 1) {
+            "Unsupported CurseForge manifest version ${manifest.manifestVersion}"
+        }
+        require(manifest.name.isNotBlank()) { "CurseForge pack name is missing" }
+        require(manifest.minecraft.version.isNotBlank()) { "CurseForge Minecraft version is missing" }
+        require(manifest.overrides.matches(Regex("[A-Za-z0-9._-]+"))) {
+            "Unsafe CurseForge overrides path: ${manifest.overrides}"
+        }
+        manifest.files.forEach { file ->
+            require(file.projectId > 0 && file.fileId > 0) { "Invalid CurseForge project or file ID" }
+        }
+        runtimeSpec(manifest)
+        return manifest
     }
 
     private fun runtimeSpec(manifest: CurseForgePackManifest): PackRuntimeSpec {

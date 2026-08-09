@@ -1,6 +1,7 @@
 package com.mclauncher.minecraft
 
 import com.mclauncher.model.ContentType
+import com.mclauncher.model.ContentSource
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
@@ -86,6 +87,12 @@ data class InstalledContent(
     val loader: String? = null,
     val gameVersion: String,
     val sha1: String? = null,
+    val sha512: String? = null,
+    val downloadUrls: List<String> = emptyList(),
+    val fileSize: Long = 0,
+    val clientEnvironment: String? = null,
+    val serverEnvironment: String? = null,
+    val source: ContentSource? = null,
     val installedAtEpochMs: Long = System.currentTimeMillis(),
     val enabled: Boolean = true
 )
@@ -113,6 +120,7 @@ data class CurseForgePagination(
 data class CurseForgeMod(
     val id: Int,
     val gameId: Int? = null,
+    val classId: Int? = null,
     val name: String,
     val slug: String,
     val summary: String = "",

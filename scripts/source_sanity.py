@@ -146,8 +146,8 @@ if openltw.get("patch") != "vendor/patches/ltw-minecraft-26.2.patch":
 
 require_contains(
     "app/build.gradle.kts",
-    'versionName = "11.0.0-alpha17"',
-    'versionCode = 27',
+    'versionName = "11.0.0-alpha18"',
+    'versionCode = 28',
     'mclauncherAbi',
     'abiFilters += targetAbi',
     'CURSEFORGE_API_KEY',
@@ -160,7 +160,7 @@ require_contains(
     "scripts/source_sanity.py",
     'assembleNoruntimeDebug',
     'assembleDebug -PmclauncherAbi=',
-    'MCLauncher-11.0-alpha17-',
+    'MCLauncher-11.0-alpha18-',
     'mojo-pointer-click-position.patch',
     "Build pinned OpenLTW with Minecraft 26.2 compatibility",
     "--ltw-aar",
@@ -177,7 +177,7 @@ require_contains(
     'No Android LWJGL substitution is defined',
     'prepareAndroidNatives',
     'applyMinecraftOptions',
-    '-Dmclauncher.version=11.0.0-alpha17',
+    '-Dmclauncher.version=11.0.0-alpha18',
     'authSession?.accessToken ?: "0"',
     'AccountType.MICROSOFT) "msa" else "legacy"',
 )
@@ -309,6 +309,31 @@ require_contains(
     "app/src/main/java/com/mclauncher/app/ui/screens/LibraryScreen.kt",
     "state.engineOperation?.let",
     "instance.installed && state.engineOperation == null",
+    "ActivityResultContracts.OpenDocument()",
+    'Text("Import"',
+)
+require_contains(
+    "app/src/main/java/com/mclauncher/app/ui/screens/InstanceDetailScreen.kt",
+    "ActivityResultContracts.CreateDocument",
+    'Text("Modrinth .mrpack"',
+    'Text("CurseForge ZIP"',
+)
+require_contains(
+    "app/src/main/java/com/mclauncher/app/ui/LauncherViewModel.kt",
+    "fun importModpack(uri: Uri)",
+    "fun exportModpack(instanceId: String, format: ModpackExportFormat, destination: Uri)",
+    "hydrateContentForExport",
+    "rollbackImportedInstance",
+)
+require_contains(
+    "core-minecraft/src/main/kotlin/com/mclauncher/minecraft/ModpackExporter.kt",
+    'MODRINTH("mrpack", "application/x-modrinth-modpack+zip"',
+    'CURSEFORGE("zip", "application/zip"',
+    '"modrinth.index.json"',
+    '"manifest.json"',
+    'writeDirectory(zip, "overrides/")',
+    "Hashing.sha512",
+    "validate(temporary, format)",
 )
 require_contains(
     "app/src/main/java/com/mclauncher/app/ui/screens/HomeScreen.kt",

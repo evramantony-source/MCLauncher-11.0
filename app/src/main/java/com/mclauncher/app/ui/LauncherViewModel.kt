@@ -4,6 +4,7 @@ import android.app.Application
 import android.net.Uri
 import android.os.Build
 import android.os.SystemClock
+import android.provider.OpenableColumns
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.mclauncher.app.BuildConfig
@@ -32,6 +33,10 @@ import com.mclauncher.minecraft.LoaderVersionChoice
 import com.mclauncher.minecraft.ModrinthProject
 import com.mclauncher.minecraft.ModrinthVersion
 import com.mclauncher.minecraft.ModrinthPackInstaller
+import com.mclauncher.minecraft.ModpackExportFormat
+import com.mclauncher.minecraft.ModpackExportMetadata
+import com.mclauncher.minecraft.ModpackExporter
+import com.mclauncher.minecraft.ContentIndexStore
 import com.mclauncher.minecraft.ModrinthRepository
 import com.mclauncher.minecraft.PackRuntimeSpec
 import com.mclauncher.minecraft.MojangVersionRepository
@@ -61,6 +66,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import java.io.File
 import java.util.UUID
+import java.util.zip.ZipFile
 
 sealed interface LauncherEvent {
     data class OpenGame(val launchPlan: File, val closeLauncher: Boolean) : LauncherEvent
@@ -122,6 +128,8 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     private val enginePackManager = EnginePackManager(app, layout)
     private val modrinth = ModrinthRepository(layout)
     private val curseForge = CurseForgeRepository(layout)
+    private val contentIndex = ContentIndexStore(layout)
+    private val modpackExporter = ModpackExporter(layout)
     private val httpDownloader = HttpDownloader()
     private val tokenStore = SecureTokenStore(app)
     private val microsoftAuth = MicrosoftAuthManager(tokenStore)
@@ -238,6 +246,194 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                 .onFailure { error ->
                     _state.update { it.copy(engineOperation = null, message = "Graphics import failed: ${error.message}") }
                 }
+        }
+    }
+
+    fun importModpack(uri: Uri) {
+        if (_state.value.engineOperation != null) {
+            _state.update { it.copy(message = "Please wait for the current operation to finish") }
+            return
+        }
+        viewModelScope.launch {
+            var archive: File? = null
+            var createdInstance: MinecraftInstance? = null
+            _state.update {
+                it.copy(
+                    engineOperation = "Opening modpack",
+                    activeInstallVersion = "Imported modpack",
+                    installProgress = InstallProgress(stage = InstallStage.PACK_FILES, message = "Reading archive")
+                )
+            }
+            try {
+                val importedArchive = copyPackUri(uri)
+                archive = importedArchive
+                val format = withContext(Dispatchers.IO) {
+                    ZipFile(importedArchive).use { zip ->
+                        when {
+                            zip.getEntry("modrinth.index.json") != null -> ModpackExportFormat.MODRINTH
+                            zip.getEntry("manifest.json") != null -> ModpackExportFormat.CURSEFORGE
+                            else -> error("This file is neither a Modrinth .mrpack nor a CurseForge profile ZIP")
+                        }
+                    }
+                }
+                val descriptor = when (format) {
+                    ModpackExportFormat.MODRINTH -> {
+                        val installer = ModrinthPackInstaller(layout)
+                        val index = installer.readIndex(importedArchive)
+                        ImportedPackDescriptor(
+                            name = index.name,
+                            version = index.versionId,
+                            runtime = installer.inspect(importedArchive),
+                            format = format
+                        )
+                    }
+                    ModpackExportFormat.CURSEFORGE -> {
+                        val installer = CurseForgePackInstaller(layout)
+                        val manifest = installer.readManifest(importedArchive)
+                        ImportedPackDescriptor(
+                            name = manifest.name,
+                            version = manifest.version.ifBlank { "1.0.0" },
+                            runtime = installer.inspect(importedArchive),
+                            format = format
+                        )
+                    }
+                }
+                _state.update {
+                    it.copy(
+                        engineOperation = "Installing ${descriptor.name}",
+                        activeInstallVersion = descriptor.name,
+                        installProgress = InstallProgress(
+                            stage = InstallStage.VERSION_METADATA,
+                            message = "Preparing Minecraft ${descriptor.runtime.minecraftVersion}"
+                        )
+                    )
+                }
+                val instance = createPackInstance(descriptor.name, iconUrl = null, descriptor.runtime)
+                createdInstance = instance
+                val storedArchive = File(
+                    layout.instanceGameDirectory(instance.gameDirectoryName),
+                    "modpacks/${safePackName(descriptor.name)}-${safePackName(descriptor.version)}.${format.extension}"
+                )
+                withContext(Dispatchers.IO) {
+                    storedArchive.parentFile?.mkdirs()
+                    importedArchive.copyTo(storedArchive, overwrite = true)
+                }
+                when (format) {
+                    ModpackExportFormat.MODRINTH -> ModrinthPackInstaller(layout).install(
+                        instance,
+                        storedArchive
+                    ) { progress -> _state.update { it.copy(installProgress = progress) } }
+                    ModpackExportFormat.CURSEFORGE -> curseForge.installPack(
+                        apiKey = effectiveCurseForgeApiKey(),
+                        instance = instance,
+                        archive = storedArchive
+                    ) { progress -> _state.update { it.copy(installProgress = progress) } }
+                }
+                val installed = withContext(Dispatchers.IO) { contentIndex.read(instance).items }
+                _state.update {
+                    it.copy(
+                        engineOperation = null,
+                        activeInstallVersion = null,
+                        installProgress = null,
+                        installedContent = installed,
+                        selectedContentInstanceId = instance.id,
+                        message = "${descriptor.name} imported as a new instance"
+                    )
+                }
+            } catch (error: Throwable) {
+                createdInstance?.let(::rollbackImportedInstance)
+                _state.update {
+                    it.copy(
+                        engineOperation = null,
+                        activeInstallVersion = null,
+                        installProgress = null,
+                        message = "Modpack import failed: ${error.message}"
+                    )
+                }
+            } finally {
+                withContext(Dispatchers.IO) { archive?.delete() }
+            }
+        }
+    }
+
+    fun exportModpack(instanceId: String, format: ModpackExportFormat, destination: Uri) {
+        if (_state.value.engineOperation != null) {
+            _state.update { it.copy(message = "Please wait for the current operation to finish") }
+            return
+        }
+        val instance = _state.value.snapshot.instances.firstOrNull { it.id == instanceId }
+            ?: return _state.update { it.copy(message = "Instance not found") }
+        viewModelScope.launch {
+            val temporary = File(
+                app.cacheDir,
+                "modpack-exports/${safePackName(instance.name)}-${UUID.randomUUID()}.${format.extension}"
+            )
+            _state.update {
+                it.copy(
+                    engineOperation = "Exporting ${instance.name} for ${format.displayName}",
+                    activeInstallVersion = instance.name,
+                    installProgress = InstallProgress(stage = InstallStage.PACK_FILES, message = "Checking content metadata")
+                )
+            }
+            try {
+                val managed = hydrateContentForExport(instance)
+                withContext(Dispatchers.IO) { contentIndex.replace(instance, managed) }
+                val result = withContext(Dispatchers.IO) {
+                    modpackExporter.export(
+                        instance = instance,
+                        managedContent = managed,
+                        destination = temporary,
+                        format = format,
+                        metadata = ModpackExportMetadata(
+                            name = instance.name,
+                            version = "1.0.0",
+                            author = _state.value.selectedAccount?.username ?: "MCLauncher player",
+                            summary = "Exported from ${instance.name} with MCLauncher"
+                        )
+                    ) { completed, total, currentFile ->
+                        _state.update {
+                            it.copy(
+                                installProgress = InstallProgress(
+                                    stage = InstallStage.PACK_FILES,
+                                    completedFiles = completed,
+                                    totalFiles = total,
+                                    currentFile = currentFile,
+                                    message = "Building ${format.displayName} archive"
+                                )
+                            )
+                        }
+                    }
+                }
+                withContext(Dispatchers.IO) {
+                    val output = app.contentResolver.openOutputStream(destination, "wt")
+                        ?: error("Android could not open the selected destination")
+                    output.buffered().use { stream -> temporary.inputStream().buffered().use { it.copyTo(stream) } }
+                }
+                val embeddedNote = if (result.warnings.isEmpty()) {
+                    ""
+                } else {
+                    " • ${result.warnings.size} local or changed file${if (result.warnings.size == 1) "" else "s"} embedded in overrides"
+                }
+                _state.update {
+                    it.copy(
+                        engineOperation = null,
+                        activeInstallVersion = null,
+                        installProgress = null,
+                        message = "${format.displayName} pack exported: ${result.referencedFiles} provider references, ${result.overrideFiles} overrides$embeddedNote"
+                    )
+                }
+            } catch (error: Throwable) {
+                _state.update {
+                    it.copy(
+                        engineOperation = null,
+                        activeInstallVersion = null,
+                        installProgress = null,
+                        message = "Modpack export failed: ${error.message}"
+                    )
+                }
+            } finally {
+                withContext(Dispatchers.IO) { temporary.delete() }
+            }
         }
     }
 
@@ -976,15 +1172,24 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         )
         val before = _state.value.snapshot
         updateSnapshot(before.copy(instances = before.instances + pending))
-        val installed = installRuntime(
-            instance = pending,
-            version = version,
-            requestedLoaderVersion = spec.exactLoaderVersion(),
-            requireExactLoader = true
-        )
-        val current = _state.value.snapshot
-        updateSnapshot(current.copy(instances = current.instances.map { if (it.id == id) installed else it }))
-        return installed
+        return try {
+            val installed = installRuntime(
+                instance = pending,
+                version = version,
+                requestedLoaderVersion = spec.exactLoaderVersion(),
+                requireExactLoader = true
+            )
+            val current = _state.value.snapshot
+            updateSnapshot(current.copy(instances = current.instances.map { if (it.id == id) installed else it }))
+            installed
+        } catch (error: Throwable) {
+            withContext(Dispatchers.IO) {
+                layout.instanceGameDirectory(directoryName).deleteRecursively()
+            }
+            val current = _state.value.snapshot
+            updateSnapshot(current.copy(instances = current.instances.filterNot { it.id == id }))
+            throw error
+        }
     }
 
     private suspend fun cacheInstanceIcon(directoryName: String, iconUrl: String?): String? {
@@ -1097,6 +1302,150 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         return updated
     }
 
+    private suspend fun copyPackUri(uri: Uri): File = withContext(Dispatchers.IO) {
+        val displayName = app.contentResolver.query(
+            uri,
+            arrayOf(OpenableColumns.DISPLAY_NAME),
+            null,
+            null,
+            null
+        )?.use { cursor ->
+            if (cursor.moveToFirst()) cursor.getString(0) else null
+        }.orEmpty().ifBlank { "imported-modpack.zip" }
+        val extension = File(displayName).extension.lowercase().takeIf { it in setOf("mrpack", "zip") } ?: "zip"
+        val target = File(
+            layout.root,
+            "downloads/imports/${UUID.randomUUID()}-${safePackName(File(displayName).nameWithoutExtension)}.$extension"
+        )
+        target.parentFile?.mkdirs()
+        try {
+            val input = app.contentResolver.openInputStream(uri)
+                ?: error("Android could not open the selected modpack")
+            input.buffered().use { source -> target.outputStream().buffered().use(source::copyTo) }
+            require(target.length() > 0L) { "The selected modpack is empty" }
+            target
+        } catch (error: Throwable) {
+            target.delete()
+            throw error
+        }
+    }
+
+    private suspend fun hydrateContentForExport(instance: MinecraftInstance): List<InstalledContent> {
+        val indexed = withContext(Dispatchers.IO) { contentIndex.read(instance).items }
+        val recovered = recoverPackContent(instance)
+        return (indexed + recovered)
+            .distinctBy { "${it.contentType}:${it.fileName}" }
+            .map { item ->
+                when {
+                    item.projectId.startsWith("curseforge:") -> item.copy(source = ContentSource.CURSEFORGE)
+                    item.contentType == ContentType.MODPACK -> item
+                    item.downloadUrls.isNotEmpty() && item.sha1 != null && item.sha512 != null ->
+                        item.copy(source = ContentSource.MODRINTH)
+                    else -> hydrateModrinthItem(item)
+                }
+            }
+    }
+
+    private suspend fun hydrateModrinthItem(item: InstalledContent): InstalledContent {
+        val version = runCatching { modrinth.version(item.versionId) }.getOrNull() ?: return item
+        val file = version.files.firstOrNull { it.filename == item.fileName }
+            ?: version.files.firstOrNull { it.primary }
+            ?: version.files.firstOrNull()
+            ?: return item
+        val project = if (item.clientEnvironment == null || item.serverEnvironment == null) {
+            runCatching { modrinth.project(item.projectId) }.getOrNull()
+        } else {
+            null
+        }
+        return item.copy(
+            sha1 = file.hashes.sha1 ?: item.sha1,
+            sha512 = file.hashes.sha512 ?: item.sha512,
+            downloadUrls = listOf(file.url),
+            fileSize = file.size,
+            clientEnvironment = project?.client_side ?: item.clientEnvironment,
+            serverEnvironment = project?.server_side ?: item.serverEnvironment,
+            source = ContentSource.MODRINTH
+        )
+    }
+
+    private suspend fun recoverPackContent(instance: MinecraftInstance): List<InstalledContent> {
+        val gameDirectory = layout.instanceGameDirectory(instance.gameDirectoryName)
+        val archives = withContext(Dispatchers.IO) {
+            File(gameDirectory, ContentType.MODPACK.folderName)
+                .listFiles().orEmpty()
+                .filter(File::isFile)
+        }
+        val recovered = mutableListOf<InstalledContent>()
+        archives.forEach { archive ->
+            val roots = withContext(Dispatchers.IO) {
+                runCatching {
+                    ZipFile(archive).use { zip ->
+                        zip.getEntry("modrinth.index.json") != null to (zip.getEntry("manifest.json") != null)
+                    }
+                }.getOrDefault(false to false)
+            }
+            if (roots.first) {
+                recovered += runCatching {
+                    ModrinthPackInstaller(layout).recoverInstalledContent(instance, archive)
+                }.getOrDefault(emptyList())
+            } else if (roots.second && effectiveCurseForgeApiKey().isNotBlank()) {
+                val manifest = runCatching { CurseForgePackInstaller(layout).readManifest(archive) }.getOrNull()
+                    ?: return@forEach
+                manifest.files.filter { it.required }.forEach { reference ->
+                    val installed = runCatching {
+                        val mod = curseForge.mod(effectiveCurseForgeApiKey(), reference.projectId)
+                        val file = curseForge.file(effectiveCurseForgeApiKey(), reference.projectId, reference.fileId)
+                        val type = curseForgeContentType(mod.classId)
+                        val expected = File(gameDirectory, "${type.folderName}/${file.fileName}")
+                        val actual = expected.takeIf(File::isFile)
+                            ?: File(gameDirectory, "mods/${file.fileName}").takeIf(File::isFile)
+                            ?: return@runCatching null
+                        InstalledContent(
+                            projectId = "curseforge:${mod.id}",
+                            versionId = file.id.toString(),
+                            contentType = if (actual.parentFile?.name == "mods") ContentType.MOD else type,
+                            fileName = actual.name,
+                            title = mod.name,
+                            iconUrl = mod.logo?.thumbnailUrl ?: mod.logo?.url,
+                            versionNumber = file.displayName,
+                            loader = instance.loader.id,
+                            gameVersion = manifest.minecraft.version,
+                            sha1 = file.hashes.firstOrNull { it.algo == 1 }?.value,
+                            fileSize = file.fileLength,
+                            source = ContentSource.CURSEFORGE
+                        )
+                    }.getOrNull()
+                    if (installed != null) recovered += installed
+                }
+            }
+        }
+        return recovered
+    }
+
+    private suspend fun rollbackImportedInstance(instance: MinecraftInstance) {
+        withContext(Dispatchers.IO) {
+            layout.instanceGameDirectory(instance.gameDirectoryName).deleteRecursively()
+        }
+        val current = _state.value.snapshot
+        if (current.instances.any { it.id == instance.id }) {
+            updateSnapshot(current.copy(instances = current.instances.filterNot { it.id == instance.id }))
+        }
+    }
+
+    private fun curseForgeContentType(classId: Int?): ContentType = when (classId) {
+        12 -> ContentType.RESOURCE_PACK
+        6552 -> ContentType.SHADER
+        4471 -> ContentType.MODPACK
+        else -> ContentType.MOD
+    }
+
+    private fun safePackName(value: String): String = value
+        .trim()
+        .replace(Regex("[^A-Za-z0-9._-]+"), "-")
+        .trim('-', '.', '_')
+        .take(80)
+        .ifBlank { "modpack" }
+
     private fun baseGameVersion(instance: MinecraftInstance): String = when (instance.loader) {
         ModLoader.VANILLA -> instance.versionId
         else -> layout.versionJson(instance.versionId).takeIf(File::isFile)?.let { file ->
@@ -1114,4 +1463,11 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         _state.update { it.copy(snapshot = snapshot) }
         store.save(snapshot)
     }
+
+    private data class ImportedPackDescriptor(
+        val name: String,
+        val version: String,
+        val runtime: PackRuntimeSpec,
+        val format: ModpackExportFormat
+    )
 }

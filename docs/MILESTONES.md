@@ -75,7 +75,15 @@
 - [x] Keep full-screen Android View coordinates separate from the smaller game-buffer coordinate space.
 - [x] Scale relative mouse/look/gyro motion into the game buffer while keeping absolute direct touch normalized to the visible View.
 - [x] Add the exact Redmi Pad Pro `2560×1600` input → `896×504` buffer trace as a regression test.
-- [ ] Verify exact menu and inventory targets on the Redmi Pad Pro.
+- [x] Verify exact menu and inventory targets on the Redmi Pad Pro.
+
+## Alpha 18 — real modpack interchange
+
+- [x] Import local Modrinth and CurseForge archives into new exact-runtime instances.
+- [x] Export provider-native manifests with validated references, hashes and overrides.
+- [x] Recover export provenance from older managed-content indexes and original pack archives.
+- [x] Exclude volatile and personal instance data from default exports.
+- [ ] Round-trip both formats through the official desktop clients on a physical device.
 
 ## After main-menu confirmation
 
