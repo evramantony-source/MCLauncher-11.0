@@ -1,5 +1,15 @@
 # Changelog
 
+## 11.0.0-alpha19
+
+- Add the MCL Creation Lab sidebar destination with a touch-first ARGB pixel editor, pencil, eraser, bounded fill, color picker, undo/redo, transparent checkerboard and frame-by-frame editing for animated vanilla textures.
+- Read every item PNG directly from an installed Minecraft client JAR and export edited files as a validated resource-pack ZIP, retaining vanilla animation metadata and using the installed client's declared resource-pack version.
+- Emit modern `min_format`/`max_format` metadata for resource pack version 65 and newer, including the 94.0 format required by Minecraft 26.3 Snapshot 6, while retaining legacy metadata for older clients.
+- Add 64×64 Java skin and 64×32 cape creation, PNG import, pixel editing, dimension validation and Android save-picker export.
+- Resolve Fabric snapshot profile IDs back to the exact base game version and let Play continue when an automatic Modrinth content check fails because the device is offline or DNS is unavailable.
+- Add real Modrinth offset and CurseForge index pagination with an in-launcher **Load more results** action.
+- Add a non-executing AI project-workshop boundary that documents the API-key and trusted-build requirements without pretending arbitrary generated code can safely compile itself on-device.
+
 ## 11.0.0-alpha18
 
 - Add local Modrinth `.mrpack` and CurseForge profile-ZIP import from Android's document picker, creating a separate instance with the exact Minecraft and loader versions declared by the archive.

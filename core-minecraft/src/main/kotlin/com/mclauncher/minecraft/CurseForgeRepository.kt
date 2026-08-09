@@ -25,6 +25,7 @@ class CurseForgeRepository(
         contentType: ContentType,
         gameVersion: String? = null,
         loader: ModLoader? = null,
+        index: Int = 0,
         pageSize: Int = 30
     ): CurseForgeSearchResponse {
         requireApiKey(apiKey)
@@ -44,6 +45,7 @@ class CurseForgeRepository(
         val url = buildString {
             append("https://api.curseforge.com/v1/mods/search?gameId=432")
             append("&classId=").append(classId)
+            append("&index=").append(index.coerceAtLeast(0))
             append("&pageSize=").append(pageSize.coerceIn(1, 50))
             append("&sortField=2&sortOrder=desc")
             if (query.isNotBlank()) append("&searchFilter=").append(HttpDownloader.encode(query))

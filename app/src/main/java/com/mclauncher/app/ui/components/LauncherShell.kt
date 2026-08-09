@@ -20,6 +20,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AccountCircle
 import androidx.compose.material.icons.rounded.Explore
 import androidx.compose.material.icons.rounded.Home
+import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.ViewList
 import androidx.compose.material3.HorizontalDivider
@@ -48,16 +49,18 @@ import java.io.File
 sealed class LauncherDestination(
     val route: String,
     val label: String,
-    val icon: ImageVector
+    val icon: ImageVector,
+    val compactLabel: String = label
 ) {
     data object Home : LauncherDestination("home", "Home", Icons.Rounded.Home)
     data object Library : LauncherDestination("library", "Library", Icons.Rounded.ViewList)
     data object Discover : LauncherDestination("discover", "Browse", Icons.Rounded.Explore)
+    data object CreationLab : LauncherDestination("creation-lab", "MCL Creation Lab", Icons.Rounded.Palette, "Lab")
     data object Accounts : LauncherDestination("accounts", "Accounts", Icons.Rounded.AccountCircle)
     data object Settings : LauncherDestination("settings", "Settings", Icons.Rounded.Settings)
 
     companion object {
-        val primary = listOf(Home, Library, Discover)
+        val primary = listOf(Home, Library, Discover, CreationLab)
         val topLevel = primary + listOf(Accounts, Settings)
     }
 }
@@ -110,7 +113,7 @@ fun LauncherShell(
                                 selected = currentRoute == destination.route,
                                 onClick = { onNavigate(destination) },
                                 icon = { Icon(destination.icon, contentDescription = destination.label) },
-                                label = { Text(destination.label) }
+                                label = { Text(destination.compactLabel) }
                             )
                         }
                     }

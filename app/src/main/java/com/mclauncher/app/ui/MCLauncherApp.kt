@@ -24,6 +24,7 @@ import com.mclauncher.app.ui.components.LauncherDestination
 import com.mclauncher.app.ui.components.LauncherShell
 import com.mclauncher.app.ui.screens.AccountsScreen
 import com.mclauncher.app.ui.screens.ControlEditorScreen
+import com.mclauncher.app.ui.screens.CreationLabScreen
 import com.mclauncher.app.ui.screens.DiscoverScreen
 import com.mclauncher.app.ui.screens.HomeScreen
 import com.mclauncher.app.ui.screens.InstanceDetailScreen
@@ -34,8 +35,12 @@ import com.mclauncher.app.ui.theme.MCLauncherTheme
 import kotlinx.coroutines.flow.collect
 
 @Composable
-fun MCLauncherApp(launcherViewModel: LauncherViewModel = viewModel()) {
+fun MCLauncherApp(
+    launcherViewModel: LauncherViewModel = viewModel(),
+    creationLabViewModel: CreationLabViewModel = viewModel()
+) {
     val state by launcherViewModel.state.collectAsStateWithLifecycle()
+    val creationState by creationLabViewModel.state.collectAsStateWithLifecycle()
     val navController = rememberNavController()
     val backStack by navController.currentBackStackEntryAsState()
     val currentRoute = backStack?.destination?.route
@@ -88,6 +93,12 @@ fun MCLauncherApp(launcherViewModel: LauncherViewModel = viewModel()) {
         launcherViewModel.clearMessage()
     }
 
+    LaunchedEffect(creationState.message) {
+        val message = creationState.message ?: return@LaunchedEffect
+        snackbarHostState.showSnackbar(message)
+        creationLabViewModel.clearMessage()
+    }
+
     MCLauncherTheme(themeMode = state.snapshot.settings.themeMode) {
         LauncherShell(
             currentRoute = currentRoute,
@@ -130,6 +141,7 @@ fun MCLauncherApp(launcherViewModel: LauncherViewModel = viewModel()) {
                     onInstall = launcherViewModel::installVersion,
                     onLoadLoaderChoices = launcherViewModel::loadLoaderChoices,
                     onSearchContent = launcherViewModel::searchContent,
+                    onLoadMoreContent = launcherViewModel::loadMoreContent,
                     onSelectContentInstance = launcherViewModel::selectContentInstance,
                     onInstallContent = launcherViewModel::installContent,
                     onInstallCurseForgeContent = launcherViewModel::installCurseForgeContent,
@@ -139,6 +151,28 @@ fun MCLauncherApp(launcherViewModel: LauncherViewModel = viewModel()) {
                     onInstallCurseForgeVersion = launcherViewModel::installCurseForgeVersion,
                     onDismissContentVersions = launcherViewModel::dismissContentVersions,
                     onOpenSettings = { navController.navigate(LauncherDestination.Settings.route) },
+                    snackbarHost = { SnackbarHost(snackbarHostState) }
+                )
+            }
+            composable(LauncherDestination.CreationLab.route) {
+                CreationLabScreen(
+                    state = creationState,
+                    instances = state.snapshot.instances,
+                    onSelectSection = creationLabViewModel::selectSection,
+                    onLoadResourceCatalog = creationLabViewModel::loadResourceCatalog,
+                    onSelectTexture = creationLabViewModel::selectTexture,
+                    onUpdatePackName = creationLabViewModel::updatePackName,
+                    onSelectTool = creationLabViewModel::selectTool,
+                    onSelectColor = creationLabViewModel::selectColor,
+                    onBeginStroke = creationLabViewModel::beginStroke,
+                    onEditPixel = creationLabViewModel::editPixel,
+                    onUndo = creationLabViewModel::undo,
+                    onRedo = creationLabViewModel::redo,
+                    onClearArtwork = creationLabViewModel::clearArtwork,
+                    onNewArtwork = creationLabViewModel::newArtwork,
+                    onImportArtwork = creationLabViewModel::importArtwork,
+                    onExportResourcePack = creationLabViewModel::exportResourcePack,
+                    onExportArtwork = creationLabViewModel::exportArtwork,
                     snackbarHost = { SnackbarHost(snackbarHostState) }
                 )
             }

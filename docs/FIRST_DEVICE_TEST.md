@@ -1,8 +1,8 @@
 # First device test
 
-Use a clean MCLauncher 11.0 Alpha 18 installation.
+Use a clean MCLauncher 11.0 Alpha 19 installation.
 
-1. Install the GitHub Actions `MCLauncher-11.0-alpha18-arm64-v8a.apk`.
+1. Install the GitHub Actions `MCLauncher-11.0-alpha19-arm64-v8a.apk`.
 2. Allow file access requested by Android.
 3. Create an offline account for the first launch test.
 4. Install a clean vanilla Minecraft version without mods.
@@ -22,5 +22,9 @@ Use a clean MCLauncher 11.0 Alpha 18 installation.
 18. Open an installed instance and export both a Modrinth `.mrpack` and a CurseForge ZIP; verify Android creates non-empty files with the requested extensions.
 19. Import each exported file from Library and confirm a new instance is created with the same Minecraft and exact loader versions.
 20. Launch both round-trip instances and confirm configs plus managed mods are present. A CurseForge import containing provider references requires the configured API key.
+21. In Browse, scroll through mods and press **Load more results**; confirm new projects append without replacing or duplicating the first page.
+22. Disable network access and launch an installed Fabric snapshot instance; confirm a failed managed-content check no longer blocks Minecraft startup.
+23. Open **MCL Creation Lab**, choose an installed version, edit a normal item texture and one animated texture frame, then create a ZIP. Confirm Minecraft accepts the pack and shows the edits.
+24. Create and re-import one 64×64 skin and one 64×32 cape PNG, then confirm every edited pixel survives the round trip.
 
 Record the Android version, device model, Minecraft version, selected Java version, renderer and the final visible error.

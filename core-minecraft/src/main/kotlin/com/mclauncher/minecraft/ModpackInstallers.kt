@@ -407,7 +407,8 @@ class CurseForgePackInstaller(
     }
 }
 
-internal fun baseGameVersion(instance: MinecraftInstance): String {
+/** Resolves the actual Minecraft version from a loader profile id. */
+fun baseGameVersion(instance: MinecraftInstance): String {
     val loaderVersion = instance.loaderVersion
     if (!loaderVersion.isNullOrBlank()) {
         val prefixed = when (instance.loader) {

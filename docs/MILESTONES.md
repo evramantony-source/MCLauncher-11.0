@@ -85,6 +85,17 @@
 - [x] Exclude volatile and personal instance data from default exports.
 - [ ] Round-trip both formats through the official desktop clients on a physical device.
 
+## Alpha 19 — MCL Creation Lab and reliable discovery
+
+- [x] Add a sidebar Creation Lab with per-pixel item, skin and cape editing.
+- [x] Read the complete item texture catalog from each installed client JAR.
+- [x] Export version-correct, validated resource-pack ZIPs and dimension-checked PNGs.
+- [x] Preserve animation metadata and edit vertical animation sheets frame by frame.
+- [x] Add real Modrinth and CurseForge result pagination.
+- [x] Resolve snapshot loader profiles correctly and keep offline content checks from blocking Play.
+- [ ] Connect a user-selected AI provider and export reviewed mod-source or shader-pack projects.
+- [ ] Compile generated mod JARs only through a pinned, sandboxed toolchain or explicitly trusted remote builder.
+
 ## After main-menu confirmation
 
 - Pin the observed Java 8 release ZIP digest in `vendor/engine-lock.json`.

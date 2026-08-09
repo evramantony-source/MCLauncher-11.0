@@ -78,6 +78,7 @@ fun DiscoverScreen(
     onInstall: (MojangVersionSummary, ModLoader, String?) -> Unit,
     onLoadLoaderChoices: (ModLoader, String) -> Unit,
     onSearchContent: (String, ContentType, String?, ContentSource) -> Unit,
+    onLoadMoreContent: () -> Unit,
     onSelectContentInstance: (String) -> Unit,
     onInstallContent: (ModrinthProject) -> Unit,
     onInstallCurseForgeContent: (CurseForgeMod) -> Unit,
@@ -414,6 +415,21 @@ fun DiscoverScreen(
                             onOpenVersions = { onShowCurseForgeVersions(project) },
                             onInstall = { onInstallCurseForgeContent(project) }
                         )
+                    }
+                }
+                if (state.contentHasMore && !resultsEmpty) {
+                    item {
+                        OutlinedButton(
+                            onClick = onLoadMoreContent,
+                            enabled = !state.contentLoading,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            if (state.contentLoading) {
+                                CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                            } else {
+                                Text("Load more results")
+                            }
+                        }
                     }
                 }
             }

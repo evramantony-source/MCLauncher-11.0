@@ -1,4 +1,4 @@
-# MCLauncher 11.0 Alpha 18 feature matrix
+# MCLauncher 11.0 Alpha 19 feature matrix
 
 | Area | Current status |
 |---|---|
@@ -7,9 +7,11 @@
 | Forge/NeoForge installer execution | Exact generated loader profile verified; device validation required |
 | Offline and Microsoft accounts | Source implemented |
 | Separate instances and favourite/recent ordering | Source implemented; per-instance launch settings included |
-| Modrinth content | Browsing/install/update, icons and installed state implemented |
-| CurseForge content | Browsing/install/update and icons implemented; official API key required |
+| Modrinth content | Browsing/install/update, icons, installed state and offset pagination implemented |
+| CurseForge content | Browsing/install/update, icons and index pagination implemented; official API key required |
 | Modpack import/export | Local `.mrpack` and CurseForge profile ZIP import; validated provider-native export with exact references and overrides |
+| MCL Creation Lab | Installed vanilla item catalog, per-pixel and animated-frame editing, validated resource-pack ZIP, 64×64 skin PNG and 64×32 cape PNG implemented |
+| AI project generation | Safe UI boundary documented; provider connection and trusted compilation are not yet enabled |
 | Java 8/17/21/25 | CI packaging required |
 | Java 17/21/25 archive authenticity | RSA signature verification in CI |
 | Patched LWJGL/GLFW | Coordinate-mapped CI packaging required |

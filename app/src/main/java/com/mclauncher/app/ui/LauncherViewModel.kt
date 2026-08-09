@@ -42,6 +42,7 @@ import com.mclauncher.minecraft.PackRuntimeSpec
 import com.mclauncher.minecraft.MojangVersionRepository
 import com.mclauncher.minecraft.MojangVersionSummary
 import com.mclauncher.minecraft.VanillaInstaller
+import com.mclauncher.minecraft.baseGameVersion
 import com.mclauncher.model.AccountType
 import com.mclauncher.model.ContentSource
 import com.mclauncher.model.ContentType
@@ -62,8 +63,6 @@ import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
 import java.io.File
 import java.util.UUID
 import java.util.zip.ZipFile
@@ -90,6 +89,8 @@ data class LauncherUiState(
     val contentSource: ContentSource = ContentSource.MODRINTH,
     val contentType: ContentType = ContentType.MOD,
     val contentLoading: Boolean = false,
+    val contentQuery: String = "",
+    val contentHasMore: Boolean = false,
     val activeContentInstallId: String? = null,
     val installedContent: List<InstalledContent> = emptyList(),
     val selectedContentInstanceId: String? = null,
@@ -663,6 +664,8 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                     contentLoading = true,
                     contentSource = source,
                     contentType = contentType,
+                    contentQuery = query,
+                    contentHasMore = false,
                     selectedContentInstanceId = instanceId,
                     installedContent = installed,
                     contentResults = emptyList(),
@@ -678,7 +681,13 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                         loader = instance?.loader
                     )
                 }.onSuccess { result ->
-                    _state.update { it.copy(contentResults = result.hits, contentLoading = false) }
+                    _state.update {
+                        it.copy(
+                            contentResults = result.hits,
+                            contentHasMore = result.offset + result.hits.size < result.total_hits,
+                            contentLoading = false
+                        )
+                    }
                 }.onFailure { error ->
                     _state.update { it.copy(contentLoading = false, message = "Modrinth search failed: ${error.message}") }
                 }
@@ -691,9 +700,74 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                         loader = instance?.loader
                     )
                 }.onSuccess { result ->
-                    _state.update { it.copy(curseForgeResults = result.data, contentLoading = false) }
+                    _state.update {
+                        val page = result.pagination
+                        it.copy(
+                            curseForgeResults = result.data,
+                            contentHasMore = page?.let { value ->
+                                value.index + value.resultCount < value.totalCount
+                            } ?: (result.data.size >= 30),
+                            contentLoading = false
+                        )
+                    }
                 }.onFailure { error ->
                     _state.update { it.copy(contentLoading = false, message = "CurseForge search failed: ${error.message}") }
+                }
+            }
+        }
+    }
+
+    fun loadMoreContent() {
+        val current = _state.value
+        if (current.contentLoading || !current.contentHasMore) return
+        val instance = current.snapshot.instances.firstOrNull { it.id == current.selectedContentInstanceId }
+        viewModelScope.launch {
+            _state.update { it.copy(contentLoading = true) }
+            when (current.contentSource) {
+                ContentSource.MODRINTH -> runCatching {
+                    modrinth.search(
+                        query = current.contentQuery,
+                        contentType = current.contentType,
+                        gameVersion = instance?.let(::baseGameVersion),
+                        loader = instance?.loader,
+                        offset = current.contentResults.size
+                    )
+                }.onSuccess { result ->
+                    _state.update { state ->
+                        val merged = (state.contentResults + result.hits).distinctBy { it.project_id }
+                        state.copy(
+                            contentResults = merged,
+                            contentHasMore = result.offset + result.hits.size < result.total_hits,
+                            contentLoading = false
+                        )
+                    }
+                }.onFailure { error ->
+                    _state.update { it.copy(contentLoading = false, message = "Could not load more Modrinth results: ${error.message}") }
+                }
+
+                ContentSource.CURSEFORGE -> runCatching {
+                    curseForge.search(
+                        apiKey = effectiveCurseForgeApiKey(),
+                        query = current.contentQuery,
+                        contentType = current.contentType,
+                        gameVersion = instance?.let(::baseGameVersion),
+                        loader = instance?.loader,
+                        index = current.curseForgeResults.size
+                    )
+                }.onSuccess { result ->
+                    _state.update { state ->
+                        val merged = (state.curseForgeResults + result.data).distinctBy { it.id }
+                        val page = result.pagination
+                        state.copy(
+                            curseForgeResults = merged,
+                            contentHasMore = page?.let { value ->
+                                value.index + value.resultCount < value.totalCount
+                            } ?: (result.data.size >= 30),
+                            contentLoading = false
+                        )
+                    }
+                }.onFailure { error ->
+                    _state.update { it.copy(contentLoading = false, message = "Could not load more CurseForge results: ${error.message}") }
                 }
             }
         }
@@ -1013,7 +1087,14 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
             runCatching {
                 if (snapshot.settings.autoUpdateContent) {
                     _state.update { it.copy(engineOperation = "Updating managed content before launch") }
-                    updateContentForInstance(instance)
+                    runCatching { updateContentForInstance(instance) }
+                        .onFailure { error ->
+                            android.util.Log.w(
+                                "MCLauncher",
+                                "Managed content update skipped for ${instance.id}; launch will continue",
+                                error
+                            )
+                        }
                     _state.update { it.copy(engineOperation = null) }
                 }
                 val authSession = if (account.type == AccountType.MICROSOFT) microsoftAuth.refresh(account) else null
@@ -1449,15 +1530,6 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         .trim('-', '.', '_')
         .take(80)
         .ifBlank { "modpack" }
-
-    private fun baseGameVersion(instance: MinecraftInstance): String = when (instance.loader) {
-        ModLoader.VANILLA -> instance.versionId
-        else -> layout.versionJson(instance.versionId).takeIf(File::isFile)?.let { file ->
-            runCatching {
-                kotlinx.serialization.json.Json.parseToJsonElement(file.readText()).jsonObject["inheritsFrom"]?.jsonPrimitive?.content
-            }.getOrNull()
-        } ?: instance.versionId.substringBefore("-${instance.loader.id}")
-    }
 
     private fun effectiveCurseForgeApiKey(): String =
         _state.value.snapshot.settings.curseForgeApiKey.trim()

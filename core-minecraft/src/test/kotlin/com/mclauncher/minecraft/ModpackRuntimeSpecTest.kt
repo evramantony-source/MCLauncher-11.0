@@ -151,6 +151,23 @@ class ModpackRuntimeSpecTest {
         assertEquals("26.2", baseGameVersion(instance))
     }
 
+    @Test
+    fun resolvesFabricSnapshotProfileBaseGameVersionWithoutTruncatingSnapshotName() {
+        val instance = MinecraftInstance(
+            id = "fabric-snapshot",
+            name = "Fabric Snapshot",
+            versionId = "fabric-loader-0.19.3-26.3-snapshot-6",
+            gameDirectoryName = "fabric-snapshot",
+            javaVersion = JavaVersion.JAVA_25,
+            loader = ModLoader.FABRIC,
+            loaderVersion = "0.19.3",
+            createdAtEpochMs = 1L,
+            installed = true
+        )
+
+        assertEquals("26.3-snapshot-6", baseGameVersion(instance))
+    }
+
     private fun zipText(archive: File, path: String, text: String) {
         ZipOutputStream(archive.outputStream()).use { zip ->
             zip.putNextEntry(ZipEntry(path))
