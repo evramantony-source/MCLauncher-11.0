@@ -7,6 +7,9 @@ import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.mclauncher.app.MCLauncherApplication
+import com.mclauncher.app.creation.AiBuilderSettings
+import com.mclauncher.app.creation.AiProjectBuilder
+import com.mclauncher.app.creation.AiProjectOutput
 import com.mclauncher.minecraft.baseGameVersion
 import com.mclauncher.model.MinecraftInstance
 import kotlinx.coroutines.Dispatchers
@@ -83,6 +86,10 @@ data class CreationLabUiState(
     val canUndo: Boolean = false,
     val canRedo: Boolean = false,
     val busy: Boolean = false,
+    val aiOutput: AiProjectOutput = AiProjectOutput.FABRIC_JAR,
+    val aiSettings: AiBuilderSettings = AiBuilderSettings(),
+    val aiBusy: Boolean = false,
+    val aiProgress: String? = null,
     val message: String? = null
 )
 
@@ -94,7 +101,8 @@ class CreationLabViewModel(application: Application) : AndroidViewModel(applicat
     private val app = application as MCLauncherApplication
     private val layout = app.minecraftLayout
     private val json = Json { prettyPrint = true; ignoreUnknownKeys = true }
-    private val mutableState = MutableStateFlow(CreationLabUiState())
+    private val aiBuilder = AiProjectBuilder(application)
+    private val mutableState = MutableStateFlow(CreationLabUiState(aiSettings = aiBuilder.loadSettings()))
     val state: StateFlow<CreationLabUiState> = mutableState.asStateFlow()
 
     private var resourceJar: File? = null
@@ -115,6 +123,41 @@ class CreationLabViewModel(application: Application) : AndroidViewModel(applicat
         }
         clearHistory()
         mutableState.update { it.copy(section = section, document = document) }
+    }
+
+    fun updateAiOutput(output: AiProjectOutput) {
+        mutableState.update { it.copy(aiOutput = output) }
+    }
+
+    fun updateAiSettings(settings: AiBuilderSettings) {
+        mutableState.update { it.copy(aiSettings = settings) }
+    }
+
+    fun generateAiProject(destination: Uri, prompt: String) {
+        val current = mutableState.value
+        if (current.aiBusy) return
+        viewModelScope.launch {
+            mutableState.update { it.copy(aiBusy = true, aiProgress = "Starting AI workshop…", message = null) }
+            runCatching {
+                withContext(Dispatchers.IO) {
+                    aiBuilder.generate(
+                        destination = destination,
+                        prompt = prompt,
+                        output = current.aiOutput,
+                        minecraftVersion = current.resourceVersion ?: "1.20.1",
+                        settings = current.aiSettings
+                    ) { progress -> mutableState.update { it.copy(aiProgress = progress) } }
+                }
+            }.onSuccess {
+                mutableState.update {
+                    it.copy(aiBusy = false, aiProgress = null, message = "${current.aiOutput.label} created successfully")
+                }
+            }.onFailure { error ->
+                mutableState.update {
+                    it.copy(aiBusy = false, aiProgress = null, message = "AI project failed: ${error.message ?: error::class.java.simpleName}")
+                }
+            }
+        }
     }
 
     fun loadResourceCatalog(instance: MinecraftInstance) {

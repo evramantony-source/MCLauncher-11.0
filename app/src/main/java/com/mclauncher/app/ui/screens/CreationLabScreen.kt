@@ -57,6 +57,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
@@ -65,6 +66,8 @@ import com.mclauncher.app.ui.CreationLabUiState
 import com.mclauncher.app.ui.LabTexture
 import com.mclauncher.app.ui.PixelDocument
 import com.mclauncher.app.ui.PixelTool
+import com.mclauncher.app.creation.AiBuilderSettings
+import com.mclauncher.app.creation.AiProjectOutput
 import com.mclauncher.app.ui.components.LauncherCard
 import com.mclauncher.app.ui.components.PageHeader
 import com.mclauncher.model.MinecraftInstance
@@ -91,10 +94,14 @@ fun CreationLabScreen(
     onImportArtwork: (android.net.Uri, CreationLabSection) -> Unit,
     onExportResourcePack: (android.net.Uri) -> Unit,
     onExportArtwork: (android.net.Uri, CreationLabSection) -> Unit,
+    onUpdateAiOutput: (AiProjectOutput) -> Unit,
+    onUpdateAiSettings: (AiBuilderSettings) -> Unit,
+    onGenerateAiProject: (android.net.Uri, String) -> Unit,
     snackbarHost: @Composable () -> Unit
 ) {
     val installedInstances = remember(instances) { instances.filter { it.installed } }
     var textureSearch by remember(state.resourceVersion) { mutableStateOf("") }
+    var pendingAiPrompt by remember { mutableStateOf("") }
     val resourcePackExporter = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/zip")
     ) { uri -> uri?.let(onExportResourcePack) }
@@ -109,6 +116,9 @@ fun CreationLabScreen(
     }
     val capeImporter = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         uri?.let { onImportArtwork(it, CreationLabSection.CAPE) }
+    }
+    val aiExporter = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
+        uri?.let { onGenerateAiProject(it, pendingAiPrompt) }
     }
 
     LaunchedEffect(installedInstances, state.resourceInstanceId) {
@@ -243,7 +253,18 @@ fun CreationLabScreen(
                     )
                 }
 
-                CreationLabSection.AI_WORKSHOP -> item { AiWorkshopBoundary() }
+                CreationLabSection.AI_WORKSHOP -> item {
+                    AiWorkshop(
+                        state = state,
+                        onUpdateOutput = onUpdateAiOutput,
+                        onUpdateSettings = onUpdateAiSettings,
+                        onGenerate = { prompt ->
+                            pendingAiPrompt = prompt
+                            val name = if (state.aiOutput == AiProjectOutput.FABRIC_JAR) "mcl-ai-mod.jar" else "mcl-ai-shader.zip"
+                            aiExporter.launch(name)
+                        }
+                    )
+                }
             }
         }
     }
@@ -583,9 +604,14 @@ private fun PixelCanvas(
 }
 
 @Composable
-private fun AiWorkshopBoundary() {
+private fun AiWorkshop(
+    state: CreationLabUiState,
+    onUpdateOutput: (AiProjectOutput) -> Unit,
+    onUpdateSettings: (AiBuilderSettings) -> Unit,
+    onGenerate: (String) -> Unit
+) {
     var prompt by remember { mutableStateOf("") }
-    var output by remember { mutableStateOf("Fabric mod source ZIP") }
+    var showSetup by remember { mutableStateOf(state.aiSettings.apiKey.isBlank() || state.aiSettings.githubToken.isBlank()) }
     LauncherCard(modifier = Modifier.fillMaxWidth()) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Icon(Icons.Rounded.AutoAwesome, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
@@ -599,8 +625,8 @@ private fun AiWorkshopBoundary() {
             modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            listOf("Fabric mod source ZIP", "Shader pack ZIP").forEach { choice ->
-                FilterChip(selected = output == choice, onClick = { output = choice }, label = { Text(choice) })
+            AiProjectOutput.entries.forEach { choice ->
+                FilterChip(selected = state.aiOutput == choice, onClick = { onUpdateOutput(choice) }, label = { Text(choice.label) })
             }
         }
         OutlinedTextField(
@@ -610,14 +636,40 @@ private fun AiWorkshopBoundary() {
             label = { Text("Describe the project") },
             placeholder = { Text("Example: Add a grappling hook with configurable range and a crafting recipe…") }
         )
-        Text(
-            "AI generation needs a user-owned API key. Mod JAR compilation additionally needs a pinned Gradle/Loom toolchain or a trusted remote builder; the first safe output is a complete source-project ZIP. Shader packs can be exported directly as ZIPs.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        Button(onClick = {}, enabled = false) {
+        TextButton(onClick = { showSetup = !showSetup }) { Text(if (showSetup) "Hide provider setup" else "AI provider & JAR builder setup") }
+        if (showSetup) {
+            OutlinedTextField(
+                value = state.aiSettings.apiKey,
+                onValueChange = { onUpdateSettings(state.aiSettings.copy(apiKey = it.trim())) },
+                modifier = Modifier.fillMaxWidth(), label = { Text("OpenAI API key") },
+                visualTransformation = PasswordVisualTransformation(), singleLine = true
+            )
+            OutlinedTextField(
+                value = state.aiSettings.model,
+                onValueChange = { onUpdateSettings(state.aiSettings.copy(model = it.trim())) },
+                modifier = Modifier.fillMaxWidth(), label = { Text("AI model") }, singleLine = true
+            )
+            if (state.aiOutput == AiProjectOutput.FABRIC_JAR) {
+                OutlinedTextField(
+                    value = state.aiSettings.githubToken,
+                    onValueChange = { onUpdateSettings(state.aiSettings.copy(githubToken = it.trim())) },
+                    modifier = Modifier.fillMaxWidth(), label = { Text("GitHub fine-grained token (Actions + Contents)") },
+                    visualTransformation = PasswordVisualTransformation(), singleLine = true
+                )
+            }
+            Text("Keys are encrypted in Android app storage and are never included in exported projects or APK builds.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        if (state.aiBusy) {
+            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+            Text(state.aiProgress ?: "Working…", style = MaterialTheme.typography.bodySmall)
+        }
+        Button(
+            onClick = { onGenerate(prompt) },
+            enabled = prompt.isNotBlank() && state.aiSettings.apiKey.isNotBlank() &&
+                (state.aiOutput != AiProjectOutput.FABRIC_JAR || state.aiSettings.githubToken.isNotBlank()) && !state.aiBusy
+        ) {
             Icon(Icons.Rounded.AutoAwesome, contentDescription = null)
-            Text("Connect AI provider to generate", modifier = Modifier.padding(start = 7.dp))
+            Text(if (state.aiOutput == AiProjectOutput.FABRIC_JAR) "Generate and build JAR" else "Generate shader ZIP", modifier = Modifier.padding(start = 7.dp))
         }
     }
 }

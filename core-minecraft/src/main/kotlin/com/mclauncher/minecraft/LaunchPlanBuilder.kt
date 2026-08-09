@@ -149,9 +149,9 @@ class LaunchPlanBuilder(
             if (!rules.allows(library["rules"] as? JsonArray)) continue
             val coordinate = library.optionalString("name").orEmpty()
             if (!coordinate.startsWith("org.lwjgl:")) continue
-            val replacementCoordinate = artifactMapping[coordinate]?.jsonPrimitive?.content ?: coordinate
-            val replacement = substitutions[replacementCoordinate]?.jsonObject
-                ?: error("No Android LWJGL substitution is defined for $coordinate")
+            val (replacementCoordinate, replacement) = resolveAndroidLwjglSubstitution(
+                coordinate, substitutions, artifactMapping
+            )
             if (replacement["skip"]?.jsonPrimitive?.content?.toBooleanStrictOrNull() == true) continue
             lwjgl3Coordinates++
             val classifiers = replacement["downloads"]?.jsonObject
@@ -226,9 +226,9 @@ class LaunchPlanBuilder(
                 ?: continue
 
             if (coordinate.startsWith("org.lwjgl:") || coordinate.startsWith("org.lwjgl.lwjgl:")) {
-                val replacementCoordinate = artifactMapping[coordinate]?.jsonPrimitive?.content ?: coordinate
-                val replacement = substitutions[replacementCoordinate]?.jsonObject
-                    ?: error("No Android LWJGL substitution is defined for $coordinate")
+                val (replacementCoordinate, replacement) = resolveAndroidLwjglSubstitution(
+                    coordinate, substitutions, artifactMapping
+                )
                 if (replacement["skip"]?.jsonPrimitive?.content?.toBooleanStrictOrNull() == true) continue
                 val replacementPath = replacement["downloads"]?.jsonObject
                     ?.get("artifact")?.jsonObject?.optionalString("path")
@@ -246,6 +246,41 @@ class LaunchPlanBuilder(
         }
         files += layout.clientJar(versionId)
         return files.distinctBy(File::getAbsolutePath)
+    }
+
+    /** Mojang snapshots may adopt a newer desktop LWJGL before the pinned Android
+     * engine has an exact mapping. In that case use the newest bundled patched jar
+     * for the same Maven module; desktop LWJGL must never enter Android's classpath. */
+    private fun resolveAndroidLwjglSubstitution(
+        coordinate: String,
+        substitutions: JsonObject,
+        artifactMapping: JsonObject
+    ): Pair<String, JsonObject> {
+        val mapped = artifactMapping[coordinate]?.jsonPrimitive?.content ?: coordinate
+        substitutions[mapped]?.jsonObject?.let { return mapped to it }
+
+        val requestedParts = coordinate.split(':')
+        require(requestedParts.size >= 3) { "Invalid LWJGL coordinate: $coordinate" }
+        val modulePrefix = "${requestedParts[0]}:${requestedParts[1]}:"
+        return substitutions.entries.asSequence()
+            .filter { (candidate, _) -> candidate.startsWith(modulePrefix) }
+            .mapNotNull { (candidate, value) -> runCatching { candidate to value.jsonObject }.getOrNull() }
+            .filterNot { (_, value) -> value["skip"]?.jsonPrimitive?.content?.toBooleanStrictOrNull() == true }
+            .sortedWith { left, right ->
+                compareLwjglVersions(left.first.substringAfterLast(':'), right.first.substringAfterLast(':'))
+            }
+            .lastOrNull()
+            ?: error("No Android LWJGL substitution is defined for $coordinate")
+    }
+
+    private fun compareLwjglVersions(left: String, right: String): Int {
+        val a = Regex("\\d+").findAll(left).map { it.value.toIntOrNull() ?: 0 }.toList()
+        val b = Regex("\\d+").findAll(right).map { it.value.toIntOrNull() ?: 0 }.toList()
+        for (index in 0 until maxOf(a.size, b.size)) {
+            val compared = (a.getOrNull(index) ?: 0).compareTo(b.getOrNull(index) ?: 0)
+            if (compared != 0) return compared
+        }
+        return left.compareTo(right)
     }
 
     private fun buildJvmArguments(
