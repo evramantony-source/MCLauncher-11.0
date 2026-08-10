@@ -99,12 +99,12 @@
 ## Alpha 20 — local project creation and Android Files
 
 - [x] Remove API-key and GitHub-token requirements from the Creation Lab.
-- [x] Generate Fabric, Quilt, Forge and NeoForge source projects on-device.
-- [x] Run Gradle through the bundled Java runtime in a disposable local-builder process.
+- [x] Generate Fabric, Quilt, Forge and NeoForge data-driven projects on-device.
+- [x] Assemble loader JARs directly on-device without relying on a missing Android JDK compiler.
 - [x] Attach and locally inspect images, logs, source archives and mod JARs.
 - [x] Expose instances, generated projects, outputs and logs in Android Files.
 - [x] Copy completed JARs and shader ZIPs directly into the selected instance.
-- [ ] Verify the first Gradle download and one build for every loader on the Redmi Pad Pro.
+- [ ] Verify one locally assembled JAR for every loader on the Redmi Pad Pro.
 - [ ] Expand the verified mechanic library beyond the Minecraft 1.20.1 grappling hook.
 
 ## After main-menu confirmation

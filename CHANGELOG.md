@@ -3,7 +3,7 @@
 ## 11.0.0-alpha20
 
 - Replace the paid OpenAI/GitHub mod workflow with the on-device MCL Creation Engine: no API key, usage credit, subscription or GitHub Actions mod builder is required.
-- Add local Fabric, Quilt, Forge and NeoForge project generation targeted at an installed instance, with an isolated disposable Java/Gradle builder process and verified Gradle distribution downloads.
+- Add local Fabric, Quilt, Forge and NeoForge project generation targeted at an installed instance, with direct loader-JAR assembly that does not need a JDK, Gradle download or remote build.
 - Add a verified Minecraft 1.20.1 grappling-hook capability, loader starter projects for requests outside the verified capability set, and locally generated shader-pack ZIPs.
 - Accept up to eight images, logs, source archives and mod JARs; inspect common crash signatures and loader metadata locally and preserve every reference beside the generated source project.
 - Expose MCLauncher as an Android Storage Access Framework provider so **Minecraft instances** and **MCL Creation Lab** appear directly in Android Files without broad storage permission.

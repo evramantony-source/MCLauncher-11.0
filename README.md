@@ -23,9 +23,9 @@ MCLauncher is an independent Android launcher for Minecraft: Java Edition. It ha
 - Global and per-instance Minecraft 26.2+ graphics-API selection.
 - Verified one-tap installers for selected compatible renderer packages.
 - MCL Creation Lab with a touch pixel editor, complete installed item-texture catalog, validated resource-pack ZIPs, and 64×64 skin plus 64×32 cape PNG creation.
-- Local Creation Engine with Files/JAR/image attachments, Files-app integration, four loader targets, on-device Gradle compilation and direct instance installation without an API key or remote mod builder.
+- Local Creation Engine with Files/JAR/image attachments, Files-app integration, four loader targets, direct on-device JAR assembly and instance installation without an API key, compiler download or remote mod builder.
 
-Alpha 01 reached the Minecraft main menu and a playable world on a physical Android device. Later builds stabilized Android 16 startup, renderer selection, touch input, exact modpack installation and live download progress. Alpha 17's fixed game-buffer boundary made direct menu touch work on the Redmi Pad Pro, with a known stretched-resolution regression still to correct. Alpha 18 added validated local import and export for real Modrinth and CurseForge packs. Alpha 19 added the MCL Creation Lab. Alpha 20 removes paid prompt/build providers, exposes launcher files through Android Files and adds an isolated local Minecraft project builder.
+Alpha 01 reached the Minecraft main menu and a playable world on a physical Android device. Later builds stabilized Android 16 startup, renderer selection, touch input, exact modpack installation and live download progress. Alpha 17's fixed game-buffer boundary made direct menu touch work on the Redmi Pad Pro, with a known stretched-resolution regression still to correct. Alpha 18 added validated local import and export for real Modrinth and CurseForge packs. Alpha 19 added the MCL Creation Lab. Alpha 20 removes paid prompt/build providers, exposes launcher files through Android Files and adds direct local JAR assembly for verified data-driven capabilities.
 
 CurseForge's official REST API requires an `x-api-key`. A private build can inject
 `CURSEFORGE_API_KEY`, or the user can enter a key in Settings. Modrinth requires no key.
@@ -81,7 +81,7 @@ Pull requests and pushes to `main` run the default arm64 build automatically.
 
 ## Proof still required
 
-A green workflow proves that the project compiled and the expected payload is present in the APK. It does not prove compatibility with every Minecraft version, mod, GPU or Android firmware. Direct menu touch is device-confirmed on the Redmi Pad Pro; Alpha 20's on-device Gradle builds and Android Files provider still need physical-device proof, Alpha 18's pack round trips still need desktop-client proof, and the stretched-resolution regression remains open.
+A green workflow proves that the project compiled and the expected payload is present in the APK. It does not prove compatibility with every Minecraft version, mod, GPU or Android firmware. Direct menu touch is device-confirmed on the Redmi Pad Pro; Alpha 20's local JAR assembly and Android Files provider still need physical-device proof, Alpha 18's pack round trips still need desktop-client proof, and the stretched-resolution regression remains open.
 
 ## Legal
 

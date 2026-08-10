@@ -632,7 +632,7 @@ private fun AiWorkshop(
             Text("MCL local Creation Engine", style = MaterialTheme.typography.titleLarge)
         }
         Text(
-            "No API key, account credit, subscription or GitHub builder. Projects, attachments and compilation stay on this tablet. The first JAR build downloads a verified free Gradle toolchain and loader libraries.",
+            "No API key, account credit, subscription, compiler download or GitHub mod builder. Projects, attachments and loader JAR assembly stay on this tablet.",
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         Row(
@@ -722,7 +722,7 @@ private fun AiWorkshop(
         ) {
             Icon(Icons.Rounded.AutoAwesome, contentDescription = null)
             Text(
-                if (state.aiOutput == LocalProjectOutput.MOD_JAR) "Generate and build locally" else "Generate shader ZIP locally",
+                if (state.aiOutput == LocalProjectOutput.MOD_JAR) "Generate JAR locally" else "Generate shader ZIP locally",
                 modifier = Modifier.padding(start = 7.dp)
             )
         }

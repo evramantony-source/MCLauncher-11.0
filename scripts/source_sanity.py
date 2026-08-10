@@ -207,14 +207,19 @@ require_contains(
     "app/src/main/AndroidManifest.xml",
     ".storage.MCLauncherDocumentsProvider",
     "android.content.action.DOCUMENTS_PROVIDER",
-    ".creation.LocalBuildActivity",
-    'android:process=":local_builder"',
 )
 require_contains(
     "app/src/main/java/com/mclauncher/app/creation/LocalProjectBuilder.kt",
-    "LocalBuildActivity.start",
+    "assembleModJar",
     "validateModJar",
     "copyIntoInstance",
+)
+require_contains(
+    "app/src/main/java/com/mclauncher/app/creation/LocalProjectGenerator.kt",
+    'modLoader="lowcodefml"',
+    "minecraft:recipe_crafted",
+    "minecraft:fishing_bobber",
+    "META-INF/MCL-SPECIFICATION.txt",
 )
 require_absent(
     "app/src/main/java/com/mclauncher/app/ui/screens/CreationLabScreen.kt",

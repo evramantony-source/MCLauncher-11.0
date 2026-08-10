@@ -46,13 +46,6 @@
             android:screenOrientation="sensorLandscape" />
 
         <activity
-            android:name=".creation.LocalBuildActivity"
-            android:excludeFromRecents="true"
-            android:exported="false"
-            android:process=":local_builder"
-            android:taskAffinity="" />
-
-        <activity
             android:name=".MainActivity"
             android:exported="true">
             <intent-filter>
