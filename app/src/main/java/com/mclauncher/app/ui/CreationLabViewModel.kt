@@ -59,7 +59,8 @@ enum class PixelTool(val label: String) {
 
 data class LabTexture(
     val path: String,
-    val displayName: String
+    val displayName: String,
+    val thumbnail: PixelDocument?
 )
 
 data class PixelDocument(
@@ -248,13 +249,17 @@ class CreationLabViewModel(application: Application) : AndroidViewModel(applicat
                     val discovered = ZipFile(jar).use { zip ->
                         zip.entries().asSequence()
                             .filter { !it.isDirectory }
-                            .map { it.name }
-                            .filter { it.startsWith(ITEM_TEXTURE_PREFIX) && it.endsWith(".png", ignoreCase = true) }
-                            .distinct()
-                            .sorted()
-                            .map { path ->
+                            .filter { it.name.startsWith(ITEM_TEXTURE_PREFIX) && it.name.endsWith(".png", ignoreCase = true) }
+                            .distinctBy { it.name }
+                            .sortedBy { it.name }
+                            .map { entry ->
+                                val path = entry.name
                                 val relative = path.removePrefix(ITEM_TEXTURE_PREFIX).removeSuffix(".png")
-                                LabTexture(path, relative.replace('/', ' ').replace('_', ' '))
+                                val thumbnail = runCatching {
+                                    zip.getInputStream(entry).use { BitmapFactory.decodeStream(it) }
+                                        ?.toThumbnailDocument()
+                                }.getOrNull()
+                                LabTexture(path, relative.replace('/', ' ').replace('_', ' '), thumbnail)
                             }
                             .toList()
                     }
@@ -644,6 +649,26 @@ class CreationLabViewModel(application: Application) : AndroidViewModel(applicat
         return PixelDocument(width, height, pixels)
     }
 
+    private fun Bitmap.toThumbnailDocument(): PixelDocument {
+        val firstFrameHeight = if (height > width && height % width == 0) width else height
+        val frame = if (firstFrameHeight == height) this else Bitmap.createBitmap(this, 0, 0, width, firstFrameHeight)
+        val largest = maxOf(frame.width, frame.height)
+        val preview = if (largest > MAX_TEXTURE_THUMBNAIL_SIZE) {
+            val scale = MAX_TEXTURE_THUMBNAIL_SIZE.toFloat() / largest
+            Bitmap.createScaledBitmap(
+                frame,
+                (frame.width * scale).toInt().coerceAtLeast(1),
+                (frame.height * scale).toInt().coerceAtLeast(1),
+                false
+            )
+        } else frame
+        val document = preview.toDocument()
+        if (preview !== frame) preview.recycle()
+        if (frame !== this) frame.recycle()
+        recycle()
+        return document
+    }
+
     private fun PixelDocument.toBitmap(): Bitmap = Bitmap.createBitmap(
         pixels,
         width,
@@ -662,6 +687,7 @@ class CreationLabViewModel(application: Application) : AndroidViewModel(applicat
         private const val MODERN_PACK_METADATA_VERSION = 65
         private const val MAX_HISTORY = 30
         private const val MAX_AI_ATTACHMENTS = 8
+        private const val MAX_TEXTURE_THUMBNAIL_SIZE = 32
 
         private fun blankDocument(width: Int, height: Int) = PixelDocument(width, height, IntArray(width * height))
 

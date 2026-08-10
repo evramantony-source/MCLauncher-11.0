@@ -1,10 +1,12 @@
 package com.mclauncher.app.ui.screens
 
 import android.graphics.Bitmap
+import android.graphics.Color as AndroidColor
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -70,6 +72,7 @@ import com.mclauncher.app.ui.PixelTool
 import com.mclauncher.app.creation.LocalProjectOutput
 import com.mclauncher.app.ui.components.LauncherCard
 import com.mclauncher.app.ui.components.PageHeader
+import com.mclauncher.minecraft.baseGameVersion
 import com.mclauncher.model.MinecraftInstance
 import com.mclauncher.model.ModLoader
 import java.util.Locale
@@ -182,18 +185,28 @@ fun CreationLabScreen(
                     }
                     item {
                         state.document?.let { document ->
-                            PixelEditor(
-                                title = state.selectedTexturePath?.removePrefix("assets/minecraft/textures/item/") ?: "Item texture",
-                                document = document,
-                                state = state,
-                                onSelectTool = onSelectTool,
-                                onSelectColor = onSelectColor,
-                                onBeginStroke = onBeginStroke,
-                                onEditPixel = onEditPixel,
-                                onUndo = onUndo,
-                                onRedo = onRedo,
-                                onClear = onClearArtwork
-                            )
+                            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                ItemInGamePreview(
+                                    name = state.selectedTexturePath
+                                        ?.removePrefix("assets/minecraft/textures/item/")
+                                        ?.removeSuffix(".png")
+                                        ?.replace('_', ' ')
+                                        ?: "Item texture",
+                                    document = document
+                                )
+                                PixelEditor(
+                                    title = state.selectedTexturePath?.removePrefix("assets/minecraft/textures/item/") ?: "Item texture",
+                                    document = document,
+                                    state = state,
+                                    onSelectTool = onSelectTool,
+                                    onSelectColor = onSelectColor,
+                                    onBeginStroke = onBeginStroke,
+                                    onEditPixel = onEditPixel,
+                                    onUndo = onUndo,
+                                    onRedo = onRedo,
+                                    onClear = onClearArtwork
+                                )
+                            }
                         } ?: LauncherCard(modifier = Modifier.fillMaxWidth()) {
                             Text("Choose an item texture", style = MaterialTheme.typography.titleMedium)
                             Text(
@@ -344,6 +357,7 @@ private fun ResourcePackSetup(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
+                    PixelArtPreview(texture.thumbnail, Modifier.size(46.dp))
                     Text(texture.displayName.replaceFirstChar { it.titlecase(Locale.ROOT) }, modifier = Modifier.weight(1f))
                 }
             }
@@ -351,6 +365,244 @@ private fun ResourcePackSetup(
         if (visibleTextures.isEmpty() && !state.busy) {
             Text("No item textures match that search.", color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
+    }
+}
+
+@Composable
+private fun ItemInGamePreview(name: String, document: PixelDocument) {
+    LauncherCard(modifier = Modifier.fillMaxWidth()) {
+        Text("In-game item preview", style = MaterialTheme.typography.titleMedium)
+        Text(
+            name.replaceFirstChar { it.titlecase(Locale.ROOT) },
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Box(
+                    modifier = Modifier
+                        .size(112.dp)
+                        .background(Color(0xFF8B8B8B), RoundedCornerShape(4.dp))
+                        .border(4.dp, Color(0xFF373737), RoundedCornerShape(4.dp))
+                        .padding(17.dp)
+                ) {
+                    PixelArtPreview(document, Modifier.fillMaxSize())
+                }
+                Text("Inventory slot", style = MaterialTheme.typography.bodySmall)
+            }
+            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Box(
+                    modifier = Modifier
+                        .size(180.dp)
+                        .background(Color(0xFF86C8F2), RoundedCornerShape(8.dp))
+                        .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(8.dp))
+                ) {
+                    Box(
+                        Modifier.fillMaxWidth().height(42.dp).align(Alignment.BottomCenter)
+                            .background(Color(0xFF6A9F45))
+                    )
+                    PixelArtPreview(document, Modifier.size(112.dp).align(Alignment.Center))
+                }
+                Text("Large pixel preview", style = MaterialTheme.typography.bodySmall)
+            }
+        }
+        Text(
+            "Nearest-neighbour scaling keeps every source pixel sharp. Minecraft can apply lighting and model transforms when the pack is loaded.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+@Composable
+private fun PixelArtPreview(document: PixelDocument?, modifier: Modifier = Modifier) {
+    val image = remember(document?.pixels, document?.width, document?.height) {
+        document?.let {
+            Bitmap.createBitmap(it.pixels, it.width, it.height, Bitmap.Config.ARGB_8888).asImageBitmap()
+        }
+    }
+    Canvas(modifier = modifier) {
+        val cells = 8
+        val cellWidth = size.width / cells
+        val cellHeight = size.height / cells
+        for (y in 0 until cells) {
+            for (x in 0 until cells) {
+                drawRect(
+                    color = if ((x + y) % 2 == 0) Color(0xFFCDD2D7) else Color(0xFF929AA2),
+                    topLeft = Offset(x * cellWidth, y * cellHeight),
+                    size = Size(cellWidth + 0.5f, cellHeight + 0.5f)
+                )
+            }
+        }
+        if (document != null && image != null) {
+            val sourceHeight = document.frameHeight
+            val scale = min(size.width / document.width, size.height / sourceHeight)
+            val drawWidth = document.width * scale
+            val drawHeight = sourceHeight * scale
+            drawImage(
+                image = image,
+                srcOffset = IntOffset.Zero,
+                srcSize = IntSize(document.width, sourceHeight),
+                dstOffset = IntOffset(((size.width - drawWidth) / 2f).roundToInt(), ((size.height - drawHeight) / 2f).roundToInt()),
+                dstSize = IntSize(drawWidth.roundToInt(), drawHeight.roundToInt()),
+                filterQuality = FilterQuality.None
+            )
+        }
+    }
+}
+
+private enum class SkinView(val label: String) {
+    FRONT("Front"),
+    BACK("Back"),
+    LEFT("Left side"),
+    RIGHT("Right side")
+}
+
+private data class SkinUv(val x: Int, val y: Int, val width: Int, val height: Int)
+
+private data class SkinPreviewPart(
+    val x: Int,
+    val y: Int,
+    val width: Int,
+    val height: Int,
+    val base: SkinUv,
+    val outer: SkinUv
+)
+
+@Composable
+private fun SkinCharacterPreview(document: PixelDocument) {
+    var view by remember { mutableStateOf(SkinView.FRONT) }
+    var showBody by remember { mutableStateOf(true) }
+    var showOuter by remember { mutableStateOf(true) }
+    val image = remember(document.pixels, document.width, document.height) {
+        Bitmap.createBitmap(document.pixels, document.width, document.height, Bitmap.Config.ARGB_8888).asImageBitmap()
+    }
+    val parts = remember(view) { skinPreviewParts(view) }
+    LauncherCard(modifier = Modifier.fillMaxWidth()) {
+        Text("Player preview", style = MaterialTheme.typography.titleMedium)
+        Text(
+            "Paint the 64×64 UV map below and this character updates immediately.",
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            SkinView.entries.forEach { choice ->
+                FilterChip(selected = view == choice, onClick = { view = choice }, label = { Text(choice.label) })
+            }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilterChip(selected = showBody, onClick = { showBody = !showBody }, label = { Text("Body layer") })
+            FilterChip(selected = showOuter, onClick = { showOuter = !showOuter }, label = { Text("Outer layer") })
+        }
+        Canvas(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(390.dp)
+                .background(Color(0xFF86C8F2), RoundedCornerShape(10.dp))
+        ) {
+            drawRect(Color(0xFF6A9F45), topLeft = Offset(0f, size.height * 0.78f), size = Size(size.width, size.height * 0.22f))
+            val scale = min(size.width / 20f, size.height / 36f)
+            val left = (size.width - 16f * scale) / 2f
+            val top = (size.height - 32f * scale) / 2f - scale
+            drawOval(
+                color = Color.Black.copy(alpha = 0.24f),
+                topLeft = Offset(left + 3f * scale, top + 31f * scale),
+                size = Size(10f * scale, 2.2f * scale)
+            )
+            parts.forEach { part ->
+                val destinationOffset = IntOffset(
+                    (left + part.x * scale).roundToInt(),
+                    (top + part.y * scale).roundToInt()
+                )
+                val destinationSize = IntSize((part.width * scale).roundToInt(), (part.height * scale).roundToInt())
+                if (showBody) {
+                    drawImage(
+                        image = image,
+                        srcOffset = IntOffset(part.base.x, part.base.y),
+                        srcSize = IntSize(part.base.width, part.base.height),
+                        dstOffset = destinationOffset,
+                        dstSize = destinationSize,
+                        filterQuality = FilterQuality.None
+                    )
+                }
+                if (showOuter) {
+                    drawImage(
+                        image = image,
+                        srcOffset = IntOffset(part.outer.x, part.outer.y),
+                        srcSize = IntSize(part.outer.width, part.outer.height),
+                        dstOffset = destinationOffset,
+                        dstSize = destinationSize,
+                        filterQuality = FilterQuality.None
+                    )
+                }
+            }
+        }
+        Text(
+            "Preview supports front, back and both sides. The editor below still exposes all 4,096 pixels, including every base and outer-layer face.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+private fun skinPreviewParts(view: SkinView): List<SkinPreviewPart> {
+    fun part(
+        x: Int,
+        y: Int,
+        width: Int,
+        height: Int,
+        baseX: Int,
+        baseY: Int,
+        outerX: Int,
+        outerY: Int,
+        sourceWidth: Int = width,
+        sourceHeight: Int = height
+    ) = SkinPreviewPart(
+        x,
+        y,
+        width,
+        height,
+        SkinUv(baseX, baseY, sourceWidth, sourceHeight),
+        SkinUv(outerX, outerY, sourceWidth, sourceHeight)
+    )
+    return when (view) {
+        SkinView.FRONT -> listOf(
+            part(4, 0, 8, 8, 8, 8, 40, 8),
+            part(4, 8, 8, 12, 20, 20, 20, 36),
+            part(0, 8, 4, 12, 44, 20, 44, 36),
+            part(12, 8, 4, 12, 36, 52, 52, 52),
+            part(4, 20, 4, 12, 4, 20, 4, 36),
+            part(8, 20, 4, 12, 20, 52, 4, 52)
+        )
+        SkinView.BACK -> listOf(
+            part(4, 0, 8, 8, 24, 8, 56, 8),
+            part(4, 8, 8, 12, 32, 20, 32, 36),
+            part(0, 8, 4, 12, 52, 20, 52, 36),
+            part(12, 8, 4, 12, 44, 52, 60, 52),
+            part(4, 20, 4, 12, 12, 20, 12, 36),
+            part(8, 20, 4, 12, 28, 52, 12, 52)
+        )
+        SkinView.LEFT -> listOf(
+            part(4, 0, 8, 8, 16, 8, 48, 8),
+            part(6, 8, 4, 12, 28, 20, 28, 36),
+            part(2, 8, 4, 12, 40, 52, 56, 52),
+            part(10, 8, 4, 12, 48, 20, 48, 36),
+            part(4, 20, 4, 12, 8, 20, 8, 36),
+            part(8, 20, 4, 12, 24, 52, 8, 52)
+        )
+        SkinView.RIGHT -> listOf(
+            part(4, 0, 8, 8, 0, 8, 32, 8),
+            part(6, 8, 4, 12, 16, 20, 16, 36),
+            part(2, 8, 4, 12, 40, 20, 40, 36),
+            part(10, 8, 4, 12, 32, 52, 48, 52),
+            part(4, 20, 4, 12, 0, 20, 0, 36),
+            part(8, 20, 4, 12, 16, 52, 0, 52)
+        )
     }
 }
 
@@ -395,6 +647,9 @@ private fun ArtworkCreator(
             }
         }
         state.document?.let { document ->
+            if (section == CreationLabSection.SKIN) {
+                SkinCharacterPreview(document)
+            }
             PixelEditor(
                 title = section.label,
                 document = document,
@@ -466,35 +721,24 @@ private fun PixelEditor(
             }
         }
         Row(
-            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+            modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Box(
-                modifier = Modifier
-                    .size(44.dp)
-                    .background(Color(state.brushColor), RoundedCornerShape(8.dp))
-            )
+            ColorSwatch(state.brushColor, selected = true, size = 44, onSelect = onSelectColor)
             OutlinedTextField(
                 value = hex,
                 onValueChange = { value ->
                     hex = value.filter { it.isDigit() || it.lowercaseChar() in 'a'..'f' }.take(8).uppercase(Locale.ROOT)
                     parseColorHex(hex)?.let(onSelectColor)
                 },
-                modifier = Modifier.heightIn(max = 64.dp),
+                modifier = Modifier.weight(1f).heightIn(max = 64.dp),
                 singleLine = true,
                 prefix = { Text("#") },
                 label = { Text("ARGB or RGB") }
             )
-            PRESET_COLORS.forEach { color ->
-                Box(
-                    modifier = Modifier
-                        .size(34.dp)
-                        .background(Color(color), RoundedCornerShape(7.dp))
-                        .clickable { onSelectColor(color) }
-                )
-            }
         }
+        ExtendedColorPalette(selectedColor = state.brushColor, onSelectColor = onSelectColor)
         if (document.frameCount > 1) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(onClick = { frame = (frame - 1).coerceAtLeast(0) }, enabled = frame > 0) { Text("Previous") }
@@ -512,7 +756,7 @@ private fun PixelEditor(
             onPixel = { x, y -> onEditPixel(x, y, frame) }
         )
         Text(
-            "Tap or drag to edit. Transparent pixels use the checkerboard. Animated item sheets are split into frames without changing the exported PNG.",
+            "Tap or drag to edit every pixel. Transparent pixels use the checkerboard. Animated item sheets are split into frames without changing the exported PNG.",
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.bodySmall
         )
@@ -613,6 +857,66 @@ private fun PixelCanvas(
 }
 
 @Composable
+private fun ExtendedColorPalette(selectedColor: Int, onSelectColor: (Int) -> Unit) {
+    Text(
+        "Full colour palette · ${EXTENDED_COLORS.size} colours plus exact ARGB",
+        style = MaterialTheme.typography.titleSmall
+    )
+    Column(
+        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(5.dp)
+    ) {
+        EXTENDED_COLORS.chunked(PALETTE_COLUMNS).forEach { row ->
+            Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                row.forEach { color ->
+                    ColorSwatch(
+                        color = color,
+                        selected = color == selectedColor,
+                        size = 27,
+                        onSelect = onSelectColor
+                    )
+                }
+            }
+        }
+    }
+    Row(
+        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Text("Opacity", style = MaterialTheme.typography.bodySmall)
+        OPACITY_LEVELS.forEach { (label, alpha) ->
+            val candidate = (alpha shl 24) or (selectedColor and 0x00FFFFFF)
+            FilterChip(
+                selected = (selectedColor ushr 24) == alpha,
+                onClick = { onSelectColor(candidate) },
+                label = { Text(label) }
+            )
+        }
+    }
+}
+
+@Composable
+private fun ColorSwatch(color: Int, selected: Boolean, size: Int, onSelect: (Int) -> Unit) {
+    val outline = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
+    Canvas(
+        modifier = Modifier
+            .size(size.dp)
+            .border(if (selected) 3.dp else 1.dp, outline, RoundedCornerShape(6.dp))
+            .clickable { onSelect(color) }
+            .padding(if (selected) 4.dp else 2.dp)
+    ) {
+        val halfWidth = this.size.width / 2f
+        val halfHeight = this.size.height / 2f
+        drawRect(Color.White, size = Size(halfWidth, halfHeight))
+        drawRect(Color(0xFF9DA4AB), topLeft = Offset(halfWidth, 0f), size = Size(halfWidth, halfHeight))
+        drawRect(Color(0xFF9DA4AB), topLeft = Offset(0f, halfHeight), size = Size(halfWidth, halfHeight))
+        drawRect(Color.White, topLeft = Offset(halfWidth, halfHeight), size = Size(halfWidth, halfHeight))
+        drawRect(Color(color))
+    }
+}
+
+@Composable
 private fun AiWorkshop(
     state: CreationLabUiState,
     instances: List<MinecraftInstance>,
@@ -626,6 +930,9 @@ private fun AiWorkshop(
     var prompt by remember { mutableStateOf("") }
     val moddedInstances = remember(instances) { instances.filter { it.loader != ModLoader.VANILLA } }
     val selectedTarget = instances.firstOrNull { it.id == state.aiTargetInstanceId }
+    val promptLower = prompt.lowercase(Locale.ROOT)
+    val isGrapplingHook = ("grappling" in promptLower || "grapple" in promptLower) && "hook" in promptLower
+    val verifiedModRequest = selectedTarget?.let { isGrapplingHook && baseGameVersion(it) == "1.20.1" } == true
     LauncherCard(modifier = Modifier.fillMaxWidth()) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Icon(Icons.Rounded.AutoAwesome, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
@@ -707,10 +1014,17 @@ private fun AiWorkshop(
             }
         }
         Text(
-            "Verified capability in this build: working grappling-hook mods for Minecraft 1.20.1, safe starter JARs for all four loaders, and local color-effect shader packs. Other requests are preserved in the project specification instead of pretending unfinished behavior works. JAR metadata and common text crash signatures are inspected locally; arbitrary binary porting still requires source code and a future capability module.",
+            "Working JAR capability in this build: grappling-hook mods for Minecraft 1.20.1 on Fabric, Quilt, Forge and NeoForge. Unsupported prompts are now blocked instead of producing tiny placeholder JARs. Local color-effect shader packs are also supported; arbitrary mod generation and binary JAR porting are not implemented yet.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
+        if (state.aiOutput == LocalProjectOutput.MOD_JAR && prompt.isNotBlank() && !verifiedModRequest) {
+            Text(
+                "No JAR will be created for this request. Choose a Minecraft 1.20.1 instance and request a grappling hook; this prevents another misleading 1–2 KB file.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error
+            )
+        }
         if (state.aiBusy) {
             LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
             Text(state.aiProgress ?: "Working…", style = MaterialTheme.typography.bodySmall)
@@ -718,7 +1032,7 @@ private fun AiWorkshop(
         Button(
             onClick = { onGenerate(prompt) },
             enabled = prompt.isNotBlank() && !state.aiBusy &&
-                (state.aiOutput == LocalProjectOutput.SHADER_ZIP || selectedTarget?.loader != null)
+                (state.aiOutput == LocalProjectOutput.SHADER_ZIP || verifiedModRequest)
         ) {
             Icon(Icons.Rounded.AutoAwesome, contentDescription = null)
             Text(
@@ -758,13 +1072,29 @@ private fun parseColorHex(value: String): Int? = runCatching {
     }
 }.getOrNull()
 
-private val PRESET_COLORS = listOf(
-    0xFF000000.toInt(),
-    0xFFFFFFFF.toInt(),
-    0xFFFF3B30.toInt(),
-    0xFFFFCC00.toInt(),
-    0xFF34C759.toInt(),
-    0xFF007AFF.toInt(),
-    0xFFAF52DE.toInt(),
-    0x00000000
+private const val PALETTE_COLUMNS = 18
+
+private val OPACITY_LEVELS = listOf(
+    "100%" to 255,
+    "75%" to 191,
+    "50%" to 128,
+    "25%" to 64,
+    "0%" to 0
 )
+
+private val EXTENDED_COLORS: List<Int> = buildList {
+    listOf(0.04f, 0.12f, 0.22f, 0.34f, 0.48f, 0.64f, 0.78f, 0.9f, 1f).forEach { value ->
+        add(AndroidColor.HSVToColor(floatArrayOf(0f, 0f, value)))
+    }
+    for (hue in 0 until 360 step 15) {
+        listOf(
+            0.38f to 1f,
+            0.7f to 1f,
+            1f to 1f,
+            1f to 0.72f
+        ).forEach { (saturation, value) ->
+            add(AndroidColor.HSVToColor(floatArrayOf(hue.toFloat(), saturation, value)))
+        }
+    }
+    add(0x00000000)
+}.distinct()

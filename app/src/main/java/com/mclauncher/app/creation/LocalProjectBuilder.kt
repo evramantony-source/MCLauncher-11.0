@@ -82,11 +82,7 @@ class LocalProjectBuilder(private val context: Context) {
             outputPath = output.absolutePath,
             projectPath = project.directory.absolutePath,
             installedPath = installed?.absolutePath,
-            summary = if (project.verifiedFeature) {
-                "${project.displayName} was generated as a working data-driven mod, assembled locally and validated${if (installed != null) " in ${target.instanceName}" else ""}."
-            } else {
-                "A loadable ${target.loader.displayName} starter JAR was assembled locally. The requested behavior and attachment analysis are preserved in MCL-SPECIFICATION.txt, but the behavior is outside the current verified capability set."
-            }
+            summary = "${project.displayName} was generated as a working data-driven mod, assembled locally and validated${if (installed != null) " in ${target.instanceName}" else ""}."
         )
     }
 

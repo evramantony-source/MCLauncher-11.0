@@ -1,5 +1,13 @@
 # Changelog
 
+## 11.0.0-alpha21
+
+- Make MCLauncher a writable Android Files destination so it appears in **Copy to…**, with direct access to instance folders and Creation Lab outputs.
+- Add real vanilla item thumbnails, a Minecraft-style inventory preview and a large nearest-neighbour preview to the resource-pack editor.
+- Add a live four-direction skin character preview with independent body/outer-layer visibility while retaining direct editing of all 4,096 pixels in the 64×64 UV map.
+- Expand the editor to a 106-colour HSV palette, grayscale range, five opacity levels and exact RGB/ARGB entry.
+- Stop generating tiny metadata-only JARs for unsupported prompts; the local engine now creates a JAR only for its verified Minecraft 1.20.1 grappling-hook capability and explains all other limits before output.
+
 ## 11.0.0-alpha20
 
 - Replace the paid OpenAI/GitHub mod workflow with the on-device MCL Creation Engine: no API key, usage credit, subscription or GitHub Actions mod builder is required.

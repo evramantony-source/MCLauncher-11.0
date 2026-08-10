@@ -32,6 +32,7 @@ class MCLauncherDocumentsProvider : DocumentsProvider() {
             add(
                 DocumentsContract.Root.COLUMN_FLAGS,
                 DocumentsContract.Root.FLAG_LOCAL_ONLY or
+                    DocumentsContract.Root.FLAG_SUPPORTS_CREATE or
                     DocumentsContract.Root.FLAG_SUPPORTS_IS_CHILD or
                     DocumentsContract.Root.FLAG_SUPPORTS_SEARCH
             )

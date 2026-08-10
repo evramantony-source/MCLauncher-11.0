@@ -146,8 +146,8 @@ if openltw.get("patch") != "vendor/patches/ltw-minecraft-26.2.patch":
 
 require_contains(
     "app/build.gradle.kts",
-    'versionName = "11.0.0-alpha20"',
-    'versionCode = 30',
+    'versionName = "11.0.0-alpha21"',
+    'versionCode = 31',
     'mclauncherAbi',
     'abiFilters += targetAbi',
     'CURSEFORGE_API_KEY',
@@ -160,7 +160,7 @@ require_contains(
     "scripts/source_sanity.py",
     'assembleNoruntimeDebug',
     'assembleDebug -PmclauncherAbi=',
-    'MCLauncher-11.0-alpha20-',
+    'MCLauncher-11.0-alpha21-',
     'mojo-pointer-click-position.patch',
     "Build pinned OpenLTW with Minecraft 26.2 compatibility",
     "--ltw-aar",
@@ -177,7 +177,7 @@ require_contains(
     'No Android LWJGL substitution is defined',
     'prepareAndroidNatives',
     'applyMinecraftOptions',
-    '-Dmclauncher.version=11.0.0-alpha20',
+    '-Dmclauncher.version=11.0.0-alpha21',
     'authSession?.accessToken ?: "0"',
     'AccountType.MICROSOFT) "msa" else "legacy"',
 )
@@ -209,6 +209,11 @@ require_contains(
     "android.content.action.DOCUMENTS_PROVIDER",
 )
 require_contains(
+    "app/src/main/java/com/mclauncher/app/storage/MCLauncherDocumentsProvider.kt",
+    "Root.FLAG_SUPPORTS_CREATE",
+    "Document.FLAG_DIR_SUPPORTS_CREATE",
+)
+require_contains(
     "app/src/main/java/com/mclauncher/app/creation/LocalProjectBuilder.kt",
     "assembleModJar",
     "validateModJar",
@@ -216,10 +221,24 @@ require_contains(
 )
 require_contains(
     "app/src/main/java/com/mclauncher/app/creation/LocalProjectGenerator.kt",
+    "No tiny placeholder JAR was created",
+    "supportsVerifiedMod",
     'modLoader="lowcodefml"',
     "minecraft:recipe_crafted",
     "minecraft:fishing_bobber",
     '"META-INF/$name"',
+)
+require_absent(
+    "app/src/main/java/com/mclauncher/app/creation/LocalProjectGenerator.kt",
+    "safe starter mod",
+    "safe loader starter",
+)
+require_contains(
+    "app/src/main/java/com/mclauncher/app/ui/screens/CreationLabScreen.kt",
+    "In-game item preview",
+    "Player preview",
+    "Full colour palette",
+    "Unsupported prompts are now blocked instead of producing tiny placeholder JARs",
 )
 require_absent(
     "app/src/main/java/com/mclauncher/app/ui/screens/CreationLabScreen.kt",
