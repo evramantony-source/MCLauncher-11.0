@@ -346,159 +346,293 @@ class LocalProjectGenerator(private val labRoot: File) {
             public static final String MOD_ID = "${request.modId}";
             public static final Item GRAPPLING_HOOK = new GrapplingHookItem(new Item.Properties().stacksTo(1).durability(384));
             @Override public void onInitialize(ModContainer mod) {
-                Registry.register(BuiltInRegistries.ITEM, new ResourceLocation(MOD_ID, "grappling_hook"ﬂnz‚⁄$z{-ÆÈ‹j◊ùosable
-private fun AiWorkshop(
-    state: CreationLabUiState,
-    instances: List<MinecraftInstance>,
-    onUpdateOutput: (LocalProjectOutput) -> Unit,
-    onSelectTarget: (MinecraftInstance) -> Unit,
-    onUpdateInstallIntoInstance: (Boolean) -> Unit,
-    onAttach: () -> Unit,
-    onRemoveAttachment: (String) -> Unit,
-    onGenerate: (String) -> Unit
-) {
-    var prompt by remember { mutableStateOf("") }
-    val moddedInstances = remember(instances) { instances.filter { it.loader != ModLoader.VANILLA } }
-    val selectedTarget = instances.firstOrNull { it.id == state.aiTargetInstanceId }
-    LauncherCard(modifier = Modifier.fillMaxWidth()) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Icon(Icons.Rounded.AutoAwesome, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-            Text("MCL local Creation Engine", style = MaterialTheme.typography.titleLarge)
-        }
-        Text(
-            "No API key, account credit, subscription or GitHub builder. Projects, attachments and compilation stay on this tablet. The first JAR build downloads a verified free Gradle toolchain and loader libraries.",
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        Row(
-            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            LocalProjectOutput.entries.forEach { choice ->
-                FilterChip(selected = state.aiOutput == choice, onClick = { onUpdateOutput(choice) }, label = { Text(choice.label) })
+                Registry.register(BuiltInRegistries.ITEM, new ResourceLocation(MOD_ID, "grappling_hook"), GRAPPLING_HOOK);
             }
         }
-        Text("Target instance", style = MaterialTheme.typography.titleSmall)
-        if (moddedInstances.isEmpty()) {
-            Text(
-                "Install a Fabric, Quilt, Forge or NeoForge instance first. Shader ZIPs can still be created without one.",
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        } else {
-            Row(
-                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                moddedInstances.forEach { instance ->
-                    FilterChip(
-                        selected = state.aiTargetInstanceId == instance.id,
-                        onClick = { onSelectTarget(instance) },
-                        label = {
-                            Text("${instance.name} ¬∑ ${instance.loader.displayName} ${instance.loaderVersion.orEmpty()}")
+    """.trimIndent() + "\n" else """
+        package $packageName;
+        public final class GeneratedMod {
+            public static final String MOD_ID = "${request.modId}";
+        }
+    """.trimIndent() + "\n"
+
+    private fun forgeBootstrap(packageName: String, request: ModRequest): String = if (request.compiledFeature) """
+        package $packageName;
+
+        import net.minecraft.world.item.Item;
+        import net.minecraftforge.eventbus.api.IEventBus;
+        import net.minecraftforge.fml.common.Mod;
+        import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
+        import net.minecraftforge.registries.DeferredRegister;
+        import net.minecraftforge.registries.ForgeRegistries;
+        import net.minecraftforge.registries.RegistryObject;
+
+        @Mod(GeneratedMod.MOD_ID)
+        public final class GeneratedMod {
+            public static final String MOD_ID = "${request.modId}";
+            private static final DeferredRegister<Item> ITEMS = DeferredRegister.create(ForgeRegistries.ITEMS, MOD_ID);
+            public static final RegistryObject<Item> GRAPPLING_HOOK = ITEMS.register("grappling_hook", () -> new GrapplingHookItem(new Item.Properties().stacksTo(1).durability(384)));
+            public GeneratedMod() {
+                IEventBus bus = FMLJavaModLoadingContext.get().getModEventBus();
+                ITEMS.register(bus);
+            }
+        }
+    """.trimIndent() + "\n" else """
+        package $packageName;
+        import net.minecraftforge.fml.common.Mod;
+        @Mod(GeneratedMod.MOD_ID)
+        public final class GeneratedMod {
+            public static final String MOD_ID = "${request.modId}";
+        }
+    """.trimIndent() + "\n"
+
+    private fun neoForgeBootstrap(packageName: String, request: ModRequest): String = """
+        package $packageName;
+        import net.neoforged.fml.common.Mod;
+        @Mod(GeneratedMod.MOD_ID)
+        public final class GeneratedMod {
+            public static final String MOD_ID = "${request.modId}";
+        }
+    """.trimIndent() + "\n"
+
+    private fun grapplingHookItem(packageName: String): String = """
+        package $packageName;
+
+        import net.minecraft.server.level.ServerPlayer;
+        import net.minecraft.sounds.SoundEvents;
+        import net.minecraft.sounds.SoundSource;
+        import net.minecraft.world.InteractionHand;
+        import net.minecraft.world.InteractionResultHolder;
+        import net.minecraft.world.entity.player.Player;
+        import net.minecraft.world.item.Item;
+        import net.minecraft.world.item.ItemStack;
+        import net.minecraft.world.level.Level;
+        import net.minecraft.world.phys.HitResult;
+        import net.minecraft.world.phys.Vec3;
+
+        public final class GrapplingHookItem extends Item {
+            private static final double RANGE = 32.0;
+            private static final double PULL_STRENGTH = 1.35;
+
+            public GrapplingHookItem(Properties properties) { super(properties); }
+
+            @Override
+            public InteractionResultHolder<ItemStack> use(Level level, Player player, InteractionHand hand) {
+                ItemStack stack = player.getItemInHand(hand);
+                HitResult target = player.pick(RANGE, 0.0F, false);
+                if (target.getType() == HitResult.Type.MISS) return InteractionResultHolder.pass(stack);
+                if (!level.isClientSide) {
+                    Vec3 delta = target.getLocation().subtract(player.position());
+                    if (delta.lengthSqr() > 1.0) {
+                        Vec3 pull = delta.normalize().scale(PULL_STRENGTH).add(0.0, 0.35, 0.0);
+                        player.setDeltaMovement(pull);
+                        player.hurtMarked = true;
+                        player.fallDistance = 0.0F;
+                        player.getCooldowns().addCooldown(this, 12);
+                        if (player instanceof ServerPlayer serverPlayer) {
+                            stack.hurtAndBreak(1, serverPlayer, broken -> broken.broadcastBreakEvent(hand));
                         }
-                    )
+                        level.playSound(null, player.blockPosition(), SoundEvents.FISHING_BOBBER_RETRIEVE, SoundSource.PLAYERS, 0.9F, 1.15F);
+                    }
                 }
+                return InteractionResultHolder.sidedSuccess(stack, level.isClientSide);
             }
         }
-        OutlinedTextField(
-            value = prompt,
-            onValueChange = { prompt = it },
-            modifier = Modifier.fillMaxWidth().heightIn(min = 130.dp),
-            label = { Text("Describe the project") },
-            placeholder = { Text("Example: Add a grappling hook with configurable range and a crafting recipe‚Ä¶") }
-        )
-        Row(
-            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            OutlinedButton(onClick = onAttach, enabled = !state.aiBusy && state.aiAttachments.size < 8) {
-                Icon(Icons.Rounded.AttachFile, contentDescription = null)
-                Text("Attach files, images or JARs", modifier = Modifier.padding(start = 6.dp))
-            }
-            FilterChip(
-                selected = state.aiInstallIntoInstance,
-                onClick = { onUpdateInstallIntoInstance(!state.aiInstallIntoInstance) },
-                enabled = selectedTarget != null,
-                label = { Text("Also add to selected instance") }
+    """.trimIndent() + "\n"
+
+    private fun fabricMetadata(packageName: String, request: ModRequest, target: LocalBuildTarget): String = """
+        {
+          "schemaVersion": 1,
+          "id": "${request.modId}",
+          "version": "1.0.0",
+          "name": "${jsonEscape(request.displayName)}",
+          "description": "Generated locally by MCLauncher. No API service or remote builder was used.",
+          "environment": "*",
+          "entrypoints": { "main": ["$packageName.GeneratedMod"] },
+          "depends": { "fabricloader": ">=${target.loaderVersion}", "minecraft": "${target.minecraftVersion}" }
+        }
+    """.trimIndent() + "\n"
+
+    private fun quiltMetadata(packageName: String, request: ModRequest, target: LocalBuildTarget): String = """
+        {
+          "schema_version": 1,
+          "quilt_loader": {
+            "group": "com.mclauncher.generated",
+            "id": "${request.modId}",
+            "version": "1.0.0",
+            "metadata": {
+              "name": "${jsonEscape(request.displayName)}",
+              "description": "Generated locally by MCLauncher",
+              "license": "ARR"
+            },
+            "entrypoints": { ${if (request.compiledFeature) "\"init\": \"$packageName.GeneratedMod\"" else ""} },
+            "depends": [
+              { "id": "quilt_loader", "versions": ">=${target.loaderVersion}" },
+              { "id": "minecraft", "versions": "${target.minecraftVersion}" }
+            ]
+          }
+        }
+    """.trimIndent() + "\n"
+
+    private fun forgeMetadata(request: ModRequest, target: LocalBuildTarget, neo: Boolean): String {
+        val loaderRange = if (neo) "[1,)" else "[47,)"
+        val dependency = if (neo) "neoforge" else "forge"
+        val loaderVersion = if (!neo) target.loaderVersion.removePrefix("${target.minecraftVersion}-") else target.loaderVersion
+        return """
+            modLoader="javafml"
+            loaderVersion="$loaderRange"
+            license="All Rights Reserved"
+
+            [[mods]]
+            modId="${request.modId}"
+            version="1.0.0"
+            displayName="${tomlEscape(request.displayName)}"
+            description='''Generated locally by MCLauncher. No API service or remote builder was used.'''
+
+            [[dependencies.${request.modId}]]
+            modId="$dependency"
+            mandatory=true
+            versionRange="[$loaderVersion,)"
+            ordering="NONE"
+            side="BOTH"
+
+            [[dependencies.${request.modId}]]
+            modId="minecraft"
+            mandatory=true
+            versionRange="[${target.minecraftVersion}]"
+            ordering="NONE"
+            side="BOTH"
+        """.trimIndent() + "\n"
+    }
+
+    private fun writeGrapplingResources(project: File, request: ModRequest, attachments: List<LocalAttachment>) {
+        val resources = project.resolve("src/main/resources")
+        resources.resolve("assets/${request.modId}/lang/en_us.json").apply { parentFile?.mkdirs() }
+            .writeText("{\"item.${request.modId}.grappling_hook\":\"Grappling Hook\"}\n")
+        resources.resolve("assets/${request.modId}/models/item/grappling_hook.json").apply { parentFile?.mkdirs() }
+            .writeText("{\"parent\":\"minecraft:item/handheld\",\"textures\":{\"layer0\":\"${request.modId}:item/grappling_hook\"}}\n")
+        resources.resolve("data/${request.modId}/recipes/grappling_hook.json").apply { parentFile?.mkdirs() }
+            .writeText(
+                """{"type":"minecraft:crafting_shaped","pattern":[" II"," SI","S  "],"key":{"I":{"item":"minecraft:iron_ingot"},"S":{"item":"minecraft:string"}},"result":{"item":"${request.modId}:grappling_hook"}}""" + "\n"
             )
-        }
-        state.aiAttachments.forEach { attachment ->
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text("${attachment.displayName} ¬∑ ${attachment.kind.label} ¬∑ ${formatAttachmentSize(attachment.sizeBytes)}")
-                    Text(
-                        attachment.analysis,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                TextButton(onClick = { onRemoveAttachment(attachment.id) }, enabled = !state.aiBusy) {
-                    Icon(Icons.Rounded.Delete, contentDescription = "Remove attachment")
-                }
-            }
-        }
-        Text(
-            "Verified capability in this build: working grappling-hook mods for Minecraft 1.20.1, safe starter JARs for all four loaders, and local color-effect shader packs. Other requests are preserved in the project specification instead of pretending unfinished behavior works. JAR metadata and common text crash signatures are inspected locally; arbitrary binary porting still requires source code and a future capability module.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        if (state.aiBusy) {
-            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-            Text(state.aiProgress ?: "Working‚Ä¶", style = MaterialTheme.typography.bodySmall)
-        }
-        Button(
-            onClick = { onGenerate(prompt) },
-            enabled = prompt.isNotBlank() && !state.aiBusy &&
-                (state.aiOutput == LocalProjectOutput.SHADER_ZIP || selectedTarget?.loader != null)
-        ) {
-            Icon(Icons.Rounded.AutoAwesome, contentDescription = null)
-            Text(
-                if (state.aiOutput == LocalProjectOutput.MOD_JAR) "Generate and build locally" else "Generate shader ZIP locally",
-                modifier = Modifier.padding(start = 7.dp)
-            )
-        }
-        if (state.aiLastOutputPath != null) {
-            Text(
-                "Latest output is visible in Android Files ‚Üí MCLauncher ‚Üí MCL Creation Lab ‚Üí outputs.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.primary
-            )
+        val texture = resources.resolve("assets/${request.modId}/textures/item/grappling_hook.png").apply { parentFile?.mkdirs() }
+        val image = attachments.firstOrNull { it.kind == AttachmentKind.IMAGE }
+            ?.let { BitmapFactory.decodeFile(it.localPath) }
+        if (image != null) {
+            val scaled = Bitmap.createScaledBitmap(image, 16, 16, true)
+            texture.outputStream().use { scaled.compress(Bitmap.CompressFormat.PNG, 100, it) }
+            if (scaled !== image) scaled.recycle()
+            image.recycle()
+        } else {
+            writeDefaultHookTexture(texture)
         }
     }
-}
 
-private fun formatAttachmentSize(bytes: Long): String = when {
-    bytes >= 1024L * 1024L -> "%.1f MB".format(Locale.ROOT, bytes / (1024.0 * 1024.0))
-    bytes >= 1024L -> "%.1f KB".format(Locale.ROOT, bytes / 1024.0)
-    else -> "$bytes B"
-}
-
-private fun safeExportName(value: String): String = value.trim()
-    .replace(Regex("[^A-Za-z0-9._-]+"), "-")
-    .trim('-', '.', '_')
-    .take(64)
-    .ifBlank { "mcl-resource-pack" }
-
-private fun colorHex(color: Int): String = "%08X".format(Locale.ROOT, color)
-
-private fun parseColorHex(value: String): Int? = runCatching {
-    when (value.length) {
-        6 -> (0xFF000000L or value.toLong(16)).toInt()
-        8 -> value.toLong(16).toInt()
-        else -> null
+    private fun writeDefaultHookTexture(file: File) {
+        val bitmap = Bitmap.createBitmap(16, 16, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+        val paint = Paint().apply { isAntiAlias = false; style = Paint.Style.FILL }
+        canvas.drawColor(Color.TRANSPARENT)
+        paint.color = Color.rgb(205, 218, 224)
+        listOf(11 to 2, 12 to 2, 10 to 3, 12 to 3, 9 to 4, 12 to 4, 8 to 5, 11 to 5, 8 to 6, 10 to 6, 8 to 7, 9 to 7)
+            .forEach { (x, y) -> canvas.drawRect(x.toFloat(), y.toFloat(), x + 1f, y + 1f, paint) }
+        paint.color = Color.rgb(130, 82, 48)
+        for (i in 0..8) canvas.drawRect((7 - i / 2).toFloat(), (7 + i).toFloat(), (8 - i / 2).toFloat(), (8 + i).toFloat(), paint)
+        file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        bitmap.recycle()
     }
-}.getOrNull()
 
-private val PRESET_COLORS = listOf(
-    0xFF000000.toInt(),
-    0xFFFFFFFF.toInt(),
-    0xFFFF3B30.toInt(),
-    0xFFFFCC00.toInt(),
-    0xFF34C759.toInt(),
-    0xFF007AFF.toInt(),
-    0xFFAF52DE.toInt(),
-    0x00000000
-)
+    private fun finalFragmentShader(effect: ShaderEffect): String {
+        val transform = when (effect) {
+            ShaderEffect.GRAYSCALE -> "float l = dot(color.rgb, vec3(0.299, 0.587, 0.114)); color.rgb = vec3(l);"
+            ShaderEffect.WARM -> "color.rgb = vec3(color.r * 1.08, color.g * 1.01, color.b * 0.88);"
+            ShaderEffect.VIBRANT -> "float l = dot(color.rgb, vec3(0.299, 0.587, 0.114)); color.rgb = mix(vec3(l), color.rgb, 1.35);"
+            ShaderEffect.DARK -> "color.rgb = pow(color.rgb * 0.78, vec3(1.08));"
+            ShaderEffect.CLEAN -> "color.rgb = color.rgb;"
+        }
+        return """
+            #version 120
+            uniform sampler2D colortex0;
+            varying vec2 texcoord;
+            void main() {
+                vec4 color = texture2D(colortex0, texcoord);
+                $transform
+                gl_FragColor = color;
+            }
+        """.trimIndent() + "\n"
+    }
+
+    private fun zipDirectory(source: File, destination: File) {
+        ZipOutputStream(destination.outputStream().buffered()).use { zip ->
+            source.walkTopDown().filter(File::isFile).sortedBy(File::getAbsolutePath).forEach { file ->
+                val relative = file.relativeTo(source).invariantSeparatorsPath
+                zip.putNextEntry(ZipEntry(relative))
+                file.inputStream().use { it.copyTo(zip) }
+                zip.closeEntry()
+            }
+        }
+    }
+
+    private fun packFormat(version: String): Int = when {
+        version.startsWith("26.") -> 75
+        version.startsWith("1.21") -> 34
+        version.startsWith("1.20.5") || version.startsWith("1.20.6") -> 32
+        version.startsWith("1.20.3") || version.startsWith("1.20.4") -> 22
+        else -> 15
+    }
+
+    private fun displayName(prompt: String): String = prompt.trim()
+        .split(Regex("\\s+"))
+        .take(7)
+        .joinToString(" ")
+        .take(64)
+        .replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.ROOT) else it.toString() }
+        .ifBlank { "MCLauncher Generated Mod" }
+
+    private fun safeId(value: String): String = value.lowercase(Locale.ROOT)
+        .replace(Regex("[^a-z0-9_]+"), "_")
+        .trim('_')
+        .let { if (it.length < 2) "mcl_generated_mod" else it }
+
+    private fun safeFileName(value: String): String = value.replace(Regex("[\\\\/:*?\"<>|\\u0000-\\u001F]"), "_").take(120)
+    private fun jsonEscape(value: String): String = value.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n")
+    private fun tomlEscape(value: String): String = value.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", " ")
+
+    private fun uniqueFile(parent: File, name: String): File {
+        var file = parent.resolve(name)
+        var number = 2
+        while (file.exists()) {
+            val base = name.substringBeforeLast('.', name)
+            val extension = name.substringAfterLast('.', "").takeIf { name.contains('.') }.orEmpty()
+            file = parent.resolve("$base-$number${if (extension.isBlank()) "" else ".$extension"}")
+            number++
+        }
+        return file
+    }
+
+    private data class ModRequest(
+        val modId: String,
+        val displayName: String,
+        val mechanic: String,
+        val compiledFeature: Boolean
+    )
+
+    private enum class ShaderEffect(val label: String) {
+        CLEAN("clean pass-through"),
+        GRAYSCALE("grayscale"),
+        WARM("warm cinematic color"),
+        VIBRANT("vibrant color"),
+        DARK("dark atmosphere")
+    }
+
+    companion object {
+        private val FINAL_VERTEX_SHADER = """
+            #version 120
+            varying vec2 texcoord;
+            void main() {
+                gl_Position = ftransform();
+                texcoord = (gl_TextureMatrix[0] * gl_MultiTexCoord0).xy;
+            }
+        """.trimIndent() + "\n"
+    }
+}

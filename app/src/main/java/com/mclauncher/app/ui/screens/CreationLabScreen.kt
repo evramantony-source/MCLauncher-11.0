@@ -26,7 +26,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.AttachFile
 import androidx.compose.material.icons.rounded.AutoAwesome
+import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.DeleteSweep
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.Redo
@@ -57,7 +59,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
@@ -66,11 +67,11 @@ import com.mclauncher.app.ui.CreationLabUiState
 import com.mclauncher.app.ui.LabTexture
 import com.mclauncher.app.ui.PixelDocument
 import com.mclauncher.app.ui.PixelTool
-import com.mclauncher.app.creation.AiBuilderSettings
-import com.mclauncher.app.creation.AiProjectOutput
+import com.mclauncher.app.creation.LocalProjectOutput
 import com.mclauncher.app.ui.components.LauncherCard
 import com.mclauncher.app.ui.components.PageHeader
 import com.mclauncher.model.MinecraftInstance
+import com.mclauncher.model.ModLoader
 import java.util.Locale
 import kotlin.math.min
 import kotlin.math.roundToInt
@@ -94,14 +95,16 @@ fun CreationLabScreen(
     onImportArtwork: (android.net.Uri, CreationLabSection) -> Unit,
     onExportResourcePack: (android.net.Uri) -> Unit,
     onExportArtwork: (android.net.Uri, CreationLabSection) -> Unit,
-    onUpdateAiOutput: (AiProjectOutput) -> Unit,
-    onUpdateAiSettings: (AiBuilderSettings) -> Unit,
-    onGenerateAiProject: (android.net.Uri, String) -> Unit,
+    onUpdateAiOutput: (LocalProjectOutput) -> Unit,
+    onSelectAiTarget: (MinecraftInstance) -> Unit,
+    onUpdateAiInstallIntoInstance: (Boolean) -> Unit,
+    onAddAiAttachments: (List<android.net.Uri>) -> Unit,
+    onRemoveAiAttachment: (String) -> Unit,
+    onGenerateAiProject: (String) -> Unit,
     snackbarHost: @Composable () -> Unit
 ) {
     val installedInstances = remember(instances) { instances.filter { it.installed } }
     var textureSearch by remember(state.resourceVersion) { mutableStateOf("") }
-    var pendingAiPrompt by remember { mutableStateOf("") }
     val resourcePackExporter = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/zip")
     ) { uri -> uri?.let(onExportResourcePack) }
@@ -117,13 +120,19 @@ fun CreationLabScreen(
     val capeImporter = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         uri?.let { onImportArtwork(it, CreationLabSection.CAPE) }
     }
-    val aiExporter = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
-        uri?.let { onGenerateAiProject(it, pendingAiPrompt) }
+    val aiAttachmentPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        if (uris.isNotEmpty()) onAddAiAttachments(uris)
     }
 
     LaunchedEffect(installedInstances, state.resourceInstanceId) {
         if (state.resourceInstanceId == null && installedInstances.isNotEmpty()) {
             onLoadResourceCatalog(installedInstances.first())
+        }
+    }
+
+    LaunchedEffect(installedInstances, state.aiTargetInstanceId) {
+        if (state.aiTargetInstanceId == null) {
+            installedInstances.firstOrNull { it.loader != ModLoader.VANILLA }?.let(onSelectAiTarget)
         }
     }
 
@@ -256,13 +265,13 @@ fun CreationLabScreen(
                 CreationLabSection.AI_WORKSHOP -> item {
                     AiWorkshop(
                         state = state,
+                        instances = installedInstances,
                         onUpdateOutput = onUpdateAiOutput,
-                        onUpdateSettings = onUpdateAiSettings,
-                        onGenerate = { prompt ->
-                            pendingAiPrompt = prompt
-                            val name = if (state.aiOutput == AiProjectOutput.FABRIC_JAR) "mcl-ai-mod.jar" else "mcl-ai-shader.zip"
-                            aiExporter.launch(name)
-                        }
+                        onSelectTarget = onSelectAiTarget,
+                        onUpdateInstallIntoInstance = onUpdateAiInstallIntoInstance,
+                        onAttach = { aiAttachmentPicker.launch(arrayOf("*/*")) },
+                        onRemoveAttachment = onRemoveAiAttachment,
+                        onGenerate = onGenerateAiProject
                     )
                 }
             }
@@ -606,27 +615,54 @@ private fun PixelCanvas(
 @Composable
 private fun AiWorkshop(
     state: CreationLabUiState,
-    onUpdateOutput: (AiProjectOutput) -> Unit,
-    onUpdateSettings: (AiBuilderSettings) -> Unit,
+    instances: List<MinecraftInstance>,
+    onUpdateOutput: (LocalProjectOutput) -> Unit,
+    onSelectTarget: (MinecraftInstance) -> Unit,
+    onUpdateInstallIntoInstance: (Boolean) -> Unit,
+    onAttach: () -> Unit,
+    onRemoveAttachment: (String) -> Unit,
     onGenerate: (String) -> Unit
 ) {
     var prompt by remember { mutableStateOf("") }
-    var showSetup by remember { mutableStateOf(state.aiSettings.apiKey.isBlank() || state.aiSettings.githubToken.isBlank()) }
+    val moddedInstances = remember(instances) { instances.filter { it.loader != ModLoader.VANILLA } }
+    val selectedTarget = instances.firstOrNull { it.id == state.aiTargetInstanceId }
     LauncherCard(modifier = Modifier.fillMaxWidth()) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Icon(Icons.Rounded.AutoAwesome, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-            Text("AI project workshop", style = MaterialTheme.typography.titleLarge)
+            Text("MCL local Creation Engine", style = MaterialTheme.typography.titleLarge)
         }
         Text(
-            "This is the safe project boundary for prompt-to-mod and prompt-to-shader generation. Generated code will be exported for review; MCLauncher will never silently execute AI-written code.",
+            "No API key, account credit, subscription or GitHub builder. Projects, attachments and compilation stay on this tablet. The first JAR build downloads a verified free Gradle toolchain and loader libraries.",
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         Row(
             modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            AiProjectOutput.entries.forEach { choice ->
+            LocalProjectOutput.entries.forEach { choice ->
                 FilterChip(selected = state.aiOutput == choice, onClick = { onUpdateOutput(choice) }, label = { Text(choice.label) })
+            }
+        }
+        Text("Target instance", style = MaterialTheme.typography.titleSmall)
+        if (moddedInstances.isEmpty()) {
+            Text(
+                "Install a Fabric, Quilt, Forge or NeoForge instance first. Shader ZIPs can still be created without one.",
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        } else {
+            Row(
+                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                moddedInstances.forEach { instance ->
+                    FilterChip(
+                        selected = state.aiTargetInstanceId == instance.id,
+                        onClick = { onSelectTarget(instance) },
+                        label = {
+                            Text("${instance.name} · ${instance.loader.displayName} ${instance.loaderVersion.orEmpty()}")
+                        }
+                    )
+                }
             }
         }
         OutlinedTextField(
@@ -636,42 +672,74 @@ private fun AiWorkshop(
             label = { Text("Describe the project") },
             placeholder = { Text("Example: Add a grappling hook with configurable range and a crafting recipe…") }
         )
-        TextButton(onClick = { showSetup = !showSetup }) { Text(if (showSetup) "Hide provider setup" else "AI provider & JAR builder setup") }
-        if (showSetup) {
-            OutlinedTextField(
-                value = state.aiSettings.apiKey,
-                onValueChange = { onUpdateSettings(state.aiSettings.copy(apiKey = it.trim())) },
-                modifier = Modifier.fillMaxWidth(), label = { Text("OpenAI API key") },
-                visualTransformation = PasswordVisualTransformation(), singleLine = true
-            )
-            OutlinedTextField(
-                value = state.aiSettings.model,
-                onValueChange = { onUpdateSettings(state.aiSettings.copy(model = it.trim())) },
-                modifier = Modifier.fillMaxWidth(), label = { Text("AI model") }, singleLine = true
-            )
-            if (state.aiOutput == AiProjectOutput.FABRIC_JAR) {
-                OutlinedTextField(
-                    value = state.aiSettings.githubToken,
-                    onValueChange = { onUpdateSettings(state.aiSettings.copy(githubToken = it.trim())) },
-                    modifier = Modifier.fillMaxWidth(), label = { Text("GitHub fine-grained token (Actions + Contents)") },
-                    visualTransformation = PasswordVisualTransformation(), singleLine = true
-                )
+        Row(
+            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            OutlinedButton(onClick = onAttach, enabled = !state.aiBusy && state.aiAttachments.size < 8) {
+                Icon(Icons.Rounded.AttachFile, contentDescription = null)
+                Text("Attach files, images or JARs", modifier = Modifier.padding(start = 6.dp))
             }
-            Text("Keys are encrypted in Android app storage and are never included in exported projects or APK builds.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            FilterChip(
+                selected = state.aiInstallIntoInstance,
+                onClick = { onUpdateInstallIntoInstance(!state.aiInstallIntoInstance) },
+                enabled = selectedTarget != null,
+                label = { Text("Also add to selected instance") }
+            )
         }
+        state.aiAttachments.forEach { attachment ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("${attachment.displayName} · ${attachment.kind.label} · ${formatAttachmentSize(attachment.sizeBytes)}")
+                    Text(
+                        attachment.analysis,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                TextButton(onClick = { onRemoveAttachment(attachment.id) }, enabled = !state.aiBusy) {
+                    Icon(Icons.Rounded.Delete, contentDescription = "Remove attachment")
+                }
+            }
+        }
+        Text(
+            "Verified capability in this build: working grappling-hook mods for Minecraft 1.20.1, safe starter JARs for all four loaders, and local color-effect shader packs. Other requests are preserved in the project specification instead of pretending unfinished behavior works. JAR metadata and common text crash signatures are inspected locally; arbitrary binary porting still requires source code and a future capability module.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
         if (state.aiBusy) {
             LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
             Text(state.aiProgress ?: "Working…", style = MaterialTheme.typography.bodySmall)
         }
         Button(
             onClick = { onGenerate(prompt) },
-            enabled = prompt.isNotBlank() && state.aiSettings.apiKey.isNotBlank() &&
-                (state.aiOutput != AiProjectOutput.FABRIC_JAR || state.aiSettings.githubToken.isNotBlank()) && !state.aiBusy
+            enabled = prompt.isNotBlank() && !state.aiBusy &&
+                (state.aiOutput == LocalProjectOutput.SHADER_ZIP || selectedTarget?.loader != null)
         ) {
             Icon(Icons.Rounded.AutoAwesome, contentDescription = null)
-            Text(if (state.aiOutput == AiProjectOutput.FABRIC_JAR) "Generate and build JAR" else "Generate shader ZIP", modifier = Modifier.padding(start = 7.dp))
+            Text(
+                if (state.aiOutput == LocalProjectOutput.MOD_JAR) "Generate and build locally" else "Generate shader ZIP locally",
+                modifier = Modifier.padding(start = 7.dp)
+            )
+        }
+        if (state.aiLastOutputPath != null) {
+            Text(
+                "Latest output is visible in Android Files → MCLauncher → MCL Creation Lab → outputs.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.primary
+            )
         }
     }
+}
+
+private fun formatAttachmentSize(bytes: Long): String = when {
+    bytes >= 1024L * 1024L -> "%.1f MB".format(Locale.ROOT, bytes / (1024.0 * 1024.0))
+    bytes >= 1024L -> "%.1f KB".format(Locale.ROOT, bytes / 1024.0)
+    else -> "$bytes B"
 }
 
 private fun safeExportName(value: String): String = value.trim()

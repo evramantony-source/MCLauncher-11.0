@@ -7,9 +7,11 @@ import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.mclauncher.app.MCLauncherApplication
-import com.mclauncher.app.creation.AiBuilderSettings
-import com.mclauncher.app.creation.AiProjectBuilder
-import com.mclauncher.app.creation.AiProjectOutput
+import com.mclauncher.app.creation.AttachmentInspector
+import com.mclauncher.app.creation.LocalAttachment
+import com.mclauncher.app.creation.LocalBuildTarget
+import com.mclauncher.app.creation.LocalProjectBuilder
+import com.mclauncher.app.creation.LocalProjectOutput
 import com.mclauncher.minecraft.baseGameVersion
 import com.mclauncher.model.MinecraftInstance
 import kotlinx.coroutines.Dispatchers
@@ -45,7 +47,7 @@ enum class CreationLabSection(val label: String) {
     RESOURCE_PACK("Resource pack"),
     SKIN("Skin"),
     CAPE("Cape"),
-    AI_WORKSHOP("AI workshop")
+    AI_WORKSHOP("Creation Engine")
 }
 
 enum class PixelTool(val label: String) {
@@ -86,8 +88,11 @@ data class CreationLabUiState(
     val canUndo: Boolean = false,
     val canRedo: Boolean = false,
     val busy: Boolean = false,
-    val aiOutput: AiProjectOutput = AiProjectOutput.FABRIC_JAR,
-    val aiSettings: AiBuilderSettings = AiBuilderSettings(),
+    val aiOutput: LocalProjectOutput = LocalProjectOutput.MOD_JAR,
+    val aiTargetInstanceId: String? = null,
+    val aiAttachments: List<LocalAttachment> = emptyList(),
+    val aiInstallIntoInstance: Boolean = true,
+    val aiLastOutputPath: String? = null,
     val aiBusy: Boolean = false,
     val aiProgress: String? = null,
     val message: String? = null
@@ -101,8 +106,9 @@ class CreationLabViewModel(application: Application) : AndroidViewModel(applicat
     private val app = application as MCLauncherApplication
     private val layout = app.minecraftLayout
     private val json = Json { prettyPrint = true; ignoreUnknownKeys = true }
-    private val aiBuilder = AiProjectBuilder(application)
-    private val mutableState = MutableStateFlow(CreationLabUiState(aiSettings = aiBuilder.loadSettings()))
+    private val localBuilder = LocalProjectBuilder(application)
+    private val attachmentInspector = AttachmentInspector(application)
+    private val mutableState = MutableStateFlow(CreationLabUiState())
     val state: StateFlow<CreationLabUiState> = mutableState.asStateFlow()
 
     private var resourceJar: File? = null
@@ -112,6 +118,7 @@ class CreationLabViewModel(application: Application) : AndroidViewModel(applicat
     private var capeDocument = blankDocument(64, 32)
     private val undo = ArrayDeque<IntArray>()
     private val redo = ArrayDeque<IntArray>()
+    private var aiTarget: MinecraftInstance? = null
 
     fun selectSection(section: CreationLabSection) {
         val selectedPath = mutableState.value.selectedTexturePath
@@ -125,36 +132,96 @@ class CreationLabViewModel(application: Application) : AndroidViewModel(applicat
         mutableState.update { it.copy(section = section, document = document) }
     }
 
-    fun updateAiOutput(output: AiProjectOutput) {
+    fun updateAiOutput(output: LocalProjectOutput) {
         mutableState.update { it.copy(aiOutput = output) }
     }
 
-    fun updateAiSettings(settings: AiBuilderSettings) {
-        mutableState.update { it.copy(aiSettings = settings) }
+    fun selectAiTarget(instance: MinecraftInstance) {
+        aiTarget = instance
+        mutableState.update {
+            it.copy(
+                aiTargetInstanceId = instance.id,
+                message = if (instance.loader == com.mclauncher.model.ModLoader.VANILLA) {
+                    "Choose a Fabric, Quilt, Forge or NeoForge instance for mod JARs"
+                } else null
+            )
+        }
     }
 
-    fun generateAiProject(destination: Uri, prompt: String) {
+    fun updateAiInstallIntoInstance(value: Boolean) {
+        mutableState.update { it.copy(aiInstallIntoInstance = value) }
+    }
+
+    fun addAiAttachments(uris: List<Uri>) {
+        if (uris.isEmpty()) return
+        viewModelScope.launch {
+            mutableState.update { it.copy(aiBusy = true, aiProgress = "Inspecting attachments on this device…", message = null) }
+            runCatching {
+                withContext(Dispatchers.IO) {
+                    val available = (MAX_AI_ATTACHMENTS - mutableState.value.aiAttachments.size).coerceAtLeast(0)
+                    require(available > 0) { "Remove an attachment before adding another" }
+                    uris.take(available).map(attachmentInspector::import)
+                }
+            }.onSuccess { imported ->
+                mutableState.update {
+                    it.copy(
+                        aiAttachments = it.aiAttachments + imported,
+                        aiBusy = false,
+                        aiProgress = null,
+                        message = "Attached and inspected ${imported.size} file${if (imported.size == 1) "" else "s"}"
+                    )
+                }
+            }.onFailure { error ->
+                mutableState.update { it.copy(aiBusy = false, aiProgress = null, message = "Attachment failed: ${error.message}") }
+            }
+        }
+    }
+
+    fun removeAiAttachment(id: String) {
+        val attachment = mutableState.value.aiAttachments.firstOrNull { it.id == id } ?: return
+        attachmentInspector.delete(attachment)
+        mutableState.update { it.copy(aiAttachments = it.aiAttachments.filterNot { item -> item.id == id }) }
+    }
+
+    fun generateAiProject(prompt: String) {
         val current = mutableState.value
         if (current.aiBusy) return
         viewModelScope.launch {
-            mutableState.update { it.copy(aiBusy = true, aiProgress = "Starting AI workshop…", message = null) }
+            mutableState.update { it.copy(aiBusy = true, aiProgress = "Starting the local Creation Engine…", message = null) }
             runCatching {
                 withContext(Dispatchers.IO) {
-                    aiBuilder.generate(
-                        destination = destination,
+                    val selected = aiTarget
+                    val target = selected?.let { instance ->
+                        LocalBuildTarget(
+                            instanceId = instance.id,
+                            instanceName = instance.name,
+                            gameDirectoryName = instance.gameDirectoryName,
+                            minecraftVersion = baseGameVersion(instance),
+                            loader = instance.loader,
+                            loaderVersion = instance.loaderVersion.orEmpty(),
+                            javaVersion = instance.javaVersion
+                        )
+                    }
+                    localBuilder.create(
                         prompt = prompt,
                         output = current.aiOutput,
-                        minecraftVersion = current.resourceVersion ?: "1.20.1",
-                        settings = current.aiSettings
+                        target = target,
+                        attachments = current.aiAttachments,
+                        installIntoInstance = current.aiInstallIntoInstance
                     ) { progress -> mutableState.update { it.copy(aiProgress = progress) } }
                 }
-            }.onSuccess {
+            }.onSuccess { result ->
                 mutableState.update {
-                    it.copy(aiBusy = false, aiProgress = null, message = "${current.aiOutput.label} created successfully")
+                    it.copy(
+                        aiBusy = false,
+                        aiProgress = null,
+                        aiLastOutputPath = result.outputPath,
+                        message = result.summary
+                    )
                 }
             }.onFailure { error ->
                 mutableState.update {
-                    it.copy(aiBusy = false, aiProgress = null, message = "AI project failed: ${error.message ?: error::class.java.simpleName}")
+                    it.copy(aiBusy = false, aiProgress = null, message = "Local project failed: ${error.message ?: error::class.java.simpleName}")
                 }
             }
         }
@@ -594,6 +661,7 @@ class CreationLabViewModel(application: Application) : AndroidViewModel(applicat
         private const val ITEM_TEXTURE_PREFIX = "assets/minecraft/textures/item/"
         private const val MODERN_PACK_METADATA_VERSION = 65
         private const val MAX_HISTORY = 30
+        private const val MAX_AI_ATTACHMENTS = 8
 
         private fun blankDocument(width: Int, height: Int) = PixelDocument(width, height, IntArray(width * height))
 

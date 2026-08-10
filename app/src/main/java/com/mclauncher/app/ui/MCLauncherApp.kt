@@ -174,7 +174,10 @@ fun MCLauncherApp(
                     onExportResourcePack = creationLabViewModel::exportResourcePack,
                     onExportArtwork = creationLabViewModel::exportArtwork,
                     onUpdateAiOutput = creationLabViewModel::updateAiOutput,
-                    onUpdateAiSettings = creationLabViewModel::updateAiSettings,
+                    onSelectAiTarget = creationLabViewModel::selectAiTarget,
+                    onUpdateAiInstallIntoInstance = creationLabViewModel::updateAiInstallIntoInstance,
+                    onAddAiAttachments = creationLabViewModel::addAiAttachments,
+                    onRemoveAiAttachment = creationLabViewModel::removeAiAttachment,
                     onGenerateAiProject = creationLabViewModel::generateAiProject,
                     snackbarHost = { SnackbarHost(snackbarHostState) }
                 )
