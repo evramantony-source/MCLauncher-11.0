@@ -1,8 +1,8 @@
 # First device test
 
-Use a clean MCLauncher 11.0 Alpha 19 installation.
+Use a clean MCLauncher 11.0 Alpha 20 installation.
 
-1. Install the GitHub Actions `MCLauncher-11.0-alpha19-arm64-v8a.apk`.
+1. Install the GitHub Actions `MCLauncher-11.0-alpha20-arm64-v8a.apk`.
 2. Allow file access requested by Android.
 3. Create an offline account for the first launch test.
 4. Install a clean vanilla Minecraft version without mods.

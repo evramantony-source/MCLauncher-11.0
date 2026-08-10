@@ -25,6 +25,17 @@
                 android:resource="@xml/file_paths" />
         </provider>
 
+        <provider
+            android:name=".storage.MCLauncherDocumentsProvider"
+            android:authorities="${applicationId}.documents"
+            android:exported="true"
+            android:grantUriPermissions="true"
+            android:permission="android.permission.MANAGE_DOCUMENTS">
+            <intent-filter>
+                <action android:name="android.content.action.DOCUMENTS_PROVIDER" />
+            </intent-filter>
+        </provider>
+
         <activity
             android:name=".GameActivity"
             android:configChanges="keyboard|keyboardHidden|navigation|orientation|screenLayout|screenSize|smallestScreenSize|uiMode"
@@ -33,6 +44,13 @@
             android:process=":minecraft"
             android:resizeableActivity="false"
             android:screenOrientation="sensorLandscape" />
+
+        <activity
+            android:name=".creation.LocalBuildActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:process=":local_builder"
+            android:taskAffinity="" />
 
         <activity
             android:name=".MainActivity"

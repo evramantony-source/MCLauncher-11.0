@@ -146,8 +146,8 @@ if openltw.get("patch") != "vendor/patches/ltw-minecraft-26.2.patch":
 
 require_contains(
     "app/build.gradle.kts",
-    'versionName = "11.0.0-alpha19"',
-    'versionCode = 29',
+    'versionName = "11.0.0-alpha20"',
+    'versionCode = 30',
     'mclauncherAbi',
     'abiFilters += targetAbi',
     'CURSEFORGE_API_KEY',
@@ -160,7 +160,7 @@ require_contains(
     "scripts/source_sanity.py",
     'assembleNoruntimeDebug',
     'assembleDebug -PmclauncherAbi=',
-    'MCLauncher-11.0-alpha19-',
+    'MCLauncher-11.0-alpha20-',
     'mojo-pointer-click-position.patch',
     "Build pinned OpenLTW with Minecraft 26.2 compatibility",
     "--ltw-aar",
@@ -177,7 +177,7 @@ require_contains(
     'No Android LWJGL substitution is defined',
     'prepareAndroidNatives',
     'applyMinecraftOptions',
-    '-Dmclauncher.version=11.0.0-alpha19',
+    '-Dmclauncher.version=11.0.0-alpha20',
     'authSession?.accessToken ?: "0"',
     'AccountType.MICROSOFT) "msa" else "legacy"',
 )
@@ -202,6 +202,24 @@ require_contains(
     'libpojavexec.so',
     'MCLAUNCHER_RENDERER_TOKEN',
     'environment.remove("POJAV_RENDERER")',
+)
+require_contains(
+    "app/src/main/AndroidManifest.xml",
+    ".storage.MCLauncherDocumentsProvider",
+    "android.content.action.DOCUMENTS_PROVIDER",
+    ".creation.LocalBuildActivity",
+    'android:process=":local_builder"',
+)
+require_contains(
+    "app/src/main/java/com/mclauncher/app/creation/LocalProjectBuilder.kt",
+    "LocalBuildActivity.start",
+    "validateModJar",
+    "copyIntoInstance",
+)
+require_absent(
+    "app/src/main/java/com/mclauncher/app/ui/screens/CreationLabScreen.kt",
+    "OpenAI API key",
+    "GitHub fine-grained token",
 )
 require_absent(
     "app/src/main/java/com/mclauncher/app/engine/NativeEngineCoordinator.kt",

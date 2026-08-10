@@ -274,7 +274,14 @@ class LoaderInstaller(
             .toList()
             .asReversed()
             .take(100)
-            .map { LoaderVersionChoice(loader, it, stable = !it.contains("beta", true)) }
+            .map { publishedVersion ->
+                val selectableVersion = if (loader == ModLoader.FORGE) {
+                    publishedVersion.removePrefix("$prefix-")
+                } else {
+                    publishedVersion
+                }
+                LoaderVersionChoice(loader, selectableVersion, stable = !publishedVersion.contains("beta", true))
+            }
     }
 
     private fun fabricProfileUrl(game: String, loader: String) =

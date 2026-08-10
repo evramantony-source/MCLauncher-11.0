@@ -1,4 +1,4 @@
-# MCLauncher 11.0 Alpha 19 feature matrix
+# MCLauncher 11.0 Alpha 20 feature matrix
 
 | Area | Current status |
 |---|---|
