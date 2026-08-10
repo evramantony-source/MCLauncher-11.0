@@ -60,7 +60,8 @@ class LocalGradleToolchain(private val context: Context) {
     fun createToolPlan(
         projectDirectory: File,
         gradleHome: File,
-        javaVersion: JavaVersion
+        javaVersion: JavaVersion,
+        statusFile: File
     ): File {
         val classpath = gradleHome.resolve("lib").walkTopDown()
             .filter { it.isFile && it.extension.equals("jar", ignoreCase = true) }
@@ -68,6 +69,7 @@ class LocalGradleToolchain(private val context: Context) {
             .map(File::getAbsolutePath)
             .toList()
         require(classpath.isNotEmpty()) { "Local Gradle installation has no launcher libraries" }
+        val initScript = writeStatusInitScript(projectDirectory, statusFile)
         val plan = ToolLaunchPlan(
             id = "creation-lab-${UUID.randomUUID()}",
             javaVersion = javaVersion,
@@ -79,6 +81,8 @@ class LocalGradleToolchain(private val context: Context) {
                 "--console=plain",
                 "--stacktrace",
                 "--max-workers=1",
+                "--init-script",
+                initScript.absolutePath,
                 "--project-dir",
                 projectDirectory.absolutePath,
                 "clean",
@@ -98,6 +102,48 @@ class LocalGradleToolchain(private val context: Context) {
             file.writeText(json.encodeToString(plan))
         }
     }
+
+    private fun writeStatusInitScript(projectDirectory: File, statusFile: File): File {
+        val script = projectDirectory.resolve(".mclauncher/build-status.init.gradle").apply {
+            parentFile?.mkdirs()
+        }
+        val statusPath = groovyString(statusFile.absolutePath)
+        val logPath = groovyString(File(statusFile.parentFile, "${statusFile.nameWithoutExtension}.log").absolutePath)
+        script.writeText(
+            """
+            import groovy.json.JsonOutput
+            import java.io.PrintWriter
+            import java.io.StringWriter
+
+            gradle.buildFinished { result ->
+                def statusFile = new File('$statusPath')
+                def logFile = new File('$logPath')
+                statusFile.parentFile.mkdirs()
+                def failure = result.failure
+                if (failure != null) {
+                    def writer = new StringWriter()
+                    failure.printStackTrace(new PrintWriter(writer))
+                    logFile.text = writer.toString()
+                }
+                def payload = [
+                    finished: true,
+                    exitCode: failure == null ? 0 : 1,
+                    error: failure == null ? null : failure.toString(),
+                    logPath: failure == null ? null : logFile.absolutePath
+                ]
+                def temporary = new File(statusFile.parentFile, statusFile.name + '.part')
+                temporary.text = JsonOutput.toJson(payload)
+                if (statusFile.exists()) statusFile.delete()
+                temporary.renameTo(statusFile)
+            }
+            """.trimIndent() + "\n"
+        )
+        return script
+    }
+
+    private fun groovyString(value: String): String = value
+        .replace("\\", "\\\\")
+        .replace("'", "\\'")
 
     private fun downloadText(url: String): String {
         val connection = open(url)

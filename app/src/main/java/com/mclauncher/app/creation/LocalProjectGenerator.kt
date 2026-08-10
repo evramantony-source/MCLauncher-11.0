@@ -129,9 +129,9 @@ class LocalProjectGenerator(private val labRoot: File) {
         project.resolve("build.gradle").writeText(buildGradle(request, target))
         project.resolve("gradle.properties").writeText(
             """
-            org.gradle.jvmargs=-Xmx1024m -Dfile.encoding=UTF-8
             org.gradle.daemon=false
             org.gradle.parallel=false
+            org.gradle.workers.max=1
             org.gradle.configuration-cache=false
             """.trimIndent() + "\n"
         )

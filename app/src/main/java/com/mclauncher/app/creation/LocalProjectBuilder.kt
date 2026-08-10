@@ -85,12 +85,17 @@ class LocalProjectBuilder(private val context: Context) {
         val project = generator.createModProject(prompt, target, attachments)
         val gradleVersion = toolchain.gradleVersion(target.javaVersion)
         val gradleHome = toolchain.ensureInstalled(gradleVersion, onProgress)
-        onProgress("Preparing ${target.loader.displayName} ${target.loaderVersion} for a local build…")
-        val planFile = toolchain.createToolPlan(project.directory, gradleHome, toolchain.runtimeVersion(target))
         val statusFile = labRoot.resolve("build-status/${UUID.randomUUID()}.json").apply {
             parentFile?.mkdirs()
             delete()
         }
+        onProgress("Preparing ${target.loader.displayName} ${target.loaderVersion} for a local build…")
+        val planFile = toolchain.createToolPlan(
+            projectDirectory = project.directory,
+            gradleHome = gradleHome,
+            javaVersion = toolchain.runtimeVersion(target),
+            statusFile = statusFile
+        )
         onProgress("Opening the isolated on-device builder…")
         LocalBuildActivity.start(context, planFile, statusFile)
         val status = waitForBuild(statusFile, onProgress)
@@ -191,4 +196,3 @@ class LocalProjectBuilder(private val context: Context) {
         private const val POLL_INTERVAL_MS = 1_000L
     }
 }
-
