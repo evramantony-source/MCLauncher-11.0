@@ -219,7 +219,7 @@ require_contains(
     'modLoader="lowcodefml"',
     "minecraft:recipe_crafted",
     "minecraft:fishing_bobber",
-    "META-INF/MCL-SPECIFICATION.txt",
+    '"META-INF/$name"',
 )
 require_absent(
     "app/src/main/java/com/mclauncher/app/ui/screens/CreationLabScreen.kt",
