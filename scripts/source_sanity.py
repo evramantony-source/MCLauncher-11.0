@@ -146,8 +146,8 @@ if openltw.get("patch") != "vendor/patches/ltw-minecraft-26.2.patch":
 
 require_contains(
     "app/build.gradle.kts",
-    'versionName = "11.0.0-alpha24"',
-    'versionCode = 34',
+    'versionName = "11.0.0-alpha25"',
+    'versionCode = 35',
     'generated/sdl/mojo-sdl-bindings.aar',
     'generated/sdl/jniLibs',
     'mclauncherAbi',
@@ -162,7 +162,7 @@ require_contains(
     "scripts/source_sanity.py",
     'assembleNoruntimeDebug',
     'assembleDebug -PmclauncherAbi=',
-    'MCLauncher-11.0-alpha24-',
+    'MCLauncher-11.0-alpha25-',
     ':sdl:jni_bindings:assembleDebug',
     '--sdl-bindings-aar',
     'scripts/verify_sdl_apk.py',
@@ -182,7 +182,7 @@ require_contains(
     'No Android LWJGL substitution is defined',
     'prepareAndroidNatives',
     'applyMinecraftOptions',
-    '-Dmclauncher.version=11.0.0-alpha24',
+    '-Dmclauncher.version=11.0.0-alpha25',
     'authSession?.accessToken ?: "0"',
     'AccountType.MICROSOFT) "msa" else "legacy"',
 )
@@ -285,6 +285,8 @@ require_contains(
     "Java_git_artdeell_mojoexec_MojoExec_setNativeLibraryDir",
     "Java_git_artdeell_mojoexec_MojoExec_setDisplayParams",
     "Using pinned MojoExec renderer API",
+    'getenv("MCLAUNCHER_WINDOW_BACKEND")',
+    "Using SDL3 window backend; skipped GLFW bridge initialization",
     'unsetenv("POJAV_RENDERER")',
     "Starting a headless Java tool without renderer or GLFW initialization",
     'gMojoSendMouseAt',
@@ -305,7 +307,7 @@ require_contains(
 require_contains(
     "core-minecraft/src/test/kotlin/com/mclauncher/minecraft/LaunchPlanBuilderAndroidLwjglTest.kt",
     "org.lwjgl:lwjgl-sdl:3.4.2",
-    "mapsSnapshot6ToExactAndroidLwjglSdl342Artifact",
+    "mapsFabricSnapshot6InheritanceToExactAndroidLwjglSdl342Artifact",
 )
 require_contains(
     "app/build.gradle.kts",
@@ -522,10 +524,16 @@ require_contains(
     'MotionEvent.ACTION_SCROLL',
 )
 require_contains(
+    "app/src/main/java/com/mclauncher/app/engine/NativeEngineCoordinator.kt",
+    'environment["MCLAUNCHER_WINDOW_BACKEND"] = if (usesSdl) "sdl3" else "glfw"',
+    "Resolved window backend=",
+)
+require_contains(
     "app/src/main/java/git/artdeell/dnbootstrap/glfw/GLFW.java",
     "boolean wasGrabbing = grabbing",
     "boolean centerOnRelease = !value && wasGrabbing",
     "nativeSendCursorPosition(cursorX, cursorY)",
+    "public static void receiveInit()",
 )
 require_contains(
     "app/src/main/java/com/mclauncher/app/GameActivity.kt",

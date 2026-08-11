@@ -1,4 +1,4 @@
-# MCLauncher 11.0 Alpha 24 feature matrix
+# MCLauncher 11.0 Alpha 25 feature matrix
 
 | Area | Current status |
 |---|---|
@@ -15,7 +15,7 @@
 | Java 8/17/21/25 | CI packaging required |
 | Java 17/21/25 archive authenticity | RSA signature verification in CI |
 | Patched LWJGL/GLFW/SDL3 | Exact LWJGL 3.4.2 SDL artifact, source-built Android SDL3 runtime and coordinate-mapped CI packaging required |
-| Android JVM/Surface engine | Alpha 01 reached the Minecraft menu/world; Alpha 24 supports both pinned MojoExec and legacy JREUtils renderer APIs; corrected Snapshot SDL path requires device validation |
+| Android JVM/Surface engine | Alpha 01 reached the Minecraft menu/world; Alpha 25 implements the pinned GLFW callback ABI for legacy versions and isolates Snapshot 4+ on SDL3; device validation required |
 | MobileGlues default and GL4ES/OpenLTW fallback | Hash-pinned; exports and payload enforced by verifier |
 | Android JNA compatibility | Version-selected JNA 6/7 dispatch libraries |
 | Optional renderer/driver packs | Manifest-driven custom packs plus verified one-tap packages with canonical built-in identity; missing saved choices fall back safely |

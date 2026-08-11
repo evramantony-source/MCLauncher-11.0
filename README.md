@@ -1,4 +1,4 @@
-# MCLauncher 11.0 Alpha 24
+# MCLauncher 11.0 Alpha 25
 
 MCLauncher is an independent Android launcher for Minecraft: Java Edition. It has a responsive Material 3 interface and its own instance, account, download, content, settings and game-screen code. It reuses third-party Android launch-engine components only where required to start the Java game.
 
@@ -25,7 +25,7 @@ MCLauncher is an independent Android launcher for Minecraft: Java Edition. It ha
 - MCL Creation Lab with a touch pixel editor, every PNG in the installed client's complete vanilla texture tree, category filters, a 594-colour palette plus exact ARGB, validated resource-pack ZIPs, and 64×64 skin plus 64×32 cape PNG creation.
 - Files-visible source workspaces with a touch code editor, source-ZIP import and verified local Gradle downloads. Compatible Fabric, Quilt, Forge and NeoForge projects can compile and install a real JAR on-device without an API key, ChatGPT subscription or GitHub mod builder.
 
-Alpha 01 reached the Minecraft main menu and a playable world on a physical Android device. Later builds stabilized Android 16 startup, renderer selection, touch input, exact modpack installation and live download progress. Alpha 17's fixed game-buffer boundary made direct menu touch work on the Redmi Pad Pro, with a known stretched-resolution regression still to correct. Alpha 18 added validated local import and export for real Modrinth and CurseForge packs. Alpha 19 added the MCL Creation Lab. Alpha 22 added the editable source workspace and real local Gradle build path. Alpha 23 added the source-pinned SDL3 runtime and unified physical input; Alpha 24 corrects that engine revision's MojoExec renderer API boundary and expands the Lab beyond the item-only folder.
+Alpha 01 reached the Minecraft main menu and a playable world on a physical Android device. Later builds stabilized Android 16 startup, renderer selection, touch input, exact modpack installation and live download progress. Alpha 17's fixed game-buffer boundary made direct menu touch work on the Redmi Pad Pro, with a known stretched-resolution regression still to correct. Alpha 18 added validated local import and export for real Modrinth and CurseForge packs. Alpha 19 added the MCL Creation Lab. Alpha 22 added the editable source workspace and real local Gradle build path. Alpha 23 added the source-pinned SDL3 runtime and unified physical input; Alpha 24 added the MojoExec renderer API and complete texture tree; Alpha 25 restores the exact pinned GLFW callback ABI for older versions and isolates Snapshot 4+ launches on SDL3.
 
 CurseForge's official REST API requires an `x-api-key`. A private build can inject
 `CURSEFORGE_API_KEY`, or the user can enter a key in Settings. Modrinth requires no key.
@@ -50,8 +50,8 @@ The large generated runtime/native payload belongs in the APK artifact, not in G
 1. Open **Actions → Build standalone MCLauncher 11 APK**.
 2. Select **Run workflow**.
 3. Keep `arm64-v8a` for modern Android phones and tablets.
-4. Download the `MCLauncher-11.0-alpha24-arm64-v8a` artifact.
-5. Extract it and install `MCLauncher-11.0-alpha24-arm64-v8a.apk`.
+4. Download the `MCLauncher-11.0-alpha25-arm64-v8a` artifact.
+5. Extract it and install `MCLauncher-11.0-alpha25-arm64-v8a.apk`.
 6. Follow `docs/FIRST_DEVICE_TEST.md`.
 
 ## Microsoft and Xbox Game Pass accounts
@@ -71,7 +71,7 @@ repository secrets with a private Android keystore that you control:
 - `MCLAUNCHER_SIGNING_KEY_PASSWORD`
 
 Run **Build standalone MCLauncher 11 APK**, enable **microsoft_accounts**, and
-download the artifact containing `alpha24-microsoft`. Because this APK has a
+download the artifact containing `alpha25-microsoft`. Because this APK has a
 different signer, back up worlds and uninstall the public alpha before installing
 it. In MCLauncher Settings, enter an authorized Microsoft OAuth public-client ID,
 then use **Accounts → Microsoft account → Sign in**. Never commit the private
@@ -81,7 +81,7 @@ Pull requests and pushes to `main` run the default arm64 build automatically.
 
 ## Proof still required
 
-A green workflow proves that the project compiled and the expected payload is present in the APK. It does not prove compatibility with every Minecraft version, loader plugin, source project, GPU or Android firmware. Direct menu touch is device-confirmed on the Redmi Pad Pro; Alpha 24's corrected SDL3 launch and hardware-input path plus Alpha 22's local Gradle execution still need physical-device proof, Alpha 18's pack round trips still need desktop-client proof, and the stretched-resolution regression remains open.
+A green workflow proves that the project compiled and the expected payload is present in the APK. It does not prove compatibility with every Minecraft version, loader plugin, source project, GPU or Android firmware. Direct menu touch is device-confirmed on the Redmi Pad Pro; Alpha 25's split SDL3/GLFW launch paths and hardware-input path plus Alpha 22's local Gradle execution still need physical-device proof, Alpha 18's pack round trips still need desktop-client proof, and the stretched-resolution regression remains open.
 
 ## Legal
 

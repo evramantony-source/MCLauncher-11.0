@@ -164,6 +164,19 @@ public final class GLFW {
         gamepadAxisBuffer = axes.order(ByteOrder.nativeOrder()).asFloatBuffer();
     }
 
+    /**
+     * Called by the pinned dnbootstrap GLFW revision after glfwInit has prepared
+     * its Android event queue. MojoLauncher's UI uses this notification to defer
+     * publishing its Surface; MCLauncher has already published the current
+     * Surface through NativeLaunchBridge, so the callback intentionally has no
+     * additional work to perform.
+     */
+    @SuppressWarnings("unused") // Called from bundled native GLFW.
+    @Keep
+    public static void receiveInit() {
+        // Keep this exact method in sync with GLFW's JNI GetStaticMethodID ABI.
+    }
+
     // Implemented by the bundled libglfw.so. Declarations are retained so ART can
     // validate the exact Java/native ABI when the library initializes.
     @Keep public static native void initialize();

@@ -71,6 +71,7 @@ MojoSendMousePosition gMojoSendMousePosition = nullptr;
 MojoSendMouseAt gMojoSendMouseAt = nullptr;
 bool gMojoGlfwAvailable = false;
 bool gMojoSurfaceAttached = false;
+bool gSdlWindowBackend = false;
 std::atomic<bool> gLoggedMouseButtonInput{false};
 std::atomic<bool> gLoggedAbsolutePointerInput{false};
 std::atomic<int> gDirectTouchTraceCount{0};
@@ -735,6 +736,8 @@ Java_com_mclauncher_app_engine_NativeLaunchBridge_nativeStart(
         if (!environmentKeys[i].empty()) setenv(environmentKeys[i].c_str(), environmentValues[i].c_str(), 1);
     }
     setenv("JAVA_HOME", javaHome.c_str(), 1);
+    const char* windowBackend = getenv("MCLAUNCHER_WINDOW_BACKEND");
+    gSdlWindowBackend = windowBackend != nullptr && std::strcmp(windowBackend, "sdl3") == 0;
     pushLog("Native startup environment configured");
 
     if (chdir(workingDirectory.c_str()) != 0) {
@@ -788,17 +791,21 @@ Java_com_mclauncher_app_engine_NativeLaunchBridge_nativeStart(
     unsetenv("POJAV_LAUNCHER");
     pushLog("Sanitized legacy renderer markers before Minecraft JVM startup");
     if (!headlessTool) {
-        for (const auto& library : deferredGlfw) {
-            void* handle = loadAbsolute(library, true);
-            initializeMojoGlfw(env, library, handle);
+        if (gSdlWindowBackend) {
+            pushLog("Using SDL3 window backend; skipped GLFW bridge initialization");
+        } else {
+            for (const auto& library : deferredGlfw) {
+                void* handle = loadAbsolute(library, true);
+                initializeMojoGlfw(env, library, handle);
+            }
+            if (!gMojoGlfwAvailable) {
+                pushError("Bundled libglfw.so could not initialize its Android bridge");
+                replaceWindow(env, nullptr);
+                endOutputCapture();
+                return 32;
+            }
+            setupUpstreamBridge(env, surface);
         }
-        if (!gMojoGlfwAvailable) {
-            pushError("Bundled libglfw.so could not initialize its Android bridge");
-            replaceWindow(env, nullptr);
-            endOutputCapture();
-            return 32;
-        }
-        setupUpstreamBridge(env, surface);
     } else {
         pushLog("Starting a headless Java tool without renderer or GLFW initialization");
     }
@@ -924,7 +931,7 @@ Java_com_mclauncher_app_engine_NativeLaunchBridge_nativeSetSurface(JNIEnv* env, 
         return;
     }
     replaceWindow(env, surface);
-    if (gMojoGlfwAvailable) {
+    if (!gSdlWindowBackend && gMojoGlfwAvailable) {
         if (gMojoSurfaceAttached) {
             if (gMojoSurfaceUpdated) gMojoSurfaceUpdated(env, nullptr);
         } else {

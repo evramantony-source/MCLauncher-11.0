@@ -1,5 +1,12 @@
 # Changelog
 
+## 11.0.0-alpha25
+
+- Restore every legacy Minecraft launch broken by Alpha 24 by implementing the `GLFW.receiveInit()` callback required by the pinned dnbootstrap JNI ABI.
+- Give SDL-based Minecraft 26.3 Snapshot 4 and newer an explicit window-backend path, so Snapshot launches configure MojoExec and SDL3 without initializing or depending on the legacy GLFW bridge.
+- Add backend selection to persistent session logs and cover the real Fabric 0.19.3 → 26.3 Snapshot 6 inherited launch plan in the Android LWJGL regression test.
+- Retain Alpha 24's complete vanilla texture-tree catalog, category filters and validated resource-pack output instead of falling back to the old 792-file item-only catalog.
+
 ## 11.0.0-alpha24
 
 - Fix Snapshot 6 exit code 31 by configuring the pinned SDL engine through its exported `git.artdeell.mojoexec.MojoExec` renderer API instead of requiring the obsolete `JREUtils` renderspec symbols.

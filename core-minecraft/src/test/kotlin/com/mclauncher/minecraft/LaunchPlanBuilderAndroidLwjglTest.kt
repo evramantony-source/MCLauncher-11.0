@@ -102,17 +102,18 @@ class LaunchPlanBuilderAndroidLwjglTest {
     }
 
     @Test
-    fun mapsSnapshot6ToExactAndroidLwjglSdl342Artifact() = runBlocking {
+    fun mapsFabricSnapshot6InheritanceToExactAndroidLwjglSdl342Artifact() = runBlocking {
         val root = Files.createTempDirectory("mclauncher-lwjgl-sdl-test").toFile()
         try {
             val layout = MinecraftLayout(root).also(MinecraftLayout::ensureBaseDirectories)
-            val versionId = "26.3-snapshot-6-test"
-            layout.versionDirectory(versionId).mkdirs()
-            layout.clientJar(versionId).writeBytes(byteArrayOf(0x50, 0x4b, 0x03, 0x04))
-            layout.versionJson(versionId).writeText(
+            val baseVersionId = "26.3-snapshot-6"
+            val versionId = "fabric-loader-0.19.3-$baseVersionId"
+            layout.versionDirectory(baseVersionId).mkdirs()
+            layout.clientJar(baseVersionId).writeBytes(byteArrayOf(0x50, 0x4b, 0x03, 0x04))
+            layout.versionJson(baseVersionId).writeText(
                 """
                 {
-                  "id": "$versionId",
+                  "id": "$baseVersionId",
                   "type": "snapshot",
                   "mainClass": "net.minecraft.client.main.Main",
                   "javaVersion": { "majorVersion": 25 },
@@ -135,12 +136,33 @@ class LaunchPlanBuilderAndroidLwjglTest {
                 }
                 """.trimIndent()
             )
+            val fabricPath = "net/fabricmc/fabric-loader/0.19.3/fabric-loader-0.19.3.jar"
+            layout.versionDirectory(versionId).mkdirs()
+            layout.versionJson(versionId).writeText(
+                """
+                {
+                  "id": "$versionId",
+                  "inheritsFrom": "$baseVersionId",
+                  "mainClass": "net.fabricmc.loader.impl.launch.knot.KnotClient",
+                  "arguments": { "jvm": [], "game": [] },
+                  "libraries": [
+                    {
+                      "name": "net.fabricmc:fabric-loader:0.19.3",
+                      "downloads": {
+                        "artifact": { "path": "$fabricPath" }
+                      }
+                    }
+                  ]
+                }
+                """.trimIndent()
+            )
             val sdlPath = "org/lwjgl/lwjgl-sdl/3.4.2/lwjgl-sdl-3.4.2.jar"
             val corePath = "org/lwjgl/lwjgl/3.4.2/lwjgl-3.4.2.jar"
             val nativesPath = "org/lwjgl/lwjgl/3.4.2/lwjgl-natives-linux-arm64-3.4.2.jar"
             createJar(File(layout.engineJarsDirectory, sdlPath), "META-INF/sdl.txt", "android-sdl")
             createJar(File(layout.engineJarsDirectory, corePath), "META-INF/core.txt", "android-core")
             createJar(File(layout.engineJarsDirectory, nativesPath), "linux/arm64/liblwjgl.so", "ELF-test")
+            createJar(layout.library(fabricPath), "META-INF/fabric.txt", "fabric")
             File(layout.engineJarsDirectory, "substitutions.json").writeText(
                 """
                 {
@@ -186,7 +208,8 @@ class LaunchPlanBuilderAndroidLwjglTest {
                 listOf(
                     File(layout.engineJarsDirectory, sdlPath).absolutePath,
                     File(layout.engineJarsDirectory, corePath).absolutePath,
-                    layout.clientJar(versionId).absolutePath
+                    layout.library(fabricPath).absolutePath,
+                    layout.clientJar(baseVersionId).absolutePath
                 ),
                 plan.classpath
             )

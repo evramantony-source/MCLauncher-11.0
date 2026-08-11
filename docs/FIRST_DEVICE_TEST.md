@@ -1,8 +1,8 @@
 # First device test
 
-Use a clean MCLauncher 11.0 Alpha 24 installation.
+Use an MCLauncher 11.0 Alpha 25 installation. It can update Alpha 24 in place without deleting instances.
 
-1. Install the GitHub Actions `MCLauncher-11.0-alpha24-arm64-v8a.apk`.
+1. Install the GitHub Actions `MCLauncher-11.0-alpha25-arm64-v8a.apk` over Alpha 24.
 2. Allow file access requested by Android.
 3. Create an offline account for the first launch test.
 4. Install a clean vanilla Minecraft version without mods.
@@ -29,7 +29,8 @@ Use a clean MCLauncher 11.0 Alpha 24 installation.
 25. Create and re-import one 64×64 skin and one 64×32 cape PNG, then confirm every edited pixel survives the round trip.
 26. Open **Code workspace**, select an installed loader instance, create a starter, edit and save its Java file, then press **Create JAR on this tablet**. Confirm the first build verifies/downloads Gradle, the finished JAR contains classes plus the selected loader metadata, and it appears under Android Files → MCLauncher → MCL Creation Lab → outputs.
 27. Import a trusted source-project ZIP containing `gradle/wrapper/gradle-wrapper.properties`, confirm importing does not execute code, then explicitly build it and confirm MCLauncher uses its declared Gradle version.
-28. Launch Fabric 26.3 Snapshot 6 and confirm the session log reports the prepared LWJGL SDL3 library plus `Using pinned MojoExec renderer API`, then reaches the title screen without exit code 31, a missing `org.lwjgl:lwjgl-sdl:3.4.2` substitution or a `libSDL3.so` error.
-29. With Snapshot 6 running, connect a physical keyboard and mouse. Verify WASD, modifiers, number/function keys, relative captured look, uncaptured menu motion, wheel, left/right/middle buttons and any available back/forward buttons. Open a menu and return to the world to verify pointer capture releases and reacquires.
+28. Launch Fabric 26.3 Snapshot 6 and confirm the session log reports `Resolved window backend=sdl3`, the prepared LWJGL SDL3 library, `Using pinned MojoExec renderer API` and `skipped GLFW bridge initialization`, then reaches the title screen without exit code 31, a missing `org.lwjgl:lwjgl-sdl:3.4.2` substitution or a `libSDL3.so` error.
+29. Launch one pre-SDL version and confirm the log reports `Resolved window backend=glfw` and `Initialized bundled dnbootstrap GLFW bridge`, then reaches the title screen without exit code 32.
+30. With Snapshot 6 running, connect a physical keyboard and mouse. Verify WASD, modifiers, number/function keys, relative captured look, uncaptured menu motion, wheel, left/right/middle buttons and any available back/forward buttons. Open a menu and return to the world to verify pointer capture releases and reacquires.
 
 Record the Android version, device model, Minecraft version, selected Java version, renderer and the final visible error.

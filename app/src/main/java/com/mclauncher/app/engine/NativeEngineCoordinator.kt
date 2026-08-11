@@ -99,6 +99,12 @@ class NativeEngineCoordinator(
         environment.putIfAbsent("force_glsl_extensions_warn", "true")
         environment.putIfAbsent("allow_glsl_extension_directive_midshader", "true")
         environment.putAll(graphics.environment)
+        // Window routing is an internal launch invariant and cannot be overridden
+        // by a renderer pack's optional environment entries.
+        environment["MCLAUNCHER_WINDOW_BACKEND"] = if (usesSdl) "sdl3" else "glfw"
+        sessionLog?.appendText(
+            "Resolved window backend=${environment.getValue("MCLAUNCHER_WINDOW_BACKEND")}\n"
+        )
         environment.remove("POJAV_RENDERER")
         environment.remove("POJAV_LAUNCHER")
         environment["MG_DIR_PATH"]?.let { path ->
