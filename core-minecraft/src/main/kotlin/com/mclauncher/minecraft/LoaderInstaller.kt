@@ -31,7 +31,8 @@ data class ToolLaunchPlan(
     val classpath: List<String>,
     val mainClass: String,
     val arguments: List<String>,
-    val jvmArguments: List<String> = emptyList()
+    val jvmArguments: List<String> = emptyList(),
+    val logPath: String? = null
 )
 
 class LoaderInstaller(

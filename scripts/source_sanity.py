@@ -146,8 +146,8 @@ if openltw.get("patch") != "vendor/patches/ltw-minecraft-26.2.patch":
 
 require_contains(
     "app/build.gradle.kts",
-    'versionName = "11.0.0-alpha21"',
-    'versionCode = 31',
+    'versionName = "11.0.0-alpha22"',
+    'versionCode = 32',
     'mclauncherAbi',
     'abiFilters += targetAbi',
     'CURSEFORGE_API_KEY',
@@ -160,7 +160,7 @@ require_contains(
     "scripts/source_sanity.py",
     'assembleNoruntimeDebug',
     'assembleDebug -PmclauncherAbi=',
-    'MCLauncher-11.0-alpha21-',
+    'MCLauncher-11.0-alpha22-',
     'mojo-pointer-click-position.patch',
     "Build pinned OpenLTW with Minecraft 26.2 compatibility",
     "--ltw-aar",
@@ -177,7 +177,7 @@ require_contains(
     'No Android LWJGL substitution is defined',
     'prepareAndroidNatives',
     'applyMinecraftOptions',
-    '-Dmclauncher.version=11.0.0-alpha21',
+    '-Dmclauncher.version=11.0.0-alpha22',
     'authSession?.accessToken ?: "0"',
     'AccountType.MICROSOFT) "msa" else "legacy"',
 )
@@ -206,6 +206,8 @@ require_contains(
 require_contains(
     "app/src/main/AndroidManifest.xml",
     ".storage.MCLauncherDocumentsProvider",
+    ".creation.LocalBuildActivity",
+    'android:process=":local_builder"',
     "android.content.action.DOCUMENTS_PROVIDER",
 )
 require_contains(
@@ -234,16 +236,36 @@ require_absent(
     "safe loader starter",
 )
 require_contains(
+    "app/src/main/java/com/mclauncher/app/creation/CodeWorkspaceManager.kt",
+    "importProject",
+    "gradle-wrapper.properties",
+    "Create JAR",
+    "validateModJar",
+    "MAX_PROJECT_ARCHIVE_BYTES",
+)
+require_contains(
+    "app/src/main/java/com/mclauncher/app/creation/LocalGradleToolchain.kt",
+    "downloads.gradle.org/distributions",
+    "sha256",
+    "org.gradle.launcher.GradleMain",
+    "kotlin.compiler.execution.strategy=in-process",
+)
+require_contains(
     "app/src/main/java/com/mclauncher/app/ui/screens/CreationLabScreen.kt",
     "In-game item preview",
     "Player preview",
     "Full colour palette",
-    "Unsupported prompts are now blocked instead of producing tiny placeholder JARs",
+    "MCL Code Workspace",
+    "Import source ZIP",
+    "Create JAR on this tablet",
+    "step 5",
 )
 require_absent(
     "app/src/main/java/com/mclauncher/app/ui/screens/CreationLabScreen.kt",
     "OpenAI API key",
     "GitHub fine-grained token",
+    "MCL local Creation Engine",
+    "Describe the project",
 )
 require_absent(
     "app/src/main/java/com/mclauncher/app/engine/NativeEngineCoordinator.kt",
@@ -253,8 +275,14 @@ require_contains(
     "app/src/main/cpp/native_engine.cpp",
     'getenv("MCLAUNCHER_RENDERER_TOKEN")',
     'unsetenv("POJAV_RENDERER")',
+    "Starting a headless Java tool without renderer or GLFW initialization",
     'gMojoSendMouseAt',
     'nativeSendTouchButton',
+)
+require_contains(
+    "core-minecraft/src/test/kotlin/com/mclauncher/minecraft/LaunchPlanBuilderAndroidLwjglTest.kt",
+    "org.lwjgl:lwjgl-sdl:3.4.2",
+    "skipsNewerDesktopOnlyLwjglSdlModuleByModuleFallback",
 )
 require_contains(
     "app/build.gradle.kts",

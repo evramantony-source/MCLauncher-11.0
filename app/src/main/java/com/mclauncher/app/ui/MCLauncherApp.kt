@@ -173,12 +173,17 @@ fun MCLauncherApp(
                     onImportArtwork = creationLabViewModel::importArtwork,
                     onExportResourcePack = creationLabViewModel::exportResourcePack,
                     onExportArtwork = creationLabViewModel::exportArtwork,
-                    onUpdateAiOutput = creationLabViewModel::updateAiOutput,
-                    onSelectAiTarget = creationLabViewModel::selectAiTarget,
-                    onUpdateAiInstallIntoInstance = creationLabViewModel::updateAiInstallIntoInstance,
-                    onAddAiAttachments = creationLabViewModel::addAiAttachments,
-                    onRemoveAiAttachment = creationLabViewModel::removeAiAttachment,
-                    onGenerateAiProject = creationLabViewModel::generateAiProject,
+                    onSelectCodeTarget = creationLabViewModel::selectCodeTarget,
+                    onUpdateCodeInstallIntoInstance = creationLabViewModel::updateCodeInstallIntoInstance,
+                    onCreateCodeWorkspace = creationLabViewModel::createCodeWorkspace,
+                    onImportCodeWorkspace = { creationLabViewModel.importCodeWorkspace(it, "") },
+                    onSelectCodeWorkspace = creationLabViewModel::selectCodeWorkspace,
+                    onSelectCodeFile = creationLabViewModel::selectCodeFile,
+                    onUpdateCodeText = creationLabViewModel::updateCodeText,
+                    onSaveCodeFile = creationLabViewModel::saveCodeFile,
+                    onCreateCodeFile = creationLabViewModel::createCodeFile,
+                    onUpdateCodeTasks = creationLabViewModel::updateCodeTasks,
+                    onBuildCodeWorkspace = creationLabViewModel::buildCodeWorkspace,
                     snackbarHost = { SnackbarHost(snackbarHostState) }
                 )
             }

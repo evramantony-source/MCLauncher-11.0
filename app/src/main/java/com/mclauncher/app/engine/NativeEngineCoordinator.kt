@@ -246,6 +246,10 @@ class NativeEngineCoordinator(
             "LD_LIBRARY_PATH" to nativePath,
             "POJAV_NATIVEDIR" to if (engineNatives.isDirectory) engineNatives.absolutePath else context.applicationInfo.nativeLibraryDir
         )
+        tool.logPath?.takeIf(String::isNotBlank)?.let { path ->
+            File(path).parentFile?.mkdirs()
+            environment["MCLAUNCHER_SESSION_LOG"] = path
+        }
         val jvmArguments = tool.jvmArguments.toMutableList()
         putSystemProperty(jvmArguments, "java.class.path", tool.classpath.joinToString(File.pathSeparator))
         putSystemProperty(jvmArguments, "java.home", javaHome.absolutePath)

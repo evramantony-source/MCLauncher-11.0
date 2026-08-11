@@ -668,6 +668,7 @@ Java_com_mclauncher_app_engine_NativeLaunchBridge_nativeStart(
     const auto environmentKeys = jobjectArrayToStrings(env, environmentKeysValue);
     const auto environmentValues = jobjectArrayToStrings(env, environmentValuesValue);
     const auto preloadLibraries = jobjectArrayToStrings(env, preloadLibrariesValue);
+    const bool headlessTool = surface == nullptr;
     env->GetJavaVM(&gAndroidVm);
 
     if (javaHome.empty() || workingDirectory.empty() || mainClass.empty()) {
@@ -729,7 +730,7 @@ Java_com_mclauncher_app_engine_NativeLaunchBridge_nativeStart(
         void* handle = loadAbsolute(library, false);
         initializeUpstreamAndroidJni(env, library, handle);
     }
-    if (!configureMojoRenderer(env, preloadLibraries)) {
+    if (!headlessTool && !configureMojoRenderer(env, preloadLibraries)) {
         replaceWindow(env, nullptr);
         endOutputCapture();
         return 31;
@@ -740,17 +741,21 @@ Java_com_mclauncher_app_engine_NativeLaunchBridge_nativeStart(
     unsetenv("POJAV_RENDERER");
     unsetenv("POJAV_LAUNCHER");
     pushLog("Sanitized legacy renderer markers before Minecraft JVM startup");
-    for (const auto& library : deferredGlfw) {
-        void* handle = loadAbsolute(library, true);
-        initializeMojoGlfw(env, library, handle);
+    if (!headlessTool) {
+        for (const auto& library : deferredGlfw) {
+            void* handle = loadAbsolute(library, true);
+            initializeMojoGlfw(env, library, handle);
+        }
+        if (!gMojoGlfwAvailable) {
+            pushError("Bundled libglfw.so could not initialize its Android bridge");
+            replaceWindow(env, nullptr);
+            endOutputCapture();
+            return 32;
+        }
+        setupUpstreamBridge(env, surface);
+    } else {
+        pushLog("Starting a headless Java tool without renderer or GLFW initialization");
     }
-    if (!gMojoGlfwAvailable) {
-        pushError("Bundled libglfw.so could not initialize its Android bridge");
-        replaceWindow(env, nullptr);
-        endOutputCapture();
-        return 32;
-    }
-    setupUpstreamBridge(env, surface);
 
     const fs::path jvmPath = findByName(javaHome, "libjvm.so");
     if (jvmPath.empty()) {

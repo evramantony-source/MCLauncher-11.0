@@ -25,15 +25,18 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
-import androidx.compose.material.icons.rounded.AttachFile
-import androidx.compose.material.icons.rounded.AutoAwesome
-import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.DeleteSweep
 import androidx.compose.material.icons.rounded.Download
+import androidx.compose.material.icons.rounded.FolderOpen
+import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Redo
+import androidx.compose.material.icons.rounded.Save
 import androidx.compose.material.icons.rounded.Undo
 import androidx.compose.material.icons.rounded.Upload
 import androidx.compose.material3.Button
@@ -61,6 +64,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
@@ -69,7 +73,7 @@ import com.mclauncher.app.ui.CreationLabUiState
 import com.mclauncher.app.ui.LabTexture
 import com.mclauncher.app.ui.PixelDocument
 import com.mclauncher.app.ui.PixelTool
-import com.mclauncher.app.creation.LocalProjectOutput
+import com.mclauncher.app.creation.CodeWorkspaceFile
 import com.mclauncher.app.ui.components.LauncherCard
 import com.mclauncher.app.ui.components.PageHeader
 import com.mclauncher.minecraft.baseGameVersion
@@ -98,12 +102,17 @@ fun CreationLabScreen(
     onImportArtwork: (android.net.Uri, CreationLabSection) -> Unit,
     onExportResourcePack: (android.net.Uri) -> Unit,
     onExportArtwork: (android.net.Uri, CreationLabSection) -> Unit,
-    onUpdateAiOutput: (LocalProjectOutput) -> Unit,
-    onSelectAiTarget: (MinecraftInstance) -> Unit,
-    onUpdateAiInstallIntoInstance: (Boolean) -> Unit,
-    onAddAiAttachments: (List<android.net.Uri>) -> Unit,
-    onRemoveAiAttachment: (String) -> Unit,
-    onGenerateAiProject: (String) -> Unit,
+    onSelectCodeTarget: (MinecraftInstance) -> Unit,
+    onUpdateCodeInstallIntoInstance: (Boolean) -> Unit,
+    onCreateCodeWorkspace: (String) -> Unit,
+    onImportCodeWorkspace: (android.net.Uri) -> Unit,
+    onSelectCodeWorkspace: (String) -> Unit,
+    onSelectCodeFile: (CodeWorkspaceFile) -> Unit,
+    onUpdateCodeText: (String) -> Unit,
+    onSaveCodeFile: () -> Unit,
+    onCreateCodeFile: (String) -> Unit,
+    onUpdateCodeTasks: (String) -> Unit,
+    onBuildCodeWorkspace: () -> Unit,
     snackbarHost: @Composable () -> Unit
 ) {
     val installedInstances = remember(instances) { instances.filter { it.installed } }
@@ -123,8 +132,8 @@ fun CreationLabScreen(
     val capeImporter = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         uri?.let { onImportArtwork(it, CreationLabSection.CAPE) }
     }
-    val aiAttachmentPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
-        if (uris.isNotEmpty()) onAddAiAttachments(uris)
+    val sourceProjectPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri?.let(onImportCodeWorkspace)
     }
 
     LaunchedEffect(installedInstances, state.resourceInstanceId) {
@@ -135,7 +144,7 @@ fun CreationLabScreen(
 
     LaunchedEffect(installedInstances, state.aiTargetInstanceId) {
         if (state.aiTargetInstanceId == null) {
-            installedInstances.firstOrNull { it.loader != ModLoader.VANILLA }?.let(onSelectAiTarget)
+            installedInstances.firstOrNull { it.loader != ModLoader.VANILLA }?.let(onSelectCodeTarget)
         }
     }
 
@@ -161,8 +170,8 @@ fun CreationLabScreen(
                             selected = state.section == section,
                             onClick = { onSelectSection(section) },
                             label = { Text(section.label) },
-                            leadingIcon = if (section == CreationLabSection.AI_WORKSHOP) {
-                                { Icon(Icons.Rounded.AutoAwesome, contentDescription = null, modifier = Modifier.size(18.dp)) }
+                            leadingIcon = if (section == CreationLabSection.CODE_WORKSPACE) {
+                                { Icon(Icons.Rounded.FolderOpen, contentDescription = null, modifier = Modifier.size(18.dp)) }
                             } else null
                         )
                     }
@@ -275,16 +284,25 @@ fun CreationLabScreen(
                     )
                 }
 
-                CreationLabSection.AI_WORKSHOP -> item {
-                    AiWorkshop(
+                CreationLabSection.CODE_WORKSPACE -> item {
+                    CodeWorkspace(
                         state = state,
                         instances = installedInstances,
-                        onUpdateOutput = onUpdateAiOutput,
-                        onSelectTarget = onSelectAiTarget,
-                        onUpdateInstallIntoInstance = onUpdateAiInstallIntoInstance,
-                        onAttach = { aiAttachmentPicker.launch(arrayOf("*/*")) },
-                        onRemoveAttachment = onRemoveAiAttachment,
-                        onGenerate = onGenerateAiProject
+                        onSelectTarget = onSelectCodeTarget,
+                        onUpdateInstallIntoInstance = onUpdateCodeInstallIntoInstance,
+                        onCreateWorkspace = onCreateCodeWorkspace,
+                        onImportWorkspace = {
+                            sourceProjectPicker.launch(
+                                arrayOf("application/zip", "application/x-zip-compressed", "application/octet-stream")
+                            )
+                        },
+                        onSelectWorkspace = onSelectCodeWorkspace,
+                        onSelectFile = onSelectCodeFile,
+                        onUpdateText = onUpdateCodeText,
+                        onSaveFile = onSaveCodeFile,
+                        onCreateFile = onCreateCodeFile,
+                        onUpdateTasks = onUpdateCodeTasks,
+                        onBuild = onBuildCodeWorkspace
                     )
                 }
             }
@@ -308,7 +326,7 @@ private fun ResourcePackSetup(
         else state.textures.filter { it.path.contains(needle, ignoreCase = true) || it.displayName.contains(needle, ignoreCase = true) }
     }
     LauncherCard(modifier = Modifier.fillMaxWidth()) {
-        Text("Vanilla item texture catalog", style = MaterialTheme.typography.titleMedium)
+        Text("Complete vanilla item texture catalog", style = MaterialTheme.typography.titleMedium)
         if (instances.isEmpty()) {
             Text("Install a Minecraft version first so the Lab can read its complete vanilla item catalog.")
             return@LauncherCard
@@ -337,7 +355,7 @@ private fun ResourcePackSetup(
             onValueChange = onTextureSearchChange,
             modifier = Modifier.fillMaxWidth(),
             singleLine = true,
-            label = { Text("Find an item texture (${state.textures.size} total)") }
+            label = { Text("Search all ${state.textures.size} item texture PNGs") }
         )
         LazyColumn(
             modifier = Modifier.fillMaxWidth().heightIn(min = 120.dp, max = 280.dp),
@@ -862,21 +880,20 @@ private fun ExtendedColorPalette(selectedColor: Int, onSelectColor: (Int) -> Uni
         "Full colour palette · ${EXTENDED_COLORS.size} colours plus exact ARGB",
         style = MaterialTheme.typography.titleSmall
     )
-    Column(
-        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+    LazyVerticalGrid(
+        columns = GridCells.Adaptive(31.dp),
+        modifier = Modifier.fillMaxWidth().height(330.dp),
+        contentPadding = PaddingValues(2.dp),
+        horizontalArrangement = Arrangement.spacedBy(5.dp),
         verticalArrangement = Arrangement.spacedBy(5.dp)
     ) {
-        EXTENDED_COLORS.chunked(PALETTE_COLUMNS).forEach { row ->
-            Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                row.forEach { color ->
-                    ColorSwatch(
-                        color = color,
-                        selected = color == selectedColor,
-                        size = 27,
-                        onSelect = onSelectColor
-                    )
-                }
-            }
+        gridItems(EXTENDED_COLORS, key = { it }) { color ->
+            ColorSwatch(
+                color = color,
+                selected = color == selectedColor,
+                size = 27,
+                onSelect = onSelectColor
+            )
         }
     }
     Row(
@@ -917,45 +934,38 @@ private fun ColorSwatch(color: Int, selected: Boolean, size: Int, onSelect: (Int
 }
 
 @Composable
-private fun AiWorkshop(
+private fun CodeWorkspace(
     state: CreationLabUiState,
     instances: List<MinecraftInstance>,
-    onUpdateOutput: (LocalProjectOutput) -> Unit,
     onSelectTarget: (MinecraftInstance) -> Unit,
     onUpdateInstallIntoInstance: (Boolean) -> Unit,
-    onAttach: () -> Unit,
-    onRemoveAttachment: (String) -> Unit,
-    onGenerate: (String) -> Unit
+    onCreateWorkspace: (String) -> Unit,
+    onImportWorkspace: () -> Unit,
+    onSelectWorkspace: (String) -> Unit,
+    onSelectFile: (CodeWorkspaceFile) -> Unit,
+    onUpdateText: (String) -> Unit,
+    onSaveFile: () -> Unit,
+    onCreateFile: (String) -> Unit,
+    onUpdateTasks: (String) -> Unit,
+    onBuild: () -> Unit
 ) {
-    var prompt by remember { mutableStateOf("") }
+    var projectName by remember { mutableStateOf("My Mod") }
+    var newFilePath by remember(state.workspaceProjectId) { mutableStateOf("") }
     val moddedInstances = remember(instances) { instances.filter { it.loader != ModLoader.VANILLA } }
     val selectedTarget = instances.firstOrNull { it.id == state.aiTargetInstanceId }
-    val promptLower = prompt.lowercase(Locale.ROOT)
-    val isGrapplingHook = ("grappling" in promptLower || "grapple" in promptLower) && "hook" in promptLower
-    val verifiedModRequest = selectedTarget?.let { isGrapplingHook && baseGameVersion(it) == "1.20.1" } == true
+    val selectedProject = state.workspaceProjects.firstOrNull { it.id == state.workspaceProjectId }
     LauncherCard(modifier = Modifier.fillMaxWidth()) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Icon(Icons.Rounded.AutoAwesome, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-            Text("MCL local Creation Engine", style = MaterialTheme.typography.titleLarge)
+            Icon(Icons.Rounded.FolderOpen, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+            Text("MCL Code Workspace", style = MaterialTheme.typography.titleLarge)
         }
         Text(
-            "No API key, account credit, subscription, compiler download or GitHub mod builder. Projects, attachments and loader JAR assembly stay on this tablet.",
+            "Write or paste real Java/Kotlin, Gradle and resource files, or import a complete source-project ZIP. Pressing Create JAR runs that project's Gradle build locally in a disposable process—no API key, ChatGPT subscription or GitHub mod builder.",
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
-        Row(
-            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            LocalProjectOutput.entries.forEach { choice ->
-                FilterChip(selected = state.aiOutput == choice, onClick = { onUpdateOutput(choice) }, label = { Text(choice.label) })
-            }
-        }
-        Text("Target instance", style = MaterialTheme.typography.titleSmall)
+        Text("Target instance and Java runtime", style = MaterialTheme.typography.titleSmall)
         if (moddedInstances.isEmpty()) {
-            Text(
-                "Install a Fabric, Quilt, Forge or NeoForge instance first. Shader ZIPs can still be created without one.",
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+            Text("Install a Fabric, Quilt, Forge or NeoForge instance first.", color = MaterialTheme.colorScheme.error)
         } else {
             Row(
                 modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
@@ -966,86 +976,177 @@ private fun AiWorkshop(
                         selected = state.aiTargetInstanceId == instance.id,
                         onClick = { onSelectTarget(instance) },
                         label = {
-                            Text("${instance.name} · ${instance.loader.displayName} ${instance.loaderVersion.orEmpty()}")
+                            Text(
+                                "${instance.name} · ${instance.loader.displayName} ${instance.loaderVersion.orEmpty()} · " +
+                                    "MC ${baseGameVersion(instance)} · Java ${instance.javaVersion.major}"
+                            )
                         }
                     )
                 }
             }
         }
-        OutlinedTextField(
-            value = prompt,
-            onValueChange = { prompt = it },
-            modifier = Modifier.fillMaxWidth().heightIn(min = 130.dp),
-            label = { Text("Describe the project") },
-            placeholder = { Text("Example: Add a grappling hook with configurable range and a crafting recipe…") }
-        )
         Row(
-            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            OutlinedButton(onClick = onAttach, enabled = !state.aiBusy && state.aiAttachments.size < 8) {
-                Icon(Icons.Rounded.AttachFile, contentDescription = null)
-                Text("Attach files, images or JARs", modifier = Modifier.padding(start = 6.dp))
-            }
-            FilterChip(
-                selected = state.aiInstallIntoInstance,
-                onClick = { onUpdateInstallIntoInstance(!state.aiInstallIntoInstance) },
-                enabled = selectedTarget != null,
-                label = { Text("Also add to selected instance") }
+            OutlinedTextField(
+                value = projectName,
+                onValueChange = { projectName = it.take(64) },
+                modifier = Modifier.weight(1f),
+                singleLine = true,
+                label = { Text("Workspace name") }
             )
+            Button(
+                onClick = { onCreateWorkspace(projectName) },
+                enabled = selectedTarget != null && !state.workspaceBusy
+            ) {
+                Icon(Icons.Rounded.Add, contentDescription = null)
+                Text("New starter", modifier = Modifier.padding(start = 6.dp))
+            }
+            OutlinedButton(onClick = onImportWorkspace, enabled = selectedTarget != null && !state.workspaceBusy) {
+                Icon(Icons.Rounded.Upload, contentDescription = null)
+                Text("Import source ZIP", modifier = Modifier.padding(start = 6.dp))
+            }
         }
-        state.aiAttachments.forEach { attachment ->
+        Text(
+            "For the widest version support, import the mod's official source project with its gradle-wrapper.properties. MCLauncher honors that declared Gradle version; starter plugin versions remain editable for unusual or very old Minecraft releases.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Text(
+            "Version coverage: there is no 1.20.1-only builder or fixed Minecraft-version list. A JAR can be built for releases or snapshots whenever that project's loader plugin and source code support the requested version.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.primary
+        )
+        if (state.workspaceProjects.isNotEmpty()) {
+            Text("Workspaces", style = MaterialTheme.typography.titleSmall)
+            Row(
+                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                state.workspaceProjects.forEach { project ->
+                    FilterChip(
+                        selected = project.id == state.workspaceProjectId,
+                        onClick = { onSelectWorkspace(project.id) },
+                        label = { Text("${project.name} · ${project.loader.displayName} ${project.minecraftVersion}") }
+                    )
+                }
+            }
+        }
+        if (selectedProject != null) {
+            Text("Project files (${state.workspaceFiles.size})", style = MaterialTheme.typography.titleSmall)
+            LazyColumn(
+                modifier = Modifier.fillMaxWidth().heightIn(min = 120.dp, max = 260.dp),
+                verticalArrangement = Arrangement.spacedBy(3.dp)
+            ) {
+                items(state.workspaceFiles, key = { it.path }) { file ->
+                    val selected = file.path == state.workspaceFilePath
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(
+                                if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.14f) else Color.Transparent,
+                                RoundedCornerShape(7.dp)
+                            )
+                            .clickable(enabled = !state.workspaceBusy) { onSelectFile(file) }
+                            .padding(horizontal = 10.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(file.path, modifier = Modifier.weight(1f), fontFamily = FontFamily.Monospace)
+                        Text(formatAttachmentSize(file.sizeBytes), style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            }
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text("${attachment.displayName} · ${attachment.kind.label} · ${formatAttachmentSize(attachment.sizeBytes)}")
-                    Text(
-                        attachment.analysis,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                TextButton(onClick = { onRemoveAttachment(attachment.id) }, enabled = !state.aiBusy) {
-                    Icon(Icons.Rounded.Delete, contentDescription = "Remove attachment")
+                OutlinedTextField(
+                    value = newFilePath,
+                    onValueChange = { newFilePath = it.take(180) },
+                    modifier = Modifier.weight(1f),
+                    singleLine = true,
+                    label = { Text("New file path") },
+                    placeholder = { Text("src/main/java/com/example/MyItem.java") },
+                    textStyle = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace)
+                )
+                OutlinedButton(
+                    onClick = {
+                        onCreateFile(newFilePath)
+                        newFilePath = ""
+                    },
+                    enabled = newFilePath.isNotBlank() && !state.workspaceBusy
+                ) {
+                    Icon(Icons.Rounded.Add, contentDescription = null)
+                    Text("Create file")
                 }
             }
-        }
-        Text(
-            "Working JAR capability in this build: grappling-hook mods for Minecraft 1.20.1 on Fabric, Quilt, Forge and NeoForge. Unsupported prompts are now blocked instead of producing tiny placeholder JARs. Local color-effect shader packs are also supported; arbitrary mod generation and binary JAR porting are not implemented yet.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        if (state.aiOutput == LocalProjectOutput.MOD_JAR && prompt.isNotBlank() && !verifiedModRequest) {
+            if (state.workspaceFilePath != null) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        state.workspaceFilePath + if (state.workspaceDirty) " • unsaved" else "",
+                        modifier = Modifier.weight(1f),
+                        style = MaterialTheme.typography.titleSmall,
+                        fontFamily = FontFamily.Monospace
+                    )
+                    Button(onClick = onSaveFile, enabled = state.workspaceDirty && !state.workspaceBusy) {
+                        Icon(Icons.Rounded.Save, contentDescription = null)
+                        Text("Save", modifier = Modifier.padding(start = 5.dp))
+                    }
+                }
+                OutlinedTextField(
+                    value = state.workspaceText,
+                    onValueChange = onUpdateText,
+                    modifier = Modifier.fillMaxWidth().height(460.dp),
+                    textStyle = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                    label = { Text("Code editor") }
+                )
+            }
+            Text("Build", style = MaterialTheme.typography.titleMedium)
+            OutlinedTextField(
+                value = state.workspaceTasks,
+                onValueChange = onUpdateTasks,
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                label = { Text("Gradle tasks") },
+                supportingText = { Text("Usually: clean build") },
+                textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace)
+            )
+            FilterChip(
+                selected = state.aiInstallIntoInstance,
+                onClick = { onUpdateInstallIntoInstance(!state.aiInstallIntoInstance) },
+                enabled = selectedTarget != null && !state.workspaceBusy,
+                label = { Text("Also copy the finished JAR into the selected instance") }
+            )
             Text(
-                "No JAR will be created for this request. Choose a Minecraft 1.20.1 instance and request a grappling hook; this prevents another misleading 1–2 KB file.",
+                "Security: build.gradle and plugins are executable code. Importing and editing never runs them; pressing Create JAR is your explicit permission to run this workspace. The disposable builder is a separate process, but Gradle code still has MCLauncher's app-level file and network access—only build source you trust.",
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.error
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
-        }
-        if (state.aiBusy) {
-            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-            Text(state.aiProgress ?: "Working…", style = MaterialTheme.typography.bodySmall)
-        }
-        Button(
-            onClick = { onGenerate(prompt) },
-            enabled = prompt.isNotBlank() && !state.aiBusy &&
-                (state.aiOutput == LocalProjectOutput.SHADER_ZIP || verifiedModRequest)
-        ) {
-            Icon(Icons.Rounded.AutoAwesome, contentDescription = null)
-            Text(
-                if (state.aiOutput == LocalProjectOutput.MOD_JAR) "Generate JAR locally" else "Generate shader ZIP locally",
-                modifier = Modifier.padding(start = 7.dp)
-            )
-        }
-        if (state.aiLastOutputPath != null) {
-            Text(
-                "Latest output is visible in Android Files → MCLauncher → MCL Creation Lab → outputs.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.primary
-            )
+            if (state.workspaceBusy) {
+                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                Text(state.workspaceProgress ?: "Working…", style = MaterialTheme.typography.bodySmall)
+            }
+            Button(
+                onClick = onBuild,
+                enabled = selectedTarget != null && state.workspaceTasks.isNotBlank() && !state.workspaceBusy
+            ) {
+                Icon(Icons.Rounded.PlayArrow, contentDescription = null)
+                Text("Create JAR on this tablet", modifier = Modifier.padding(start = 7.dp))
+            }
+            if (state.workspaceLastOutputPath != null) {
+                Text(
+                    "Latest JAR: Android Files → MCLauncher → MCL Creation Lab → outputs",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
         }
     }
 }
@@ -1072,8 +1173,6 @@ private fun parseColorHex(value: String): Int? = runCatching {
     }
 }.getOrNull()
 
-private const val PALETTE_COLUMNS = 18
-
 private val OPACITY_LEVELS = listOf(
     "100%" to 255,
     "75%" to 191,
@@ -1083,15 +1182,19 @@ private val OPACITY_LEVELS = listOf(
 )
 
 private val EXTENDED_COLORS: List<Int> = buildList {
-    listOf(0.04f, 0.12f, 0.22f, 0.34f, 0.48f, 0.64f, 0.78f, 0.9f, 1f).forEach { value ->
+    (0..16).map { it / 16f }.forEach { value ->
         add(AndroidColor.HSVToColor(floatArrayOf(0f, 0f, value)))
     }
-    for (hue in 0 until 360 step 15) {
+    for (hue in 0 until 360 step 5) {
         listOf(
-            0.38f to 1f,
-            0.7f to 1f,
+            0.25f to 1f,
+            0.5f to 1f,
+            0.75f to 1f,
             1f to 1f,
-            1f to 0.72f
+            0.4f to 0.82f,
+            0.7f to 0.82f,
+            1f to 0.82f,
+            1f to 0.62f
         ).forEach { (saturation, value) ->
             add(AndroidColor.HSVToColor(floatArrayOf(hue.toFloat(), saturation, value)))
         }

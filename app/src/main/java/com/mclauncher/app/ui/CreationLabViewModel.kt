@@ -8,6 +8,9 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.mclauncher.app.MCLauncherApplication
 import com.mclauncher.app.creation.AttachmentInspector
+import com.mclauncher.app.creation.CodeWorkspaceFile
+import com.mclauncher.app.creation.CodeWorkspaceManager
+import com.mclauncher.app.creation.CodeWorkspaceProject
 import com.mclauncher.app.creation.LocalAttachment
 import com.mclauncher.app.creation.LocalBuildTarget
 import com.mclauncher.app.creation.LocalProjectBuilder
@@ -47,7 +50,7 @@ enum class CreationLabSection(val label: String) {
     RESOURCE_PACK("Resource pack"),
     SKIN("Skin"),
     CAPE("Cape"),
-    AI_WORKSHOP("Creation Engine")
+    CODE_WORKSPACE("Code workspace")
 }
 
 enum class PixelTool(val label: String) {
@@ -96,6 +99,16 @@ data class CreationLabUiState(
     val aiLastOutputPath: String? = null,
     val aiBusy: Boolean = false,
     val aiProgress: String? = null,
+    val workspaceProjects: List<CodeWorkspaceProject> = emptyList(),
+    val workspaceProjectId: String? = null,
+    val workspaceFiles: List<CodeWorkspaceFile> = emptyList(),
+    val workspaceFilePath: String? = null,
+    val workspaceText: String = "",
+    val workspaceDirty: Boolean = false,
+    val workspaceTasks: String = "clean build",
+    val workspaceBusy: Boolean = false,
+    val workspaceProgress: String? = null,
+    val workspaceLastOutputPath: String? = null,
     val message: String? = null
 )
 
@@ -109,6 +122,7 @@ class CreationLabViewModel(application: Application) : AndroidViewModel(applicat
     private val json = Json { prettyPrint = true; ignoreUnknownKeys = true }
     private val localBuilder = LocalProjectBuilder(application)
     private val attachmentInspector = AttachmentInspector(application)
+    private val codeWorkspace = CodeWorkspaceManager(application)
     private val mutableState = MutableStateFlow(CreationLabUiState())
     val state: StateFlow<CreationLabUiState> = mutableState.asStateFlow()
 
@@ -121,13 +135,17 @@ class CreationLabViewModel(application: Application) : AndroidViewModel(applicat
     private val redo = ArrayDeque<IntArray>()
     private var aiTarget: MinecraftInstance? = null
 
+    init {
+        refreshCodeWorkspaces()
+    }
+
     fun selectSection(section: CreationLabSection) {
         val selectedPath = mutableState.value.selectedTexturePath
         val document = when (section) {
             CreationLabSection.RESOURCE_PACK -> selectedPath?.let { currentResourceEdits()[it] }
             CreationLabSection.SKIN -> skinDocument
             CreationLabSection.CAPE -> capeDocument
-            CreationLabSection.AI_WORKSHOP -> null
+            CreationLabSection.CODE_WORKSPACE -> null
         }
         clearHistory()
         mutableState.update { it.copy(section = section, document = document) }
@@ -137,7 +155,7 @@ class CreationLabViewModel(application: Application) : AndroidViewModel(applicat
         mutableState.update { it.copy(aiOutput = output) }
     }
 
-    fun selectAiTarget(instance: MinecraftInstance) {
+    fun selectCodeTarget(instance: MinecraftInstance) {
         aiTarget = instance
         mutableState.update {
             it.copy(
@@ -149,8 +167,182 @@ class CreationLabViewModel(application: Application) : AndroidViewModel(applicat
         }
     }
 
-    fun updateAiInstallIntoInstance(value: Boolean) {
+    fun updateCodeInstallIntoInstance(value: Boolean) {
         mutableState.update { it.copy(aiInstallIntoInstance = value) }
+    }
+
+    fun createCodeWorkspace(name: String) {
+        val target = aiTarget ?: return mutableState.update {
+            it.copy(message = "Choose a Fabric, Quilt, Forge or NeoForge instance first")
+        }
+        if (mutableState.value.workspaceBusy) return
+        viewModelScope.launch {
+            mutableState.update { it.copy(workspaceBusy = true, workspaceProgress = "Creating editable source project…", message = null) }
+            runCatching {
+                withContext(Dispatchers.IO) { codeWorkspace.createStarter(name, target.toLocalBuildTarget()) }
+            }.onSuccess { project ->
+                mutableState.update { it.copy(workspaceBusy = false, workspaceProgress = null) }
+                loadCodeWorkspace(project.id, "Created ${project.name} for ${project.loader.displayName} ${project.minecraftVersion}")
+            }.onFailure { error ->
+                mutableState.update {
+                    it.copy(workspaceBusy = false, workspaceProgress = null, message = "Workspace creation failed: ${error.message}")
+                }
+            }
+        }
+    }
+
+    fun importCodeWorkspace(uri: Uri, name: String) {
+        val target = aiTarget ?: return mutableState.update {
+            it.copy(message = "Choose a mod-loader instance before importing source")
+        }
+        if (mutableState.value.workspaceBusy) return
+        viewModelScope.launch {
+            mutableState.update { it.copy(workspaceBusy = true, workspaceProgress = "Importing and checking source ZIP…", message = null) }
+            runCatching {
+                withContext(Dispatchers.IO) { codeWorkspace.importProject(uri, target.toLocalBuildTarget(), name) }
+            }.onSuccess { project ->
+                mutableState.update { it.copy(workspaceBusy = false, workspaceProgress = null) }
+                loadCodeWorkspace(project.id, "Imported ${project.name}; no code has been executed")
+            }.onFailure { error ->
+                mutableState.update {
+                    it.copy(workspaceBusy = false, workspaceProgress = null, message = "Source import failed: ${error.message}")
+                }
+            }
+        }
+    }
+
+    fun selectCodeWorkspace(projectId: String) {
+        if (mutableState.value.workspaceBusy) return
+        loadCodeWorkspace(projectId, null)
+    }
+
+    fun selectCodeFile(file: CodeWorkspaceFile) {
+        val current = mutableState.value
+        val projectId = current.workspaceProjectId ?: return
+        if (current.workspaceBusy || file.path == current.workspaceFilePath) return
+        viewModelScope.launch {
+            mutableState.update { it.copy(workspaceBusy = true, workspaceProgress = "Opening ${file.path}…", message = null) }
+            runCatching {
+                withContext(Dispatchers.IO) {
+                    saveDirtyWorkspaceFile(current)
+                    codeWorkspace.readTextFile(projectId, file.path)
+                }
+            }.onSuccess { text ->
+                mutableState.update {
+                    it.copy(
+                        workspaceFilePath = file.path,
+                        workspaceText = text,
+                        workspaceDirty = false,
+                        workspaceBusy = false,
+                        workspaceProgress = null
+                    )
+                }
+            }.onFailure { error ->
+                mutableState.update {
+                    it.copy(workspaceBusy = false, workspaceProgress = null, message = "Could not open source file: ${error.message}")
+                }
+            }
+        }
+    }
+
+    fun updateCodeText(text: String) {
+        mutableState.update { it.copy(workspaceText = text, workspaceDirty = true) }
+    }
+
+    fun saveCodeFile() {
+        val current = mutableState.value
+        if (current.workspaceBusy || !current.workspaceDirty) return
+        viewModelScope.launch {
+            mutableState.update { it.copy(workspaceBusy = true, workspaceProgress = "Saving source file…", message = null) }
+            runCatching { withContext(Dispatchers.IO) { saveDirtyWorkspaceFile(current) } }
+                .onSuccess {
+                    mutableState.update {
+                        it.copy(workspaceDirty = false, workspaceBusy = false, workspaceProgress = null, message = "Saved ${current.workspaceFilePath}")
+                    }
+                }
+                .onFailure { error ->
+                    mutableState.update {
+                        it.copy(workspaceBusy = false, workspaceProgress = null, message = "Save failed: ${error.message}")
+                    }
+                }
+        }
+    }
+
+    fun createCodeFile(path: String) {
+        val current = mutableState.value
+        val projectId = current.workspaceProjectId ?: return
+        if (current.workspaceBusy) return
+        viewModelScope.launch {
+            mutableState.update { it.copy(workspaceBusy = true, workspaceProgress = "Creating source file…", message = null) }
+            runCatching {
+                withContext(Dispatchers.IO) {
+                    saveDirtyWorkspaceFile(current)
+                    codeWorkspace.createTextFile(projectId, path)
+                }
+            }.onSuccess { file ->
+                val files = withContext(Dispatchers.IO) { codeWorkspace.listEditableFiles(projectId) }
+                mutableState.update {
+                    it.copy(
+                        workspaceFiles = files,
+                        workspaceFilePath = file.path,
+                        workspaceText = "",
+                        workspaceDirty = false,
+                        workspaceBusy = false,
+                        workspaceProgress = null,
+                        message = "Created ${file.path}"
+                    )
+                }
+            }.onFailure { error ->
+                mutableState.update {
+                    it.copy(workspaceBusy = false, workspaceProgress = null, message = "Could not create file: ${error.message}")
+                }
+            }
+        }
+    }
+
+    fun updateCodeTasks(tasks: String) {
+        mutableState.update { it.copy(workspaceTasks = tasks.take(160)) }
+    }
+
+    fun buildCodeWorkspace() {
+        val current = mutableState.value
+        val projectId = current.workspaceProjectId
+            ?: return mutableState.update { it.copy(message = "Create or import a source workspace first") }
+        val target = aiTarget
+            ?: return mutableState.update { it.copy(message = "Choose the instance this JAR targets") }
+        if (current.workspaceBusy) return
+        viewModelScope.launch {
+            mutableState.update { it.copy(workspaceBusy = true, workspaceProgress = "Saving your code…", message = null) }
+            runCatching {
+                withContext(Dispatchers.IO) { saveDirtyWorkspaceFile(current) }
+                withContext(Dispatchers.IO) {
+                    codeWorkspace.build(
+                        projectId = projectId,
+                        target = target.toLocalBuildTarget(),
+                        taskText = current.workspaceTasks,
+                        installIntoInstance = current.aiInstallIntoInstance
+                    ) { progress -> mutableState.update { it.copy(workspaceProgress = progress) } }
+                }
+            }.onSuccess { result ->
+                mutableState.update {
+                    it.copy(
+                        workspaceDirty = false,
+                        workspaceBusy = false,
+                        workspaceProgress = null,
+                        workspaceLastOutputPath = result.outputPath,
+                        message = "Compiled and validated ${File(result.outputPath).name}${if (result.installedPath != null) " and added it to ${target.name}" else ""}"
+                    )
+                }
+            }.onFailure { error ->
+                mutableState.update {
+                    it.copy(
+                        workspaceBusy = false,
+                        workspaceProgress = null,
+                        message = "Local Gradle build failed: ${error.message ?: error::class.java.simpleName}"
+                    )
+                }
+            }
+        }
     }
 
     fun addAiAttachments(uris: List<Uri>) {
@@ -490,6 +682,64 @@ class CreationLabViewModel(application: Application) : AndroidViewModel(applicat
         }
     }
 
+    private fun refreshCodeWorkspaces() {
+        val projects = runCatching { codeWorkspace.listProjects() }.getOrDefault(emptyList())
+        mutableState.update { it.copy(workspaceProjects = projects) }
+    }
+
+    private fun loadCodeWorkspace(projectId: String, successMessage: String?) {
+        viewModelScope.launch {
+            mutableState.update { it.copy(workspaceBusy = true, workspaceProgress = "Opening source workspace…", message = null) }
+            runCatching {
+                withContext(Dispatchers.IO) {
+                    val projects = codeWorkspace.listProjects()
+                    require(projects.any { it.id == projectId }) { "Workspace does not exist" }
+                    val files = codeWorkspace.listEditableFiles(projectId)
+                    val selected = files.firstOrNull { it.path == "build.gradle" || it.path == "build.gradle.kts" }
+                        ?: files.firstOrNull()
+                    val text = selected?.let { codeWorkspace.readTextFile(projectId, it.path) }.orEmpty()
+                    Triple(projects, files, selected to text)
+                }
+            }.onSuccess { (projects, files, selectedAndText) ->
+                val (selected, text) = selectedAndText
+                mutableState.update {
+                    it.copy(
+                        workspaceProjects = projects,
+                        workspaceProjectId = projectId,
+                        workspaceFiles = files,
+                        workspaceFilePath = selected?.path,
+                        workspaceText = text,
+                        workspaceDirty = false,
+                        workspaceBusy = false,
+                        workspaceProgress = null,
+                        message = successMessage
+                    )
+                }
+            }.onFailure { error ->
+                mutableState.update {
+                    it.copy(workspaceBusy = false, workspaceProgress = null, message = "Could not open workspace: ${error.message}")
+                }
+            }
+        }
+    }
+
+    private fun saveDirtyWorkspaceFile(snapshot: CreationLabUiState) {
+        if (!snapshot.workspaceDirty) return
+        val projectId = snapshot.workspaceProjectId ?: return
+        val path = snapshot.workspaceFilePath ?: return
+        codeWorkspace.saveTextFile(projectId, path, snapshot.workspaceText)
+    }
+
+    private fun MinecraftInstance.toLocalBuildTarget() = LocalBuildTarget(
+        instanceId = id,
+        instanceName = name,
+        gameDirectoryName = gameDirectoryName,
+        minecraftVersion = baseGameVersion(this),
+        loader = loader,
+        loaderVersion = loaderVersion.orEmpty(),
+        javaVersion = javaVersion
+    )
+
     fun clearMessage() {
         mutableState.update { it.copy(message = null) }
     }
@@ -503,7 +753,7 @@ class CreationLabViewModel(application: Application) : AndroidViewModel(applicat
             }
             CreationLabSection.SKIN -> skinDocument = document
             CreationLabSection.CAPE -> capeDocument = document
-            CreationLabSection.AI_WORKSHOP -> return
+            CreationLabSection.CODE_WORKSPACE -> return
         }
         mutableState.update {
             it.copy(

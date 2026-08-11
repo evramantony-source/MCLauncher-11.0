@@ -1,8 +1,8 @@
 # First device test
 
-Use a clean MCLauncher 11.0 Alpha 20 installation.
+Use a clean MCLauncher 11.0 Alpha 22 installation.
 
-1. Install the GitHub Actions `MCLauncher-11.0-alpha21-arm64-v8a.apk`.
+1. Install the GitHub Actions `MCLauncher-11.0-alpha22-arm64-v8a.apk`.
 2. Allow file access requested by Android.
 3. Create an offline account for the first launch test.
 4. Install a clean vanilla Minecraft version without mods.
@@ -25,6 +25,10 @@ Use a clean MCLauncher 11.0 Alpha 20 installation.
 21. In Browse, scroll through mods and press **Load more results**; confirm new projects append without replacing or duplicating the first page.
 22. Disable network access and launch an installed Fabric snapshot instance; confirm a failed managed-content check no longer blocks Minecraft startup.
 23. Open **MCL Creation Lab**, choose an installed version, edit a normal item texture and one animated texture frame, then create a ZIP. Confirm Minecraft accepts the pack and shows the edits.
-24. Create and re-import one 64×64 skin and one 64×32 cape PNG, then confirm every edited pixel survives the round trip.
+24. Confirm the item list count matches every PNG under `assets/minecraft/textures/item/` in that installed client, thumbnails/previews render, and the full palette reports 594 colours.
+25. Create and re-import one 64×64 skin and one 64×32 cape PNG, then confirm every edited pixel survives the round trip.
+26. Open **Code workspace**, select an installed loader instance, create a starter, edit and save its Java file, then press **Create JAR on this tablet**. Confirm the first build verifies/downloads Gradle, the finished JAR contains classes plus the selected loader metadata, and it appears under Android Files → MCLauncher → MCL Creation Lab → outputs.
+27. Import a trusted source-project ZIP containing `gradle/wrapper/gradle-wrapper.properties`, confirm importing does not execute code, then explicitly build it and confirm MCLauncher uses its declared Gradle version.
+28. Launch Fabric 26.3 Snapshot 6 and confirm launch-plan creation no longer reports a missing Android substitution for `org.lwjgl:lwjgl-sdl:3.4.2`.
 
 Record the Android version, device model, Minecraft version, selected Java version, renderer and the final visible error.

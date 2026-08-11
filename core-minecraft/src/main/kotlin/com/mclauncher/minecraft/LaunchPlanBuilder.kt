@@ -249,8 +249,9 @@ class LaunchPlanBuilder(
     }
 
     /** Mojang snapshots may adopt a newer desktop LWJGL before the pinned Android
-     * engine has an exact mapping. In that case use the newest bundled patched jar
-     * for the same Maven module; desktop LWJGL must never enter Android's classpath. */
+     * engine has an exact mapping. In that case carry forward the newest bundled
+     * replacement or desktop-only skip rule for the same Maven module; desktop
+     * LWJGL must never enter Android's classpath. */
     private fun resolveAndroidLwjglSubstitution(
         coordinate: String,
         substitutions: JsonObject,
@@ -265,7 +266,6 @@ class LaunchPlanBuilder(
         return substitutions.entries.asSequence()
             .filter { (candidate, _) -> candidate.startsWith(modulePrefix) }
             .mapNotNull { (candidate, value) -> runCatching { candidate to value.jsonObject }.getOrNull() }
-            .filterNot { (_, value) -> value["skip"]?.jsonPrimitive?.content?.toBooleanStrictOrNull() == true }
             .sortedWith { left, right ->
                 compareLwjglVersions(left.first.substringAfterLast(':'), right.first.substringAfterLast(':'))
             }
@@ -297,7 +297,7 @@ class LaunchPlanBuilder(
         val classpathValue = placeholders.getValue("${'$'}{classpath}")
         output += "-Djava.class.path=$classpathValue"
         output += "-Dmclauncher.name=MCLauncher"
-        output += "-Dmclauncher.version=11.0.0-alpha21"
+        output += "-Dmclauncher.version=11.0.0-alpha22"
         output += "-Dmclauncher.fpsLimit=${settings.fpsLimit}"
         when (settings.performancePreset) {
             PerformancePreset.BATTERY -> {

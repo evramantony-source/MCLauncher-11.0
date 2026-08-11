@@ -1,5 +1,14 @@
 # Changelog
 
+## 11.0.0-alpha22
+
+- Replace the prompt-based Creation Engine with an editable, Files-visible code workspace for Java, Kotlin, Gradle, metadata and resource files, including safe source-ZIP import and explicit save/create-file controls.
+- Add a real on-device **Create JAR** path that honors a project's declared Gradle wrapper version, downloads Gradle from its verified public distribution with SHA-256 checking, builds in a disposable app process and validates compiled classes plus Fabric/Quilt/Forge/NeoForge metadata.
+- Remove the Minecraft 1.20.1-only generation gate: imported compatible Gradle projects can target releases or snapshots without a fixed version list, while starter loader/plugin coordinates remain editable for older or unusual toolchains.
+- Fix local Gradle exit code 31 by keeping headless Java tools out of renderer and GLFW initialization, retain complete build logs in Android Files and make execution of Gradle code an explicit trust decision.
+- Fix Minecraft 26.3 Snapshot 6 launch-plan creation by carrying forward the Android skip rule for the newer desktop-only `org.lwjgl:lwjgl-sdl:3.4.2` module.
+- Expand the pixel editor to 594 distinct HSV/grayscale/transparent swatches plus exact RGB/ARGB input, and label the catalog accurately while continuing to enumerate every item texture PNG in the selected installed client JAR.
+
 ## 11.0.0-alpha21
 
 - Make MCLauncher a writable Android Files destination so it appears in **Copy to…**, with direct access to instance folders and Creation Lab outputs.

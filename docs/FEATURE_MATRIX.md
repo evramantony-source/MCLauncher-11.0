@@ -1,4 +1,4 @@
-# MCLauncher 11.0 Alpha 20 feature matrix
+# MCLauncher 11.0 Alpha 22 feature matrix
 
 | Area | Current status |
 |---|---|
@@ -10,8 +10,8 @@
 | Modrinth content | Browsing/install/update, icons, installed state and offset pagination implemented |
 | CurseForge content | Browsing/install/update, icons and index pagination implemented; official API key required |
 | Modpack import/export | Local `.mrpack` and CurseForge profile ZIP import; validated provider-native export with exact references and overrides |
-| MCL Creation Lab | Installed vanilla item catalog, per-pixel and animated-frame editing, validated resource-pack ZIP, 64×64 skin PNG and 64×32 cape PNG implemented |
-| AI project generation | Safe UI boundary documented; provider connection and trusted compilation are not yet enabled |
+| MCL Creation Lab | Every installed vanilla item PNG, thumbnails and in-game previews, per-pixel/animated-frame editing, 594-colour plus exact-ARGB palette, validated resource-pack ZIP, 64×64 skin PNG and 64×32 cape PNG implemented |
+| Code workspace / JAR build | Java/Kotlin/Gradle/resource editing, safe source-ZIP import, wrapper-version-aware verified Gradle download, explicit local build, four loader metadata validation and optional instance install implemented; physical-device Gradle proof required |
 | Java 8/17/21/25 | CI packaging required |
 | Java 17/21/25 archive authenticity | RSA signature verification in CI |
 | Patched LWJGL/GLFW | Coordinate-mapped CI packaging required |
