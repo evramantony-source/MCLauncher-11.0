@@ -159,7 +159,7 @@ class LaunchPlanBuilderAndroidLwjglTest {
                 architecture = "arm64-v8a"
             )
 
-            assertFalse(plan.classpath.any { it.contains("lwjgl-sdl") })
+            assertFalse(plan.classpath.any { File(it).name.startsWith("lwjgl-sdl-") })
             assertEquals(layout.clientJar(versionId).absolutePath, plan.classpath.single())
         } finally {
             root.deleteRecursively()
