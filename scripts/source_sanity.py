@@ -146,8 +146,8 @@ if openltw.get("patch") != "vendor/patches/ltw-minecraft-26.2.patch":
 
 require_contains(
     "app/build.gradle.kts",
-    'versionName = "11.0.0-alpha23"',
-    'versionCode = 33',
+    'versionName = "11.0.0-alpha24"',
+    'versionCode = 34',
     'generated/sdl/mojo-sdl-bindings.aar',
     'generated/sdl/jniLibs',
     'mclauncherAbi',
@@ -162,7 +162,7 @@ require_contains(
     "scripts/source_sanity.py",
     'assembleNoruntimeDebug',
     'assembleDebug -PmclauncherAbi=',
-    'MCLauncher-11.0-alpha23-',
+    'MCLauncher-11.0-alpha24-',
     ':sdl:jni_bindings:assembleDebug',
     '--sdl-bindings-aar',
     'scripts/verify_sdl_apk.py',
@@ -182,7 +182,7 @@ require_contains(
     'No Android LWJGL substitution is defined',
     'prepareAndroidNatives',
     'applyMinecraftOptions',
-    '-Dmclauncher.version=11.0.0-alpha23',
+    '-Dmclauncher.version=11.0.0-alpha24',
     'authSession?.accessToken ?: "0"',
     'AccountType.MICROSOFT) "msa" else "legacy"',
 )
@@ -257,7 +257,9 @@ require_contains(
 )
 require_contains(
     "app/src/main/java/com/mclauncher/app/ui/screens/CreationLabScreen.kt",
-    "In-game item preview",
+    "Vanilla texture preview",
+    "Complete vanilla texture catalog",
+    "vanillaTextureRelativePath",
     "Player preview",
     "Full colour palette",
     "MCL Code Workspace",
@@ -279,10 +281,26 @@ require_absent(
 require_contains(
     "app/src/main/cpp/native_engine.cpp",
     'getenv("MCLAUNCHER_RENDERER_TOKEN")',
+    "Java_git_artdeell_mojoexec_MojoExec_prepareEgl",
+    "Java_git_artdeell_mojoexec_MojoExec_setNativeLibraryDir",
+    "Java_git_artdeell_mojoexec_MojoExec_setDisplayParams",
+    "Using pinned MojoExec renderer API",
     'unsetenv("POJAV_RENDERER")',
     "Starting a headless Java tool without renderer or GLFW initialization",
     'gMojoSendMouseAt',
     'nativeSendTouchButton',
+)
+require_contains(
+    "app/src/main/java/com/mclauncher/app/creation/VanillaTextureCatalog.kt",
+    'VANILLA_TEXTURE_ROOT = "assets/minecraft/textures/"',
+    "isEditableVanillaTexturePath",
+    "block items, armor",
+)
+require_contains(
+    "scripts/verify_bundled_engine.py",
+    "Java_git_artdeell_mojoexec_MojoExec_prepareEgl",
+    "Java_git_artdeell_mojoexec_MojoExec_setNativeLibraryDir",
+    "Java_git_artdeell_mojoexec_MojoExec_setDisplayParams",
 )
 require_contains(
     "core-minecraft/src/test/kotlin/com/mclauncher/minecraft/LaunchPlanBuilderAndroidLwjglTest.kt",

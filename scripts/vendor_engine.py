@@ -25,7 +25,7 @@ from typing import Iterable
 
 SUPPORTED_ABIS = ("arm64-v8a", "armeabi-v7a", "x86_64")
 RUNTIME_VERSIONS = (8, 17, 21, 25)
-USER_AGENT = "MCLauncher-engine-vendor/11.0-alpha23"
+USER_AGENT = "MCLauncher-engine-vendor/11.0-alpha24"
 
 
 def digest(path: Path, algorithm: str) -> str:
@@ -58,7 +58,7 @@ def bundle_version(lock: dict) -> str:
     ).hexdigest()[:12]
     return (
         f"mojo-{lock['engine']['commit'][:12]}-"
-        f"lock-{lock_digest}-mclauncher-11.0-alpha23"
+        f"lock-{lock_digest}-mclauncher-11.0-alpha24"
     )
 
 

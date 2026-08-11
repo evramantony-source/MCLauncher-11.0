@@ -211,9 +211,9 @@ jobs:
         run: |
           APK=app/build/outputs/apk/debug/app-debug.apk
           if [ "$PRIVATE_ACCOUNT_BUILD" = "true" ]; then
-            OUT=app/build/outputs/apk/debug/MCLauncher-11.0-alpha23-microsoft-${TARGET_ABI}.apk
+            OUT=app/build/outputs/apk/debug/MCLauncher-11.0-alpha24-microsoft-${TARGET_ABI}.apk
           else
-            OUT=app/build/outputs/apk/debug/MCLauncher-11.0-alpha23-${TARGET_ABI}.apk
+            OUT=app/build/outputs/apk/debug/MCLauncher-11.0-alpha24-${TARGET_ABI}.apk
           fi
           test -f "$APK"
           cp "$APK" "$OUT"
@@ -230,12 +230,12 @@ jobs:
       - name: Upload standalone APK
         uses: actions/upload-artifact@v4
         with:
-          name: MCLauncher-11.0-alpha23-${{ env.PRIVATE_ACCOUNT_BUILD == 'true' && 'microsoft-' || '' }}${{ env.TARGET_ABI }}
+          name: MCLauncher-11.0-alpha24-${{ env.PRIVATE_ACCOUNT_BUILD == 'true' && 'microsoft-' || '' }}${{ env.TARGET_ABI }}
           retention-days: 14
           path: |
-            app/build/outputs/apk/debug/MCLauncher-11.0-alpha23-${{ env.TARGET_ABI }}.apk
-            app/build/outputs/apk/debug/MCLauncher-11.0-alpha23-${{ env.TARGET_ABI }}.apk.sha256
-            app/build/outputs/apk/debug/MCLauncher-11.0-alpha23-microsoft-${{ env.TARGET_ABI }}.apk
-            app/build/outputs/apk/debug/MCLauncher-11.0-alpha23-microsoft-${{ env.TARGET_ABI }}.apk.sha256
+            app/build/outputs/apk/debug/MCLauncher-11.0-alpha24-${{ env.TARGET_ABI }}.apk
+            app/build/outputs/apk/debug/MCLauncher-11.0-alpha24-${{ env.TARGET_ABI }}.apk.sha256
+            app/build/outputs/apk/debug/MCLauncher-11.0-alpha24-microsoft-${{ env.TARGET_ABI }}.apk
+            app/build/outputs/apk/debug/MCLauncher-11.0-alpha24-microsoft-${{ env.TARGET_ABI }}.apk.sha256
             app/src/main/assets/bundled_engine/bundle-manifest.json
           if-no-files-found: error

@@ -1,5 +1,12 @@
 # Changelog
 
+## 11.0.0-alpha24
+
+- Fix Snapshot 6 exit code 31 by configuring the pinned SDL engine through its exported `git.artdeell.mojoexec.MojoExec` renderer API instead of requiring the obsolete `JREUtils` renderspec symbols.
+- Keep the legacy renderspec bridge as a compatibility fallback and verify the pinned `libmojoexec.so` exports every native entry point MCLauncher calls before publishing the APK.
+- Expand the Creation Lab from only `assets/minecraft/textures/item/` to every safe PNG under the complete vanilla `assets/minecraft/textures/` tree, covering block, entity, equipment, GUI and other assets reused by item models.
+- Add searchable texture-category filters, bounded thumbnail decoding and resource-pack path regressions while retaining per-pixel editing, animation metadata and validated ZIP output.
+
 ## 11.0.0-alpha23
 
 - Replace Alpha 22's placeholder `lwjgl-sdl` skip with the pinned Android LWJGL 3.4.2 SDL artifact, the source-built MojoSDL `libSDL3.so` runtime and its exact Android/ART JNI bindings.

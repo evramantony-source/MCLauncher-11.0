@@ -88,7 +88,7 @@
 ## Alpha 19 — MCL Creation Lab and reliable discovery
 
 - [x] Add a sidebar Creation Lab with per-pixel item, skin and cape editing.
-- [x] Read the complete item texture catalog from each installed client JAR.
+- [x] Read the complete vanilla texture tree from each installed client JAR, including block/entity/equipment assets reused by item models.
 - [x] Export version-correct, validated resource-pack ZIPs and dimension-checked PNGs.
 - [x] Preserve animation metadata and edit vertical animation sheets frame by frame.
 - [x] Add real Modrinth and CurseForge result pagination.

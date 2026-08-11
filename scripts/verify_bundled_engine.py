@@ -206,6 +206,17 @@ def main() -> int:
             if required not in names or not has_magic(target, ELF_MAGIC):
                 errors.append(f"{abi}: required ELF library is missing or invalid: {required}")
 
+        mojoexec = native_dir / "libmojoexec.so"
+        for symbol in (
+            b"Java_git_artdeell_mojoexec_MojoExec_prepareEgl",
+            b"Java_git_artdeell_mojoexec_MojoExec_setNativeLibraryDir",
+            b"Java_git_artdeell_mojoexec_MojoExec_setDisplayParams",
+        ):
+            if has_magic(mojoexec, ELF_MAGIC) and not contains_bytes(mojoexec, symbol):
+                errors.append(
+                    f"{abi}: pinned MojoExec is missing renderer API symbol {symbol.decode()}"
+                )
+
         packaged_sdl = (android_sdl_runtime.get("nativeLibraries") or {}).get(abi) or {}
         for required in ("libSDL3.so", "libmojoexec.so"):
             if len(str(packaged_sdl.get(required) or "")) != 64:

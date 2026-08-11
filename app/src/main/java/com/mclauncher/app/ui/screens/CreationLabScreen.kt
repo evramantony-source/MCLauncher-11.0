@@ -68,6 +68,8 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import com.mclauncher.app.creation.vanillaTextureDisplayName
+import com.mclauncher.app.creation.vanillaTextureRelativePath
 import com.mclauncher.app.ui.CreationLabSection
 import com.mclauncher.app.ui.CreationLabUiState
 import com.mclauncher.app.ui.LabTexture
@@ -195,16 +197,16 @@ fun CreationLabScreen(
                     item {
                         state.document?.let { document ->
                             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                                ItemInGamePreview(
+                                VanillaTexturePreview(
                                     name = state.selectedTexturePath
-                                        ?.removePrefix("assets/minecraft/textures/item/")
-                                        ?.removeSuffix(".png")
-                                        ?.replace('_', ' ')
-                                        ?: "Item texture",
+                                        ?.let(::vanillaTextureDisplayName)
+                                        ?: "Vanilla texture",
                                     document = document
                                 )
                                 PixelEditor(
-                                    title = state.selectedTexturePath?.removePrefix("assets/minecraft/textures/item/") ?: "Item texture",
+                                    title = state.selectedTexturePath
+                                        ?.let(::vanillaTextureRelativePath)
+                                        ?: "Vanilla texture",
                                     document = document,
                                     state = state,
                                     onSelectTool = onSelectTool,
@@ -217,9 +219,9 @@ fun CreationLabScreen(
                                 )
                             }
                         } ?: LauncherCard(modifier = Modifier.fillMaxWidth()) {
-                            Text("Choose an item texture", style = MaterialTheme.typography.titleMedium)
+                            Text("Choose a vanilla texture", style = MaterialTheme.typography.titleMedium)
                             Text(
-                                "The Lab reads every PNG under the installed client's item texture catalog. Choose one above to edit every pixel.",
+                                "The Lab reads the complete vanilla texture tree, including item, block, entity, equipment, GUI and other PNGs used by item models. Choose one above to edit every pixel.",
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
@@ -320,15 +322,28 @@ private fun ResourcePackSetup(
     onSelectTexture: (LabTexture) -> Unit,
     onUpdatePackName: (String) -> Unit
 ) {
-    val visibleTextures = remember(state.textures, textureSearch) {
+    val categories = remember(state.textures) {
+        state.textures
+            .map { vanillaTextureRelativePath(it.path).substringBefore('/') }
+            .distinct()
+            .sorted()
+    }
+    var textureCategory by remember(state.resourceVersion) { mutableStateOf<String?>(null) }
+    val visibleTextures = remember(state.textures, textureSearch, textureCategory) {
         val needle = textureSearch.trim()
-        if (needle.isBlank()) state.textures
-        else state.textures.filter { it.path.contains(needle, ignoreCase = true) || it.displayName.contains(needle, ignoreCase = true) }
+        state.textures.filter { texture ->
+            val categoryMatches = textureCategory == null ||
+                vanillaTextureRelativePath(texture.path).substringBefore('/') == textureCategory
+            val searchMatches = needle.isBlank() ||
+                texture.path.contains(needle, ignoreCase = true) ||
+                texture.displayName.contains(needle, ignoreCase = true)
+            categoryMatches && searchMatches
+        }
     }
     LauncherCard(modifier = Modifier.fillMaxWidth()) {
-        Text("Complete vanilla item texture catalog", style = MaterialTheme.typography.titleMedium)
+        Text("Complete vanilla texture catalog", style = MaterialTheme.typography.titleMedium)
         if (instances.isEmpty()) {
-            Text("Install a Minecraft version first so the Lab can read its complete vanilla item catalog.")
+            Text("Install a Minecraft version first so the Lab can read its complete vanilla texture catalog.")
             return@LauncherCard
         }
         Row(
@@ -355,8 +370,25 @@ private fun ResourcePackSetup(
             onValueChange = onTextureSearchChange,
             modifier = Modifier.fillMaxWidth(),
             singleLine = true,
-            label = { Text("Search all ${state.textures.size} item texture PNGs") }
+            label = { Text("Search all ${state.textures.size} vanilla texture PNGs") }
         )
+        Row(
+            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            FilterChip(
+                selected = textureCategory == null,
+                onClick = { textureCategory = null },
+                label = { Text("All") }
+            )
+            categories.forEach { category ->
+                FilterChip(
+                    selected = textureCategory == category,
+                    onClick = { textureCategory = category },
+                    label = { Text(category.replaceFirstChar { it.titlecase(Locale.ROOT) }) }
+                )
+            }
+        }
         LazyColumn(
             modifier = Modifier.fillMaxWidth().heightIn(min = 120.dp, max = 280.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp)
@@ -381,15 +413,15 @@ private fun ResourcePackSetup(
             }
         }
         if (visibleTextures.isEmpty() && !state.busy) {
-            Text("No item textures match that search.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("No vanilla textures match that search.", color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
 
 @Composable
-private fun ItemInGamePreview(name: String, document: PixelDocument) {
+private fun VanillaTexturePreview(name: String, document: PixelDocument) {
     LauncherCard(modifier = Modifier.fillMaxWidth()) {
-        Text("In-game item preview", style = MaterialTheme.typography.titleMedium)
+        Text("Vanilla texture preview", style = MaterialTheme.typography.titleMedium)
         Text(
             name.replaceFirstChar { it.titlecase(Locale.ROOT) },
             color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -409,7 +441,7 @@ private fun ItemInGamePreview(name: String, document: PixelDocument) {
                 ) {
                     PixelArtPreview(document, Modifier.fillMaxSize())
                 }
-                Text("Inventory slot", style = MaterialTheme.typography.bodySmall)
+                Text("Inventory-style preview", style = MaterialTheme.typography.bodySmall)
             }
             Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Box(

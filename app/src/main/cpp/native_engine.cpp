@@ -442,6 +442,11 @@ JavaVM* locateCreatedVm() {
 using MojoSetRendererPath = void (*)(JNIEnv*, jclass, jstring);
 using MojoConfigureDisplay = void (*)(JNIEnv*, jclass, jint, jint, jint);
 using MojoConfigureRenderer = jboolean (*)(JNIEnv*, jclass, jstring, jboolean, jboolean, jint);
+using MojoExecSetNativeLibraryDir = void (*)(JNIEnv*, jclass, jstring);
+using MojoExecSetDisplayParams = void (*)(JNIEnv*, jclass, jint, jint, jfloat);
+using MojoExecPrepareEgl = jboolean (*)(JNIEnv*, jclass, jstring, jboolean, jboolean, jint);
+using MojoExecSetUseTurnip = void (*)(JNIEnv*, jclass, jboolean);
+using MojoExecPreloadVulkan = void (*)(JNIEnv*, jclass);
 
 std::string findPreloadByTokens(const std::vector<std::string>& libraries,
                                 const std::vector<std::string>& tokens) {
@@ -464,19 +469,43 @@ bool configureMojoRenderer(JNIEnv* env, const std::vector<std::string>& preloadL
         dlsym(RTLD_DEFAULT, "Java_net_kdt_pojavlaunch_utils_JREUtils_configureRenderspecDisplay"));
     auto configureRenderer = reinterpret_cast<MojoConfigureRenderer>(
         dlsym(RTLD_DEFAULT, "Java_net_kdt_pojavlaunch_utils_JREUtils_configureRenderspec"));
-    if (!setPath || !configureDisplay || !configureRenderer) {
+    auto mojoExecSetNativeLibraryDir = reinterpret_cast<MojoExecSetNativeLibraryDir>(
+        dlsym(RTLD_DEFAULT, "Java_git_artdeell_mojoexec_MojoExec_setNativeLibraryDir"));
+    auto mojoExecSetDisplayParams = reinterpret_cast<MojoExecSetDisplayParams>(
+        dlsym(RTLD_DEFAULT, "Java_git_artdeell_mojoexec_MojoExec_setDisplayParams"));
+    auto mojoExecPrepareEgl = reinterpret_cast<MojoExecPrepareEgl>(
+        dlsym(RTLD_DEFAULT, "Java_git_artdeell_mojoexec_MojoExec_prepareEgl"));
+    auto mojoExecSetUseTurnip = reinterpret_cast<MojoExecSetUseTurnip>(
+        dlsym(RTLD_DEFAULT, "Java_git_artdeell_mojoexec_MojoExec_setUseTurnip"));
+    auto mojoExecPreloadVulkan = reinterpret_cast<MojoExecPreloadVulkan>(
+        dlsym(RTLD_DEFAULT, "Java_git_artdeell_mojoexec_MojoExec_preloadVulkan"));
+
+    const bool hasLegacyRenderspec = setPath && configureDisplay && configureRenderer;
+    const bool hasMojoExecRenderspec =
+        mojoExecSetNativeLibraryDir && mojoExecSetDisplayParams && mojoExecPrepareEgl;
+    if (!hasLegacyRenderspec && !hasMojoExecRenderspec) {
         pushError("Bundled engine renderspec API is unavailable");
         return false;
     }
 
     const std::string nativePath = getenv("LD_LIBRARY_PATH") ? getenv("LD_LIBRARY_PATH") : "";
     jstring nativePathValue = env->NewStringUTF(nativePath.c_str());
-    setPath(env, nullptr, nativePathValue);
+    if (hasMojoExecRenderspec) {
+        mojoExecSetNativeLibraryDir(env, nullptr, nativePathValue);
+    } else {
+        setPath(env, nullptr, nativePathValue);
+    }
     env->DeleteLocalRef(nativePathValue);
 
     const int width = std::max(1, mclauncher_window_width());
     const int height = std::max(1, mclauncher_window_height());
-    configureDisplay(env, nullptr, width, height, 60);
+    if (hasMojoExecRenderspec) {
+        mojoExecSetDisplayParams(env, nullptr, width, height, 60.0f);
+        pushLog("Using pinned MojoExec renderer API");
+    } else {
+        configureDisplay(env, nullptr, width, height, 60);
+        pushLog("Using legacy JREUtils renderspec API");
+    }
 
     const char* rendererToken = getenv("MCLAUNCHER_RENDERER_TOKEN");
     if (rendererToken == nullptr || rendererToken[0] == '\0') {
@@ -501,7 +530,19 @@ bool configureMojoRenderer(JNIEnv* env, const std::vector<std::string>& preloadL
         }
     }
     if (renderer == "vulkan") {
-        const bool configured = configureRenderer(env, nullptr, nullptr, JNI_FALSE, JNI_FALSE, 3) == JNI_TRUE;
+        if (hasMojoExecRenderspec) {
+            const std::string driver = getenv("MCLAUNCHER_GRAPHICS_DRIVER")
+                ? getenv("MCLAUNCHER_GRAPHICS_DRIVER")
+                : "system";
+            if (driver == "turnip" && mojoExecSetUseTurnip && mojoExecPreloadVulkan) {
+                mojoExecSetUseTurnip(env, nullptr, JNI_TRUE);
+                mojoExecPreloadVulkan(env, nullptr);
+            }
+            pushLog("Configured native Vulkan surface mode through MojoExec");
+            return true;
+        }
+        const bool configured =
+            configureRenderer(env, nullptr, nullptr, JNI_FALSE, JNI_FALSE, 3) == JNI_TRUE;
         if (configured) pushLog("Configured native Vulkan surface mode");
         else pushError("Native Vulkan renderer configuration failed");
         return configured;
@@ -539,10 +580,15 @@ bool configureMojoRenderer(JNIEnv* env, const std::vector<std::string>& preloadL
         return false;
     }
     jstring rendererPath = env->NewStringUTF(rendererLibrary.c_str());
-    const bool configured = configureRenderer(env, nullptr, rendererPath,
-                                              useLoaderBypass ? JNI_TRUE : JNI_FALSE,
-                                              useGles ? JNI_TRUE : JNI_FALSE,
-                                              glesVersion) == JNI_TRUE;
+    const bool configured = hasMojoExecRenderspec
+        ? mojoExecPrepareEgl(env, nullptr, rendererPath,
+                            useLoaderBypass ? JNI_TRUE : JNI_FALSE,
+                            useGles ? JNI_TRUE : JNI_FALSE,
+                            glesVersion) == JNI_TRUE
+        : configureRenderer(env, nullptr, rendererPath,
+                            useLoaderBypass ? JNI_TRUE : JNI_FALSE,
+                            useGles ? JNI_TRUE : JNI_FALSE,
+                            glesVersion) == JNI_TRUE;
     env->DeleteLocalRef(rendererPath);
     if (configured) {
         pushLog("Configured bundled renderer " + rendererLibrary +

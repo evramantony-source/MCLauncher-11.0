@@ -11,10 +11,12 @@ import com.mclauncher.app.creation.AttachmentInspector
 import com.mclauncher.app.creation.CodeWorkspaceFile
 import com.mclauncher.app.creation.CodeWorkspaceManager
 import com.mclauncher.app.creation.CodeWorkspaceProject
+import com.mclauncher.app.creation.isEditableVanillaTexturePath
 import com.mclauncher.app.creation.LocalAttachment
 import com.mclauncher.app.creation.LocalBuildTarget
 import com.mclauncher.app.creation.LocalProjectBuilder
 import com.mclauncher.app.creation.LocalProjectOutput
+import com.mclauncher.app.creation.vanillaTextureDisplayName
 import com.mclauncher.minecraft.baseGameVersion
 import com.mclauncher.model.MinecraftInstance
 import kotlinx.coroutines.Dispatchers
@@ -441,17 +443,16 @@ class CreationLabViewModel(application: Application) : AndroidViewModel(applicat
                     val discovered = ZipFile(jar).use { zip ->
                         zip.entries().asSequence()
                             .filter { !it.isDirectory }
-                            .filter { it.name.startsWith(ITEM_TEXTURE_PREFIX) && it.name.endsWith(".png", ignoreCase = true) }
+                            .filter { isEditableVanillaTexturePath(it.name) }
                             .distinctBy { it.name }
                             .sortedBy { it.name }
                             .map { entry ->
                                 val path = entry.name
-                                val relative = path.removePrefix(ITEM_TEXTURE_PREFIX).removeSuffix(".png")
-                                val thumbnail = runCatching {
-                                    zip.getInputStream(entry).use { BitmapFactory.decodeStream(it) }
-                                        ?.toThumbnailDocument()
-                                }.getOrNull()
-                                LabTexture(path, relative.replace('/', ' ').replace('_', ' '), thumbnail)
+                                LabTexture(
+                                    path = path,
+                                    displayName = vanillaTextureDisplayName(path),
+                                    thumbnail = runCatching { zip.readTextureThumbnail(entry) }.getOrNull()
+                                )
                             }
                             .toList()
                     }
@@ -468,13 +469,13 @@ class CreationLabViewModel(application: Application) : AndroidViewModel(applicat
                         resourcePackFormat = format.toString(),
                         editedTextureCount = currentResourceEdits().size,
                         busy = false,
-                        message = if (textures.isEmpty()) "No vanilla item textures were found in this client JAR" else null
+                        message = if (textures.isEmpty()) "No editable vanilla textures were found in this client JAR" else null
                     )
                 }
             }.onFailure { error ->
                 resourceJar = null
                 resourcePackFormat = null
-                mutableState.update { it.copy(busy = false, message = "Could not open item textures: ${error.message}") }
+                mutableState.update { it.copy(busy = false, message = "Could not open vanilla textures: ${error.message}") }
             }
         }
     }
@@ -625,7 +626,7 @@ class CreationLabViewModel(application: Application) : AndroidViewModel(applicat
         val version = current.resourceVersion
             ?: return mutableState.update { it.copy(message = "Choose an installed Minecraft version first") }
         val edits = resourceEditsByVersion[version].orEmpty().toMap()
-        if (edits.isEmpty()) return mutableState.update { it.copy(message = "Edit at least one item texture before creating the pack") }
+        if (edits.isEmpty()) return mutableState.update { it.copy(message = "Edit at least one vanilla texture before creating the pack") }
         val jar = resourceJar
             ?: return mutableState.update { it.copy(message = "The Minecraft client JAR is not available") }
         val format = resourcePackFormat
@@ -806,7 +807,7 @@ class CreationLabViewModel(application: Application) : AndroidViewModel(applicat
             ZipOutputStream(destination.outputStream().buffered()).use { zip ->
                 zip.writeEntry("pack.mcmeta", json.encodeToString(JsonObject.serializer(), metadata).toByteArray())
                 edits.toSortedMap().forEach { (path, document) ->
-                    require(path.startsWith(ITEM_TEXTURE_PREFIX) && path.endsWith(".png")) { "Unsafe texture path $path" }
+                    require(isEditableVanillaTexturePath(path)) { "Unsafe texture path $path" }
                     val png = ByteArrayOutputStream().use { bytes ->
                         check(document.toBitmap().compress(Bitmap.CompressFormat.PNG, 100, bytes)) { "PNG encoder failed for $path" }
                         bytes.toByteArray()
@@ -832,7 +833,7 @@ class CreationLabViewModel(application: Application) : AndroidViewModel(applicat
                 "pack.mcmeta compatibility range is missing"
             }
             val textures = zip.entries().asSequence()
-                .filter { !it.isDirectory && it.name.startsWith(ITEM_TEXTURE_PREFIX) && it.name.endsWith(".png") }
+                .filter { !it.isDirectory && isEditableVanillaTexturePath(it.name) }
                 .toList()
             require(textures.size == expectedTextures) { "The ZIP lost one or more edited textures" }
             textures.forEach { entry ->
@@ -919,6 +920,28 @@ class CreationLabViewModel(application: Application) : AndroidViewModel(applicat
         return document
     }
 
+    private fun ZipFile.readTextureThumbnail(entry: ZipEntry): PixelDocument? {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        getInputStream(entry).use { BitmapFactory.decodeStream(it, null, bounds) }
+        if (bounds.outWidth < 1 || bounds.outHeight < 1) return null
+
+        val firstFrameHeight = if (
+            bounds.outHeight > bounds.outWidth && bounds.outHeight % bounds.outWidth == 0
+        ) bounds.outWidth else bounds.outHeight
+        val largestFrameDimension = maxOf(bounds.outWidth, firstFrameHeight)
+        var sampleSize = 1
+        while (largestFrameDimension / sampleSize > MAX_TEXTURE_THUMBNAIL_DECODE_SIZE) {
+            sampleSize *= 2
+        }
+        val options = BitmapFactory.Options().apply {
+            inSampleSize = sampleSize
+            inScaled = false
+            inPreferredConfig = Bitmap.Config.ARGB_8888
+        }
+        return getInputStream(entry).use { BitmapFactory.decodeStream(it, null, options) }
+            ?.toThumbnailDocument()
+    }
+
     private fun PixelDocument.toBitmap(): Bitmap = Bitmap.createBitmap(
         pixels,
         width,
@@ -933,11 +956,11 @@ class CreationLabViewModel(application: Application) : AndroidViewModel(applicat
         .ifBlank { "mcl-creation" }
 
     companion object {
-        private const val ITEM_TEXTURE_PREFIX = "assets/minecraft/textures/item/"
         private const val MODERN_PACK_METADATA_VERSION = 65
         private const val MAX_HISTORY = 30
         private const val MAX_AI_ATTACHMENTS = 8
         private const val MAX_TEXTURE_THUMBNAIL_SIZE = 32
+        private const val MAX_TEXTURE_THUMBNAIL_DECODE_SIZE = 64
 
         private fun blankDocument(width: Int, height: Int) = PixelDocument(width, height, IntArray(width * height))
 
