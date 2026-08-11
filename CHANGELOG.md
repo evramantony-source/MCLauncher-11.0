@@ -1,5 +1,11 @@
 # Changelog
 
+## 11.0.0-alpha26
+
+- Fix the Snapshot 6 `glGetError mismatch` by backporting MojoSDL's upstream Android resolver fix, so SDL obtains OpenGL functions from OpenLTW's EGL resolver instead of an unrelated system GLES handle.
+- Keep the change confined to the Android SDL3 path used by 26.3 Snapshot 4 and newer; legacy GLFW initialization and every older working Minecraft launch remain unchanged.
+- Preserve Alpha 25's repaired GLFW ABI, SDL/GLFW backend split, physical input routing and complete vanilla texture-tree catalog.
+
 ## 11.0.0-alpha25
 
 - Restore every legacy Minecraft launch broken by Alpha 24 by implementing the `GLFW.receiveInit()` callback required by the pinned dnbootstrap JNI ABI.

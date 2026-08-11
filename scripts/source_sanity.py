@@ -119,6 +119,12 @@ lock = json.loads(text("vendor/engine-lock.json") or "{}")
 engine_commit = lock.get("engine", {}).get("commit", "")
 if not re.fullmatch(r"[0-9a-f]{40}", engine_commit):
     errors.append("vendor/engine-lock.json: engine commit must be a full 40-character SHA")
+android_sdl = lock.get("engine", {}).get("androidSdlCompatibility", {})
+for key in ("submoduleCommit", "upstreamFixCommit"):
+    if not re.fullmatch(r"[0-9a-f]{40}", str(android_sdl.get(key, ""))):
+        errors.append(f"vendor/engine-lock.json: Android SDL {key} must be a full SHA")
+if android_sdl.get("patch") != "vendor/patches/mojosdl-android-opengl-proc-identity.patch":
+    errors.append("vendor/engine-lock.json: Android SDL compatibility patch is not pinned")
 for major in (8, 17, 21, 25):
     source = lock.get("runtimes", {}).get("sources", {}).get(str(major))
     if not source:
@@ -146,8 +152,8 @@ if openltw.get("patch") != "vendor/patches/ltw-minecraft-26.2.patch":
 
 require_contains(
     "app/build.gradle.kts",
-    'versionName = "11.0.0-alpha25"',
-    'versionCode = 35',
+    'versionName = "11.0.0-alpha26"',
+    'versionCode = 36',
     'generated/sdl/mojo-sdl-bindings.aar',
     'generated/sdl/jniLibs',
     'mclauncherAbi',
@@ -162,11 +168,12 @@ require_contains(
     "scripts/source_sanity.py",
     'assembleNoruntimeDebug',
     'assembleDebug -PmclauncherAbi=',
-    'MCLauncher-11.0-alpha25-',
+    'MCLauncher-11.0-alpha26-',
     ':sdl:jni_bindings:assembleDebug',
     '--sdl-bindings-aar',
     'scripts/verify_sdl_apk.py',
     'mojo-pointer-click-position.patch',
+    'mojosdl-android-opengl-proc-identity.patch',
     "Build pinned OpenLTW with Minecraft 26.2 compatibility",
     "--ltw-aar",
     "pull_request:",
@@ -182,9 +189,14 @@ require_contains(
     'No Android LWJGL substitution is defined',
     'prepareAndroidNatives',
     'applyMinecraftOptions',
-    '-Dmclauncher.version=11.0.0-alpha25',
+    '-Dmclauncher.version=11.0.0-alpha26',
     'authSession?.accessToken ?: "0"',
     'AccountType.MICROSOFT) "msa" else "legacy"',
+)
+require_contains(
+    "vendor/patches/mojosdl-android-opengl-proc-identity.patch",
+    "SDL_EGL_GetProcAddressInternal",
+    "!defined(SDL_VIDEO_DRIVER_ANDROID)",
 )
 require_contains(
     "vendor/patches/mojo-pointer-click-position.patch",
