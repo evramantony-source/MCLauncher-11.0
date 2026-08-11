@@ -1,5 +1,12 @@
 # Changelog
 
+## 11.0.0-alpha23
+
+- Replace Alpha 22's placeholder `lwjgl-sdl` skip with the pinned Android LWJGL 3.4.2 SDL artifact, the source-built MojoSDL `libSDL3.so` runtime and its exact Android/ART JNI bindings.
+- Initialize SDL before the embedded JVM, publish the Android Surface only after Minecraft selects SDL, and pass the installed `libSDL3.so` path through `org.lwjgl.sdl.libname`.
+- Route touch controls and physical keyboard, mouse, wheel, relative motion, pointer capture, and primary/secondary/middle/back/forward buttons through SDL3 for Minecraft 26.3 Snapshot 4 and newer while retaining GLFW for older versions.
+- Verify the exact SDL substitution, native ELF payload and required SDL callback types inside the final APK before publishing the Alpha 23 artifact.
+
 ## 11.0.0-alpha22
 
 - Replace the prompt-based Creation Engine with an editable, Files-visible code workspace for Java, Kotlin, Gradle, metadata and resource files, including safe source-ZIP import and explicit save/create-file controls.

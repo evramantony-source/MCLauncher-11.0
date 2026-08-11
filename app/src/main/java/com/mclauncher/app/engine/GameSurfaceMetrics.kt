@@ -5,7 +5,7 @@ package com.mclauncher.app.engine
  *
  * A SurfaceView can fill the device while its SurfaceHolder renders at a fixed
  * resolution. Pointer positions are normalized in the View coordinate space,
- * while relative motion is scaled into the Surface buffer before entering GLFW.
+ * while relative motion is scaled into the Surface buffer before entering GLFW or SDL.
  */
 internal data class GameSurfaceMetrics(
     val viewWidth: Int = 1,

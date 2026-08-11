@@ -3,7 +3,7 @@
     "name": "MCLauncher Android launch engine",
     "sourceProject": "MojoLauncher/MojoLauncher",
     "repository": "https://github.com/MojoLauncher/MojoLauncher.git",
-    "commit": "84873f3c388206ffe029721512335697345c0bb0",
+    "commit": "979625dc0fad114dbe75f7e1d5026214e6975d50",
     "license": "LGPL-3.0"
   },
   "runtimes": {

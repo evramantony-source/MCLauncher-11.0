@@ -77,6 +77,9 @@ def main() -> int:
         errors.append(f"Manifest ABIs {declared_abis!r} do not match requested ABIs {abis!r}")
     if not manifest.get("engine", {}).get("commit"):
         errors.append("Pinned engine commit is missing from manifest")
+    android_sdl_runtime = manifest.get("androidSdlRuntime") or {}
+    if len(str(android_sdl_runtime.get("bindingsAarSha256") or "")) != 64:
+        errors.append("Pinned SDL Android bindings digest is missing")
 
     declared_files = manifest.get("files")
     if not isinstance(declared_files, dict) or not declared_files:
@@ -117,6 +120,11 @@ def main() -> int:
         errors.append("patched LWJGL core artifact is missing")
     if not any("lwjgl-glfw" in Path(str(entry.get("path", ""))).name for entry in artifact_entries):
         errors.append("patched LWJGL GLFW artifact is missing")
+    if not any(
+        str(entry.get("coordinate", "")) == "org.lwjgl:lwjgl-sdl:3.4.2"
+        for entry in artifact_entries
+    ):
+        errors.append("patched LWJGL SDL 3.4.2 artifact is missing")
 
     for entry in patched:
         relative = str(entry.get("path") or "")
@@ -187,10 +195,21 @@ def main() -> int:
     for abi in abis:
         native_dir = root / abi / "natives"
         names = set(native_records.get(abi) or [])
-        for required in ("libpojavexec.so", "libpojavexec_awt.so", "libglfw.so"):
+        for required in (
+            "libpojavexec.so",
+            "libpojavexec_awt.so",
+            "libglfw.so",
+            "libmojoexec.so",
+            "libSDL3.so",
+        ):
             target = native_dir / required
             if required not in names or not has_magic(target, ELF_MAGIC):
                 errors.append(f"{abi}: required ELF library is missing or invalid: {required}")
+
+        packaged_sdl = (android_sdl_runtime.get("nativeLibraries") or {}).get(abi) or {}
+        for required in ("libSDL3.so", "libmojoexec.so"):
+            if len(str(packaged_sdl.get(required) or "")) != 64:
+                errors.append(f"{abi}: packaged Android SDL digest is missing: {required}")
 
         jna6 = native_dir / "jna-6/libjnidispatch.so"
         jna7 = native_dir / "jna-7/libjnidispatch.so"

@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import base64
 import hashlib
+import io
 import json
 import shutil
 import subprocess
@@ -24,7 +25,7 @@ from typing import Iterable
 
 SUPPORTED_ABIS = ("arm64-v8a", "armeabi-v7a", "x86_64")
 RUNTIME_VERSIONS = (8, 17, 21, 25)
-USER_AGENT = "MCLauncher-engine-vendor/11.0-alpha22"
+USER_AGENT = "MCLauncher-engine-vendor/11.0-alpha23"
 
 
 def digest(path: Path, algorithm: str) -> str:
@@ -57,7 +58,7 @@ def bundle_version(lock: dict) -> str:
     ).hexdigest()[:12]
     return (
         f"mojo-{lock['engine']['commit'][:12]}-"
-        f"lock-{lock_digest}-mclauncher-11.0-alpha22"
+        f"lock-{lock_digest}-mclauncher-11.0-alpha23"
     )
 
 
@@ -232,6 +233,69 @@ def copy_apk_native_libraries(apk: Path, output: Path, abis: Iterable[str]) -> d
         if missing:
             raise RuntimeError(f"Pinned engine build lacks {sorted(missing)} for {abi}")
     return {abi: sorted(set(names)) for abi, names in copied.items()}
+
+
+def vendor_android_sdl_runtime(
+    mojo_apk: Path,
+    bindings_aar: Path,
+    destination: Path,
+    abis: Iterable[str],
+) -> dict:
+    """Prepare the ART bindings and loadable SDL3 libraries used by GameActivity.
+
+    Minecraft 26.3 Snapshot 4 and newer initialize SDL from inside the embedded
+    HotSpot VM. SDL's Android port then calls back into ordinary Android/ART Java
+    classes. Those classes and libSDL3 therefore need to be packaged in the
+    MCLauncher APK itself, in addition to the engine copy stored in assets.
+    """
+    if not bindings_aar.is_file():
+        raise RuntimeError(f"Pinned SDL Android bindings AAR is missing: {bindings_aar}")
+    if not mojo_apk.is_file():
+        raise RuntimeError(f"Pinned Mojo APK is missing: {mojo_apk}")
+    if destination == Path(destination.anchor) or len(destination.parts) < 3:
+        raise RuntimeError(f"Refusing unsafe SDL output directory: {destination}")
+
+    required_classes = {
+        "git/mojo/sdl/GrabListener.class",
+        "git/mojo/sdl/SDL.class",
+        "git/mojo/sdl/SDLActivity.class",
+        "git/mojo/sdl/SDLClipboard.class",
+        "git/mojo/sdl/SDLInputConnection.class",
+    }
+    try:
+        with zipfile.ZipFile(bindings_aar) as aar:
+            classes_jar = aar.read("classes.jar")
+        with zipfile.ZipFile(io.BytesIO(classes_jar)) as classes:
+            missing_classes = required_classes - set(classes.namelist())
+    except (KeyError, zipfile.BadZipFile) as exc:
+        raise RuntimeError(f"Invalid SDL Android bindings AAR: {bindings_aar}") from exc
+    if missing_classes:
+        raise RuntimeError(
+            f"SDL Android bindings AAR lacks {sorted(missing_classes)}"
+        )
+
+    if destination.exists():
+        shutil.rmtree(destination)
+    destination.mkdir(parents=True, exist_ok=True)
+    packaged_aar = destination / "mojo-sdl-bindings.aar"
+    shutil.copy2(bindings_aar, packaged_aar)
+
+    required_libraries = ("libSDL3.so", "libmojoexec.so")
+    native_digests: dict[str, dict[str, str]] = {}
+    with zipfile.ZipFile(mojo_apk) as archive:
+        for abi in abis:
+            native_digests[abi] = {}
+            for filename in required_libraries:
+                target = destination / "jniLibs" / abi / filename
+                extract_archive_member(archive, f"lib/{abi}/{filename}", target)
+                if target.read_bytes()[:4] != b"\x7fELF":
+                    raise RuntimeError(f"Pinned SDL runtime is not ELF: {abi}/{filename}")
+                native_digests[abi][filename] = sha256(target)
+
+    return {
+        "bindingsAarSha256": sha256(packaged_aar),
+        "nativeLibraries": native_digests,
+    }
 
 
 def write_graphics_packs(output: Path, copied: dict[str, list[str]]) -> list[dict]:
@@ -828,10 +892,12 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--mojo-root", type=Path, required=True)
     parser.add_argument("--mojo-apk", type=Path, required=True)
+    parser.add_argument("--sdl-bindings-aar", type=Path, required=True)
     parser.add_argument("--ltw-root", type=Path, required=True)
     parser.add_argument("--ltw-aar", type=Path, required=True)
     parser.add_argument("--abis", default="arm64-v8a")
     parser.add_argument("--output", type=Path, default=Path("app/src/main/assets/bundled_engine"))
+    parser.add_argument("--sdl-output", type=Path, default=Path("app/build/generated/sdl"))
     parser.add_argument("--cache", type=Path, default=Path(".engine-cache"))
     parser.add_argument("--lock", type=Path, default=Path("vendor/engine-lock.json"))
     args = parser.parse_args()
@@ -847,6 +913,12 @@ def main() -> int:
     args.cache.mkdir(parents=True, exist_ok=True)
 
     natives = copy_apk_native_libraries(args.mojo_apk, output, abis)
+    android_sdl_runtime = vendor_android_sdl_runtime(
+        args.mojo_apk,
+        args.sdl_bindings_aar,
+        args.sdl_output.resolve(),
+        abis,
+    )
     renderers = write_graphics_packs(output, natives)
     openltw, openltw_license = vendor_openltw(
         args.ltw_aar,
@@ -894,6 +966,7 @@ def main() -> int:
         "bundleVersion": version,
         "architectures": list(abis),
         "engine": lock["engine"],
+        "androidSdlRuntime": android_sdl_runtime,
         "nativeLibraries": natives,
         "rendererPacks": renderers,
         "patchedLibraries": patched,

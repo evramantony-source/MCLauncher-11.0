@@ -56,6 +56,7 @@ import com.mclauncher.app.engine.GameInputBridge
 import com.mclauncher.app.engine.GyroInputController
 import com.mclauncher.app.engine.NativeEngineCoordinator
 import com.mclauncher.app.engine.NativeLaunchBridge
+import com.mclauncher.app.engine.SdlInputBridge
 import com.mclauncher.app.ui.game.GameTouchOverlay
 import com.mclauncher.app.ui.theme.MCLauncherTheme
 import com.mclauncher.minecraft.LaunchPlan
@@ -111,16 +112,9 @@ class GameActivity : ComponentActivity() {
         gyroInputController = GyroInputController(this)
         GLFW.initializeBridge(applicationContext)
         GLFW.setGrabListener { grabbing ->
-            runOnUiThread {
-                GameInputBridge.syncPointerState(GLFW.cursorX, GLFW.cursorY, grabbing)
-                if (physicalMouseCapture && grabbing) {
-                    runCatching { gameSurfaceView?.requestPointerCapture() }
-                } else {
-                    runCatching { gameSurfaceView?.releasePointerCapture() }
-                }
-                GameInputBridge.resetPointerPosition()
-            }
+            applyPlatformGrabState(grabbing, GLFW.cursorX, GLFW.cursorY)
         }
+        SdlInputBridge.setGrabStateListener { grabbing -> applyPlatformGrabState(grabbing) }
         GLFW.setCursorListener { cursor ->
             runOnUiThread {
                 val view = gameSurfaceView ?: return@runOnUiThread
@@ -132,11 +126,23 @@ class GameActivity : ComponentActivity() {
                 }
             }
         }
+        val usesSdl = launchPlan?.classpath?.any { path ->
+            File(path).name.startsWith("lwjgl-sdl-")
+        } == true
+        val sdlStartupFailure = if (usesSdl) {
+            SdlInputBridge.prepare(this).exceptionOrNull()?.let { error ->
+                generateSequence(error) { it.cause }.last().message
+                    ?: error.message
+                    ?: error::class.java.simpleName
+            }
+        } else {
+            null
+        }
         val coordinator = NativeEngineCoordinator(applicationContext)
         val dataRoot = File(planPath).parentFile?.parentFile ?: filesDir
         val sessionLog = File(dataRoot, "logs/latest-session.log").apply {
             parentFile?.mkdirs()
-            writeText("MCLauncher 11.0 alpha22 session ${System.currentTimeMillis()}\n")
+            writeText("MCLauncher 11.0 alpha23 session ${System.currentTimeMillis()}\n")
         }
 
         setContent {
@@ -184,6 +190,10 @@ class GameActivity : ComponentActivity() {
                         !NativeLaunchBridge.isAvailable -> {
                             status = "Native engine unavailable"
                             appendLog(NativeLaunchBridge.unavailableReason)
+                        }
+                        sdlStartupFailure != null -> {
+                            status = "SDL3 runtime unavailable"
+                            appendLog(sdlStartupFailure)
                         }
                         planPath.isBlank() -> status = "Launch plan missing"
                         else -> {
@@ -336,6 +346,14 @@ class GameActivity : ComponentActivity() {
                                         if (NativeLaunchBridge.isAvailable) {
                                             runCatching { NativeLaunchBridge.nativeSetSurface(holder.surface) }
                                         }
+                                        if (usesSdl) {
+                                            SdlInputBridge.surfaceCreated(
+                                                holder.surface,
+                                                targetBufferWidth ?: view.width,
+                                                targetBufferHeight ?: view.height,
+                                                view.display?.refreshRate ?: 60f
+                                            )
+                                        }
                                         status = "Game surface ready"
                                         beginLaunch(holder.surface)
                                     }
@@ -358,6 +376,14 @@ class GameActivity : ComponentActivity() {
                                         if (NativeLaunchBridge.isAvailable) {
                                             runCatching { NativeLaunchBridge.nativeSetSurface(holder.surface) }
                                         }
+                                        if (usesSdl) {
+                                            SdlInputBridge.surfaceChanged(
+                                                holder.surface,
+                                                width,
+                                                height,
+                                                view.display?.refreshRate ?: 60f
+                                            )
+                                        }
                                     }
 
                                     override fun surfaceDestroyed(holder: SurfaceHolder) {
@@ -365,6 +391,7 @@ class GameActivity : ComponentActivity() {
                                         if (NativeLaunchBridge.isAvailable) {
                                             runCatching { NativeLaunchBridge.nativeSetSurface(null) }
                                         }
+                                        if (usesSdl) SdlInputBridge.surfaceDestroyed()
                                     }
                                 })
                             }
@@ -475,12 +502,14 @@ class GameActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        SdlInputBridge.focusChanged(true)
         if (gyroEnabled) gyroInputController?.start(gyroSensitivity)
     }
 
     override fun onPause() {
         gyroInputController?.stop()
         GameInputBridge.releaseAll()
+        SdlInputBridge.focusChanged(false)
         runCatching { gameSurfaceView?.releasePointerCapture() }
         super.onPause()
     }
@@ -511,7 +540,7 @@ class GameActivity : ComponentActivity() {
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
         if (event.isFromSource(InputDevice.SOURCE_MOUSE)) {
             externalInputDetected = true
-            if (physicalMouseCapture && GLFW.isGrabbing() && event.actionMasked == MotionEvent.ACTION_DOWN) {
+            if (physicalMouseCapture && GameInputBridge.isPointerGrabbed() && event.actionMasked == MotionEvent.ACTION_DOWN) {
                 runCatching { gameSurfaceView?.requestPointerCapture() }
             }
             if (GameInputBridge.handlePointerButtonEvent(event)) return true
@@ -526,6 +555,7 @@ class GameActivity : ComponentActivity() {
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
+        SdlInputBridge.focusChanged(hasFocus)
         if (hasFocus) enterImmersiveMode()
     }
 
@@ -535,6 +565,7 @@ class GameActivity : ComponentActivity() {
         GameInputBridge.releaseAll()
         GLFW.setGrabListener(null)
         GLFW.setCursorListener(null)
+        SdlInputBridge.shutdown()
         gameSurfaceView = null
         if (NativeLaunchBridge.isAvailable) {
             runCatching { NativeLaunchBridge.nativeSetSurface(null) }
@@ -546,6 +577,26 @@ class GameActivity : ComponentActivity() {
             // GameActivity runs in :minecraft. HotSpot cannot be safely restarted in the
             // same Android process, so close only this isolated process after the activity.
             Handler(Looper.getMainLooper()).postDelayed({ Process.killProcess(Process.myPid()) }, 120)
+        }
+    }
+
+    private fun applyPlatformGrabState(
+        grabbing: Boolean,
+        cursorX: Double? = null,
+        cursorY: Double? = null
+    ) {
+        runOnUiThread {
+            if (cursorX != null && cursorY != null) {
+                GameInputBridge.syncPointerState(cursorX, cursorY, grabbing)
+            } else {
+                GameInputBridge.updateGrabState(grabbing)
+            }
+            if (physicalMouseCapture && grabbing) {
+                runCatching { gameSurfaceView?.requestPointerCapture() }
+            } else {
+                runCatching { gameSurfaceView?.releasePointerCapture() }
+            }
+            GameInputBridge.resetPointerPosition()
         }
     }
 

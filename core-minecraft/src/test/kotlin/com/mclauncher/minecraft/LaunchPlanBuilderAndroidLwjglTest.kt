@@ -102,7 +102,7 @@ class LaunchPlanBuilderAndroidLwjglTest {
     }
 
     @Test
-    fun skipsNewerDesktopOnlyLwjglSdlModuleByModuleFallback() = runBlocking {
+    fun mapsSnapshot6ToExactAndroidLwjglSdl342Artifact() = runBlocking {
         val root = Files.createTempDirectory("mclauncher-lwjgl-sdl-test").toFile()
         try {
             val layout = MinecraftLayout(root).also(MinecraftLayout::ensureBaseDirectories)
@@ -124,18 +124,41 @@ class LaunchPlanBuilderAndroidLwjglTest {
                       "downloads": {
                         "artifact": { "path": "org/lwjgl/lwjgl-sdl/3.4.2/lwjgl-sdl-3.4.2.jar" }
                       }
+                    },
+                    {
+                      "name": "org.lwjgl:lwjgl:3.4.2",
+                      "downloads": {
+                        "artifact": { "path": "org/lwjgl/lwjgl/3.4.2/lwjgl-3.4.2.jar" }
+                      }
                     }
                   ]
                 }
                 """.trimIndent()
             )
+            val sdlPath = "org/lwjgl/lwjgl-sdl/3.4.2/lwjgl-sdl-3.4.2.jar"
+            val corePath = "org/lwjgl/lwjgl/3.4.2/lwjgl-3.4.2.jar"
+            val nativesPath = "org/lwjgl/lwjgl/3.4.2/lwjgl-natives-linux-arm64-3.4.2.jar"
+            createJar(File(layout.engineJarsDirectory, sdlPath), "META-INF/sdl.txt", "android-sdl")
+            createJar(File(layout.engineJarsDirectory, corePath), "META-INF/core.txt", "android-core")
+            createJar(File(layout.engineJarsDirectory, nativesPath), "linux/arm64/liblwjgl.so", "ELF-test")
             File(layout.engineJarsDirectory, "substitutions.json").writeText(
                 """
                 {
                   "libraries": {
-                    "org.lwjgl:lwjgl-sdl:3.3.6": {
-                      "name": "org.lwjgl:lwjgl-sdl:3.3.6",
-                      "skip": true
+                    "org.lwjgl:lwjgl-sdl:3.4.2": {
+                      "name": "org.lwjgl:lwjgl-sdl:3.4.2",
+                      "downloads": {
+                        "artifact": { "path": "$sdlPath" }
+                      }
+                    },
+                    "org.lwjgl:lwjgl:3.4.2": {
+                      "name": "org.lwjgl:lwjgl:3.4.2",
+                      "downloads": {
+                        "artifact": { "path": "$corePath" },
+                        "classifiers": {
+                          "natives-linux-arm64": { "path": "$nativesPath" }
+                        }
+                      }
                     }
                   },
                   "artifactMapping": {}
@@ -159,8 +182,15 @@ class LaunchPlanBuilderAndroidLwjglTest {
                 architecture = "arm64-v8a"
             )
 
-            assertFalse(plan.classpath.any { File(it).name.startsWith("lwjgl-sdl-") })
-            assertEquals(layout.clientJar(versionId).absolutePath, plan.classpath.single())
+            assertEquals(
+                listOf(
+                    File(layout.engineJarsDirectory, sdlPath).absolutePath,
+                    File(layout.engineJarsDirectory, corePath).absolutePath,
+                    layout.clientJar(versionId).absolutePath
+                ),
+                plan.classpath
+            )
+            assertTrue(File(plan.nativesDirectory, "liblwjgl.so").isFile)
         } finally {
             root.deleteRecursively()
         }

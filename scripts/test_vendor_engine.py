@@ -85,6 +85,43 @@ class VendorEngineTest(unittest.TestCase):
         self.assertNotEqual(first, second)
         self.assertIn("lock-", first)
 
+    def test_android_sdl_runtime_is_packaged_for_art(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            abi = "arm64-v8a"
+            classes_jar = root / "classes.jar"
+            with zipfile.ZipFile(classes_jar, "w") as classes:
+                for name in (
+                    "git/mojo/sdl/GrabListener.class",
+                    "git/mojo/sdl/SDL.class",
+                    "git/mojo/sdl/SDLActivity.class",
+                    "git/mojo/sdl/SDLClipboard.class",
+                    "git/mojo/sdl/SDLInputConnection.class",
+                ):
+                    classes.writestr(name, b"class")
+            bindings = root / "bindings.aar"
+            with zipfile.ZipFile(bindings, "w") as aar:
+                aar.write(classes_jar, "classes.jar")
+            mojo_apk = root / "mojo.apk"
+            with zipfile.ZipFile(mojo_apk, "w") as apk:
+                apk.writestr(f"lib/{abi}/libSDL3.so", b"\x7fELFsdl")
+                apk.writestr(f"lib/{abi}/libmojoexec.so", b"\x7fELFmojo")
+
+            destination = root / "generated/sdl"
+            record = vendor_engine.vendor_android_sdl_runtime(
+                mojo_apk,
+                bindings,
+                destination,
+                (abi,),
+            )
+
+            self.assertTrue((destination / "mojo-sdl-bindings.aar").is_file())
+            self.assertTrue((destination / f"jniLibs/{abi}/libSDL3.so").is_file())
+            self.assertEqual(
+                len(record["nativeLibraries"][abi]["libmojoexec.so"]),
+                64,
+            )
+
     def test_mobileglues_and_jna_are_vendored_by_abi(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

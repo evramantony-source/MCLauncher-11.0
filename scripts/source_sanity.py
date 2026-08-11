@@ -146,8 +146,10 @@ if openltw.get("patch") != "vendor/patches/ltw-minecraft-26.2.patch":
 
 require_contains(
     "app/build.gradle.kts",
-    'versionName = "11.0.0-alpha22"',
-    'versionCode = 32',
+    'versionName = "11.0.0-alpha23"',
+    'versionCode = 33',
+    'generated/sdl/mojo-sdl-bindings.aar',
+    'generated/sdl/jniLibs',
     'mclauncherAbi',
     'abiFilters += targetAbi',
     'CURSEFORGE_API_KEY',
@@ -160,7 +162,10 @@ require_contains(
     "scripts/source_sanity.py",
     'assembleNoruntimeDebug',
     'assembleDebug -PmclauncherAbi=',
-    'MCLauncher-11.0-alpha22-',
+    'MCLauncher-11.0-alpha23-',
+    ':sdl:jni_bindings:assembleDebug',
+    '--sdl-bindings-aar',
+    'scripts/verify_sdl_apk.py',
     'mojo-pointer-click-position.patch',
     "Build pinned OpenLTW with Minecraft 26.2 compatibility",
     "--ltw-aar",
@@ -177,7 +182,7 @@ require_contains(
     'No Android LWJGL substitution is defined',
     'prepareAndroidNatives',
     'applyMinecraftOptions',
-    '-Dmclauncher.version=11.0.0-alpha22',
+    '-Dmclauncher.version=11.0.0-alpha23',
     'authSession?.accessToken ?: "0"',
     'AccountType.MICROSOFT) "msa" else "legacy"',
 )
@@ -282,7 +287,7 @@ require_contains(
 require_contains(
     "core-minecraft/src/test/kotlin/com/mclauncher/minecraft/LaunchPlanBuilderAndroidLwjglTest.kt",
     "org.lwjgl:lwjgl-sdl:3.4.2",
-    "skipsNewerDesktopOnlyLwjglSdlModuleByModuleFallback",
+    "mapsSnapshot6ToExactAndroidLwjglSdl342Artifact",
 )
 require_contains(
     "app/build.gradle.kts",
@@ -326,6 +331,7 @@ require_contains(
     "prepareRuntimeAwtCompatibility",
     "resolveLwjglOpenGlLibrary",
     '"org.lwjgl.opengl.libname"',
+    '"org.lwjgl.sdl.libname"',
     '"jna.boot.library.path"',
     "selectJnaNativeDirectory",
     "lwjglExtractDirectory",
@@ -428,6 +434,7 @@ require_contains(
     "vendor_openltw",
     "vendor_jna_dispatch",
     "bundle_version",
+    "vendor_android_sdl_runtime",
 )
 require_contains(
     "app/src/main/java/com/mclauncher/app/ui/game/TouchControls.kt",
@@ -483,6 +490,18 @@ require_contains(
     'pendingDirectTouchRelease',
     'mainHandler.postDelayed(release, MOUSE_CLICK_HOLD_MILLIS)',
     'fun clickMouseButton(button:',
+    'SdlInputBridge.isActive',
+    'SdlInputBridge.key(event.keyCode, pressed)',
+    'MotionEvent.BUTTON_FORWARD',
+)
+require_contains(
+    "app/src/main/java/com/mclauncher/app/engine/SdlInputBridge.kt",
+    'git.mojo.sdl.SDLActivity',
+    'git.mojo.sdl.SDLInputConnection',
+    'onNativeMouse',
+    'onNativeKeyDown',
+    'onNativeKeyboardFocusLost',
+    'MotionEvent.ACTION_SCROLL',
 )
 require_contains(
     "app/src/main/java/git/artdeell/dnbootstrap/glfw/GLFW.java",

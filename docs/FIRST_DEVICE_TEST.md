@@ -1,8 +1,8 @@
 # First device test
 
-Use a clean MCLauncher 11.0 Alpha 22 installation.
+Use a clean MCLauncher 11.0 Alpha 23 installation.
 
-1. Install the GitHub Actions `MCLauncher-11.0-alpha22-arm64-v8a.apk`.
+1. Install the GitHub Actions `MCLauncher-11.0-alpha23-arm64-v8a.apk`.
 2. Allow file access requested by Android.
 3. Create an offline account for the first launch test.
 4. Install a clean vanilla Minecraft version without mods.
@@ -29,6 +29,7 @@ Use a clean MCLauncher 11.0 Alpha 22 installation.
 25. Create and re-import one 64×64 skin and one 64×32 cape PNG, then confirm every edited pixel survives the round trip.
 26. Open **Code workspace**, select an installed loader instance, create a starter, edit and save its Java file, then press **Create JAR on this tablet**. Confirm the first build verifies/downloads Gradle, the finished JAR contains classes plus the selected loader metadata, and it appears under Android Files → MCLauncher → MCL Creation Lab → outputs.
 27. Import a trusted source-project ZIP containing `gradle/wrapper/gradle-wrapper.properties`, confirm importing does not execute code, then explicitly build it and confirm MCLauncher uses its declared Gradle version.
-28. Launch Fabric 26.3 Snapshot 6 and confirm launch-plan creation no longer reports a missing Android substitution for `org.lwjgl:lwjgl-sdl:3.4.2`.
+28. Launch Fabric 26.3 Snapshot 6 and confirm the session log reports the prepared LWJGL SDL3 library, then reaches the title screen without a missing `org.lwjgl:lwjgl-sdl:3.4.2` substitution or `libSDL3.so` error.
+29. With Snapshot 6 running, connect a physical keyboard and mouse. Verify WASD, modifiers, number/function keys, relative captured look, uncaptured menu motion, wheel, left/right/middle buttons and any available back/forward buttons. Open a menu and return to the world to verify pointer capture releases and reacquires.
 
 Record the Android version, device model, Minecraft version, selected Java version, renderer and the final visible error.

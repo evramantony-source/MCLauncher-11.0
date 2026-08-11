@@ -24,6 +24,7 @@ val curseForgeApiKey = providers.gradleProperty("curseforgeApiKey")
 val escapedCurseForgeApiKey = curseForgeApiKey
     .replace("\\", "\\\\")
     .replace("\"", "\\\"")
+val generatedSdlBindingsAar = layout.buildDirectory.file("generated/sdl/mojo-sdl-bindings.aar")
 require(targetAbi in supportedAbis) {
     "Unsupported mclauncherAbi=$targetAbi. Supported values: ${supportedAbis.joinToString()}"
 }
@@ -43,8 +44,8 @@ android {
         applicationId = "com.mclauncher.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 32
-        versionName = "11.0.0-alpha22"
+        versionCode = 33
+        versionName = "11.0.0-alpha23"
         buildConfigField("boolean", "PUBLIC_ALPHA_SIGNER", (!privateAccountBuild).toString())
         buildConfigField("String", "CURSEFORGE_API_KEY", "\"$escapedCurseForgeApiKey\"")
 
@@ -115,6 +116,12 @@ android {
         noCompress += listOf("xz", "gz", "tgz")
     }
 
+    sourceSets {
+        getByName("main") {
+            jniLibs.srcDir(project.layout.buildDirectory.dir("generated/sdl/jniLibs"))
+        }
+    }
+
     packaging {
         jniLibs {
             useLegacyPackaging = true
@@ -129,6 +136,11 @@ android {
 dependencies {
     implementation(project(":core-model"))
     implementation(project(":core-minecraft"))
+    // Generated from the exact pinned MojoSDL source before the standalone APK
+    // build. Reflection keeps ordinary source/unit builds independent of it.
+    generatedSdlBindingsAar.get().asFile.takeIf { it.isFile }?.let { bindings ->
+        implementation(files(bindings))
+    }
 
     implementation(platform("androidx.compose:compose-bom:2025.02.00"))
     implementation("androidx.activity:activity-compose:1.10.1")

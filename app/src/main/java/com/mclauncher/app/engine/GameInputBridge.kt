@@ -20,9 +20,9 @@ data class GamePointerState(
 )
 
 /**
- * Unified GLFW input boundary for touch controls, physical keyboards, mice and controllers.
- * All stateful axes are translated to ordinary GLFW key/mouse events so the native engine
- * never depends on an unfinished gamepad queue.
+ * Unified input boundary for touch controls, physical keyboards, mice and controllers.
+ * Legacy versions use GLFW; Minecraft 26.3 Snapshot 4+ switches the same event stream to
+ * SDL3 after the game initializes its SDL window.
  */
 object GameInputBridge {
     @Volatile private var controllerBindings: Map<Int, ControllerBinding> = emptyMap()
@@ -78,6 +78,12 @@ object GameInputBridge {
         )
     }
 
+    fun updateGrabState(grabbed: Boolean) {
+        _pointerState.update { it.copy(grabbed = grabbed) }
+    }
+
+    fun isPointerGrabbed(): Boolean = _pointerState.value.grabbed
+
     const val ACTION_RELEASE = 0
     const val ACTION_PRESS = 1
     const val ACTION_REPEAT = 2
@@ -93,15 +99,19 @@ object GameInputBridge {
         synchronized(pressedKeys) {
             if (pressed) pressedKeys += key else pressedKeys -= key
         }
-        NativeLaunchBridge.nativeSendKey(
-            key,
-            when {
-                repeat -> ACTION_REPEAT
-                pressed -> ACTION_PRESS
-                else -> ACTION_RELEASE
-            },
-            modifiers
-        )
+        if (SdlInputBridge.isActive) {
+            AndroidGlfwKeyMapper.toAndroid(key)?.let { SdlInputBridge.key(it, pressed) }
+        } else {
+            NativeLaunchBridge.nativeSendKey(
+                key,
+                when {
+                    repeat -> ACTION_REPEAT
+                    pressed -> ACTION_PRESS
+                    else -> ACTION_RELEASE
+                },
+                modifiers
+            )
+        }
     }
 
     /** Changes a held key only when its desired state differs. */
@@ -110,13 +120,21 @@ object GameInputBridge {
             if (pressed) pressedKeys.add(key) else pressedKeys.remove(key)
         }
         if (changed && NativeLaunchBridge.isAvailable) {
-            NativeLaunchBridge.nativeSendKey(key, if (pressed) ACTION_PRESS else ACTION_RELEASE, modifiers)
+            if (SdlInputBridge.isActive) {
+                AndroidGlfwKeyMapper.toAndroid(key)?.let { SdlInputBridge.key(it, pressed) }
+            } else {
+                NativeLaunchBridge.nativeSendKey(key, if (pressed) ACTION_PRESS else ACTION_RELEASE, modifiers)
+            }
         }
     }
 
     fun character(codePoint: Int) {
         if (NativeLaunchBridge.isAvailable && Character.isValidCodePoint(codePoint)) {
-            NativeLaunchBridge.nativeSendChar(codePoint)
+            if (SdlInputBridge.isActive) {
+                SdlInputBridge.commitCodePoint(codePoint)
+            } else {
+                NativeLaunchBridge.nativeSendChar(codePoint)
+            }
         }
     }
 
@@ -125,11 +143,7 @@ object GameInputBridge {
         synchronized(pressedMouseButtons) {
             if (pressed) pressedMouseButtons += button else pressedMouseButtons -= button
         }
-        NativeLaunchBridge.nativeSendMouseButton(
-            button,
-            if (pressed) ACTION_PRESS else ACTION_RELEASE,
-            modifiers
-        )
+        sendMouseButton(button, pressed, modifiers)
     }
 
     fun setMouseButtonState(button: Int, pressed: Boolean, modifiers: Int = 0) {
@@ -137,7 +151,7 @@ object GameInputBridge {
             if (pressed) pressedMouseButtons.add(button) else pressedMouseButtons.remove(button)
         }
         if (changed && NativeLaunchBridge.isAvailable) {
-            NativeLaunchBridge.nativeSendMouseButton(button, if (pressed) ACTION_PRESS else ACTION_RELEASE, modifiers)
+            sendMouseButton(button, pressed, modifiers)
         }
     }
 
@@ -194,10 +208,27 @@ object GameInputBridge {
                 GLFW.cursorX = next.x.toDouble()
                 GLFW.cursorY = next.y.toDouble()
             }
-            NativeLaunchBridge.nativeSendCursorDelta(
-                metrics.bufferDeltaX(scaledX),
-                metrics.bufferDeltaY(scaledY)
-            )
+            if (SdlInputBridge.isActive) {
+                val pointer = _pointerState.value
+                if (pointer.grabbed) {
+                    SdlInputBridge.mouseMotion(
+                        metrics.bufferDeltaX(scaledX),
+                        metrics.bufferDeltaY(scaledY),
+                        relative = true
+                    )
+                } else {
+                    SdlInputBridge.mouseMotion(
+                        pointer.x * metrics.bufferWidth,
+                        pointer.y * metrics.bufferHeight,
+                        relative = false
+                    )
+                }
+            } else {
+                NativeLaunchBridge.nativeSendCursorDelta(
+                    metrics.bufferDeltaX(scaledX),
+                    metrics.bufferDeltaY(scaledY)
+                )
+            }
         }
     }
 
@@ -219,7 +250,16 @@ object GameInputBridge {
         val normalizedX = x.coerceIn(0f, 1f)
         val normalizedY = y.coerceIn(0f, 1f)
         updateAbsolutePointer(normalizedX, normalizedY)
-        NativeLaunchBridge.nativeSendCursorPosition(normalizedX.toDouble(), normalizedY.toDouble())
+        if (SdlInputBridge.isActive) {
+            val metrics = surfaceMetrics
+            SdlInputBridge.mouseMotion(
+                normalizedX * metrics.bufferWidth,
+                normalizedY * metrics.bufferHeight,
+                relative = false
+            )
+        } else {
+            NativeLaunchBridge.nativeSendCursorPosition(normalizedX.toDouble(), normalizedY.toDouble())
+        }
     }
 
     private fun directTouchButtonAtNormalized(x: Float, y: Float, pressed: Boolean) {
@@ -230,13 +270,17 @@ object GameInputBridge {
         synchronized(pressedMouseButtons) {
             if (pressed) pressedMouseButtons += MOUSE_LEFT else pressedMouseButtons -= MOUSE_LEFT
         }
-        NativeLaunchBridge.nativeSendTouchButton(
-            x = normalizedX.toDouble(),
-            y = normalizedY.toDouble(),
-            button = MOUSE_LEFT,
-            action = if (pressed) ACTION_PRESS else ACTION_RELEASE,
-            modifiers = 0
-        )
+        if (SdlInputBridge.isActive) {
+            sendMouseButton(MOUSE_LEFT, pressed, modifiers = 0)
+        } else {
+            NativeLaunchBridge.nativeSendTouchButton(
+                x = normalizedX.toDouble(),
+                y = normalizedY.toDouble(),
+                button = MOUSE_LEFT,
+                action = if (pressed) ACTION_PRESS else ACTION_RELEASE,
+                modifiers = 0
+            )
+        }
     }
 
     /**
@@ -294,7 +338,11 @@ object GameInputBridge {
 
     fun scroll(dx: Float, dy: Float) {
         if (NativeLaunchBridge.isAvailable && (dx != 0f || dy != 0f)) {
-            NativeLaunchBridge.nativeSendScroll(dx, dy)
+            if (SdlInputBridge.isActive) {
+                SdlInputBridge.mouseScroll(dx, dy)
+            } else {
+                NativeLaunchBridge.nativeSendScroll(dx, dy)
+            }
         }
     }
 
@@ -350,7 +398,9 @@ object GameInputBridge {
         if (event.keyCode == KeyEvent.KEYCODE_UNKNOWN) return true
         if (event.keyCode == KeyEvent.KEYCODE_VOLUME_DOWN || event.keyCode == KeyEvent.KEYCODE_VOLUME_UP) return false
         if (event.action == KeyEvent.ACTION_MULTIPLE) return true
-        if (event.repeatCount != 0) return true
+        // SDL consumes Android keycodes directly and can preserve hardware-key
+        // repeats for chat/text fields. Retain the pinned GLFW behavior below.
+        if (event.repeatCount != 0 && !SdlInputBridge.isActive) return true
         if (event.action == KeyEvent.ACTION_UP && event.flags and KeyEvent.FLAG_CANCELED != 0) return true
         val glfw = AndroidGlfwKeyMapper.map(event.keyCode) ?: -1
         val modifiers = AndroidGlfwKeyMapper.modifiers(event)
@@ -365,7 +415,9 @@ object GameInputBridge {
             }
         }
         val unicode = if (pressed) event.getUnicodeChar(event.metaState) else 0
-        if (NativeLaunchBridge.isAvailable) {
+        if (NativeLaunchBridge.isAvailable && SdlInputBridge.isActive) {
+            SdlInputBridge.key(event.keyCode, pressed)
+        } else if (NativeLaunchBridge.isAvailable) {
             // Follow the pinned GLFW engine's physical-keyboard path exactly. Sending
             // a separately translated GLFW event and Unicode event can race its queue.
             NativeLaunchBridge.nativeSendRawKey(event.keyCode, glfw, if (pressed) ACTION_PRESS else ACTION_RELEASE, modifiers, unicode)
@@ -390,7 +442,7 @@ object GameInputBridge {
                 MotionEvent.ACTION_BUTTON_PRESS,
                 MotionEvent.ACTION_BUTTON_RELEASE -> {
                     val pressed = event.actionMasked == MotionEvent.ACTION_BUTTON_PRESS
-                    mapMouseButton(event.actionButton)?.let { mouseButton(it, pressed) }
+                    mapMouseButton(event.actionButton)?.let { setMouseButtonState(it, pressed) }
                     return true
                 }
                 MotionEvent.ACTION_HOVER_MOVE,
@@ -398,14 +450,18 @@ object GameInputBridge {
                     val relativeX = event.getAxisValue(MotionEvent.AXIS_RELATIVE_X)
                     val relativeY = event.getAxisValue(MotionEvent.AXIS_RELATIVE_Y)
                     if (relativeX != 0f || relativeY != 0f) {
-                        cursorDelta(relativeX, relativeY)
+                        cursorDelta(relativeX, relativeY, applySensitivity = false)
                     } else if (!pointerState.value.grabbed) {
                         cursorPosition(event.x, event.y)
                     } else {
                         val previousX = lastMouseX
                         val previousY = lastMouseY
                         if (previousX != null && previousY != null) {
-                            cursorDelta(event.x - previousX, event.y - previousY)
+                            cursorDelta(
+                                event.x - previousX,
+                                event.y - previousY,
+                                applySensitivity = false
+                            )
                         }
                         lastMouseX = event.x
                         lastMouseY = event.y
@@ -469,8 +525,10 @@ object GameInputBridge {
         if (!event.isFromSource(InputDevice.SOURCE_MOUSE)) return false
         val pressed = event.actionMasked == MotionEvent.ACTION_DOWN
         if (event.actionMasked !in listOf(MotionEvent.ACTION_DOWN, MotionEvent.ACTION_UP)) return false
-        val button = mapMouseButton(event.actionButton.takeIf { it != 0 } ?: event.buttonState) ?: MOUSE_LEFT
-        mouseButton(button, pressed)
+        val button = mapMouseButton(event.actionButton.takeIf { it != 0 } ?: event.buttonState)
+            ?: if (!pressed) synchronized(pressedMouseButtons) { pressedMouseButtons.firstOrNull() } else null
+            ?: MOUSE_LEFT
+        setMouseButtonState(button, pressed)
         return true
     }
 
@@ -625,6 +683,34 @@ object GameInputBridge {
         lastTriggerLeft = false
         lastTriggerRight = false
         resetPointerPosition()
+        SdlInputBridge.keyboardFocusLost()
+    }
+
+    private fun sendMouseButton(button: Int, pressed: Boolean, modifiers: Int) {
+        if (SdlInputBridge.isActive) {
+            val pointer = _pointerState.value
+            val metrics = surfaceMetrics
+            SdlInputBridge.mouseButton(
+                androidButton = when (button) {
+                    MOUSE_LEFT -> MotionEvent.BUTTON_PRIMARY
+                    MOUSE_RIGHT -> MotionEvent.BUTTON_SECONDARY
+                    MOUSE_MIDDLE -> MotionEvent.BUTTON_TERTIARY
+                    MOUSE_BACK -> MotionEvent.BUTTON_BACK
+                    MOUSE_FORWARD -> MotionEvent.BUTTON_FORWARD
+                    else -> return
+                },
+                pressed = pressed,
+                x = if (pointer.grabbed) 0f else pointer.x * metrics.bufferWidth,
+                y = if (pointer.grabbed) 0f else pointer.y * metrics.bufferHeight,
+                relative = pointer.grabbed
+            )
+        } else {
+            NativeLaunchBridge.nativeSendMouseButton(
+                button,
+                if (pressed) ACTION_PRESS else ACTION_RELEASE,
+                modifiers
+            )
+        }
     }
 
     private fun resetDirectTouch(releaseButton: Boolean) {
@@ -738,7 +824,13 @@ object AndroidGlfwKeyMapper {
         put(KeyEvent.KEYCODE_MENU, 348)
     }
 
+    private val androidKeyMap = buildMap {
+        keyMap.forEach { (androidKey, glfwKey) -> putIfAbsent(glfwKey, androidKey) }
+    }
+
     fun map(androidKeyCode: Int): Int? = keyMap[androidKeyCode]
+
+    fun toAndroid(glfwKeyCode: Int): Int? = androidKeyMap[glfwKeyCode]
 
     fun modifiers(event: KeyEvent): Int {
         var result = 0

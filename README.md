@@ -1,4 +1,4 @@
-# MCLauncher 11.0 Alpha 22
+# MCLauncher 11.0 Alpha 23
 
 MCLauncher is an independent Android launcher for Minecraft: Java Edition. It has a responsive Material 3 interface and its own instance, account, download, content, settings and game-screen code. It reuses third-party Android launch-engine components only where required to start the Java game.
 
@@ -25,7 +25,7 @@ MCLauncher is an independent Android launcher for Minecraft: Java Edition. It ha
 - MCL Creation Lab with a touch pixel editor, every installed item-texture PNG, 594-colour palette plus exact ARGB, validated resource-pack ZIPs, and 64×64 skin plus 64×32 cape PNG creation.
 - Files-visible source workspaces with a touch code editor, source-ZIP import and verified local Gradle downloads. Compatible Fabric, Quilt, Forge and NeoForge projects can compile and install a real JAR on-device without an API key, ChatGPT subscription or GitHub mod builder.
 
-Alpha 01 reached the Minecraft main menu and a playable world on a physical Android device. Later builds stabilized Android 16 startup, renderer selection, touch input, exact modpack installation and live download progress. Alpha 17's fixed game-buffer boundary made direct menu touch work on the Redmi Pad Pro, with a known stretched-resolution regression still to correct. Alpha 18 added validated local import and export for real Modrinth and CurseForge packs. Alpha 19 added the MCL Creation Lab. Alpha 22 replaces limited prompt generation with an editable source workspace and a real local Gradle build path, expands the palette, and fixes the 26.3 Snapshot 6 desktop-only SDL dependency.
+Alpha 01 reached the Minecraft main menu and a playable world on a physical Android device. Later builds stabilized Android 16 startup, renderer selection, touch input, exact modpack installation and live download progress. Alpha 17's fixed game-buffer boundary made direct menu touch work on the Redmi Pad Pro, with a known stretched-resolution regression still to correct. Alpha 18 added validated local import and export for real Modrinth and CurseForge packs. Alpha 19 added the MCL Creation Lab. Alpha 22 added the editable source workspace and real local Gradle build path. Alpha 23 replaces the Snapshot 6 SDL skip workaround with a source-pinned Android SDL3 runtime and a unified SDL/GLFW physical-input path.
 
 CurseForge's official REST API requires an `x-api-key`. A private build can inject
 `CURSEFORGE_API_KEY`, or the user can enter a key in Settings. Modrinth requires no key.
@@ -35,13 +35,13 @@ CurseForge's official REST API requires an `x-api-key`. A private build can inje
 The installed application does not download or install another launcher APK. GitHub Actions:
 
 1. Checks out the exact LGPL engine revision in `vendor/engine-lock.json`.
-2. Builds the Android engine, GLFW and pinned OpenLTW source.
+2. Builds the Android engine, GLFW, SDL3 Android bindings and pinned OpenLTW source.
 3. Applies and verifies the narrow Minecraft 26.2 OpenLTW compatibility patch.
 4. Extracts only the selected ABI's required native libraries and renderers.
 5. Downloads the hash-pinned MobileGlues and Android JNA payloads, Java 8/17/21/25, and the exact patched LWJGL files.
 6. Verifies Java 17/21/25 runtime archives against MojoLauncher's RSA signing certificate.
 7. Verifies archive formats, hashes, ELF symbols, classifier JARs, support JARs and notices.
-8. Compiles an ABI-specific APK, reopens it, and verifies the embedded payload.
+8. Compiles an ABI-specific APK, reopens it, and verifies the embedded payload, SDL ELF files and ART callback classes.
 
 The large generated runtime/native payload belongs in the APK artifact, not in Git history.
 
@@ -50,8 +50,8 @@ The large generated runtime/native payload belongs in the APK artifact, not in G
 1. Open **Actions → Build standalone MCLauncher 11 APK**.
 2. Select **Run workflow**.
 3. Keep `arm64-v8a` for modern Android phones and tablets.
-4. Download the `MCLauncher-11.0-alpha22-arm64-v8a` artifact.
-5. Extract it and install `MCLauncher-11.0-alpha22-arm64-v8a.apk`.
+4. Download the `MCLauncher-11.0-alpha23-arm64-v8a` artifact.
+5. Extract it and install `MCLauncher-11.0-alpha23-arm64-v8a.apk`.
 6. Follow `docs/FIRST_DEVICE_TEST.md`.
 
 ## Microsoft and Xbox Game Pass accounts
@@ -71,7 +71,7 @@ repository secrets with a private Android keystore that you control:
 - `MCLAUNCHER_SIGNING_KEY_PASSWORD`
 
 Run **Build standalone MCLauncher 11 APK**, enable **microsoft_accounts**, and
-download the artifact containing `alpha22-microsoft`. Because this APK has a
+download the artifact containing `alpha23-microsoft`. Because this APK has a
 different signer, back up worlds and uninstall the public alpha before installing
 it. In MCLauncher Settings, enter an authorized Microsoft OAuth public-client ID,
 then use **Accounts → Microsoft account → Sign in**. Never commit the private
@@ -81,7 +81,7 @@ Pull requests and pushes to `main` run the default arm64 build automatically.
 
 ## Proof still required
 
-A green workflow proves that the project compiled and the expected payload is present in the APK. It does not prove compatibility with every Minecraft version, loader plugin, source project, GPU or Android firmware. Direct menu touch is device-confirmed on the Redmi Pad Pro; Alpha 22's local Gradle execution still needs physical-device proof, Alpha 18's pack round trips still need desktop-client proof, and the stretched-resolution regression remains open.
+A green workflow proves that the project compiled and the expected payload is present in the APK. It does not prove compatibility with every Minecraft version, loader plugin, source project, GPU or Android firmware. Direct menu touch is device-confirmed on the Redmi Pad Pro; Alpha 23's SDL3 launch and hardware-input path plus Alpha 22's local Gradle execution still need physical-device proof, Alpha 18's pack round trips still need desktop-client proof, and the stretched-resolution regression remains open.
 
 ## Legal
 

@@ -55,6 +55,9 @@ class NativeEngineCoordinator(
 
         val environment = LinkedHashMap(plan.environment)
         val appNativeDirectory = context.applicationInfo.nativeLibraryDir
+        val usesSdl = plan.classpath.any { path ->
+            File(path).name.startsWith("lwjgl-sdl-")
+        }
         val runtimeLibraryDirectories = listOfNotNull(
             findFile(javaHome, "libjvm.so")?.parentFile,
             findFile(javaHome, "libjava.so")?.parentFile,
@@ -179,6 +182,19 @@ class NativeEngineCoordinator(
             putSystemProperty(jvmArguments, "java.awt.graphicsenv", "$cacioPackage.CTCGraphicsEnvironment")
         }
         findFile(engineNatives, "libopenal.so")?.let { putSystemProperty(jvmArguments, "org.lwjgl.openal.libname", it.absolutePath) }
+        if (usesSdl) {
+            val appSdl = File(appNativeDirectory, "libSDL3.so")
+            val appMojoExec = File(appNativeDirectory, "libmojoexec.so")
+            require(appSdl.isFile && appMojoExec.isFile) {
+                "The APK is missing its Android SDL3 runtime for Minecraft ${plan.versionId}"
+            }
+            require(File(engineNatives, "libSDL3.so").isFile) {
+                "Bundled Android launch engine is missing libSDL3.so"
+            }
+            putSystemProperty(jvmArguments, "org.lwjgl.sdl.libname", appSdl.absolutePath)
+            environment["MCLAUNCHER_SDL3_PATH"] = appSdl.absolutePath
+            sessionLog?.appendText("Prepared LWJGL SDL3 library ${appSdl.absolutePath}\n")
+        }
         (findFile(engineNatives, "libfreetype.so") ?: findFile(javaHome, "libfreetype.so"))
             ?.let { putSystemProperty(jvmArguments, "org.lwjgl.freetype.libname", it.absolutePath) }
         resolveLwjglOpenGlLibrary(graphics)?.let { rendererLibrary ->
