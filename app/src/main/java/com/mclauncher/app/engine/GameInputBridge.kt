@@ -525,8 +525,13 @@ object GameInputBridge {
         if (!event.isFromSource(InputDevice.SOURCE_MOUSE)) return false
         val pressed = event.actionMasked == MotionEvent.ACTION_DOWN
         if (event.actionMasked !in listOf(MotionEvent.ACTION_DOWN, MotionEvent.ACTION_UP)) return false
+        val releaseFallback = if (!pressed) {
+            synchronized(pressedMouseButtons) { pressedMouseButtons.firstOrNull() }
+        } else {
+            null
+        }
         val button = mapMouseButton(event.actionButton.takeIf { it != 0 } ?: event.buttonState)
-            ?: if (!pressed) synchronized(pressedMouseButtons) { pressedMouseButtons.firstOrNull() } else null
+            ?: releaseFallback
             ?: MOUSE_LEFT
         setMouseButtonState(button, pressed)
         return true
