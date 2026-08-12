@@ -125,8 +125,15 @@ for key in ("submoduleCommit", "upstreamFixCommit"):
         errors.append(f"vendor/engine-lock.json: Android SDL {key} must be a full SHA")
 if android_sdl.get("patch") != "vendor/patches/mojosdl-android-opengl-proc-identity.patch":
     errors.append("vendor/engine-lock.json: Android SDL compatibility patch is not pinned")
-if android_sdl.get("resolverStrategy") != "lwjgl-glx-provider-first":
+if android_sdl.get("resolverStrategy") != "java-sdl-gl-provider-identity":
     errors.append("vendor/engine-lock.json: Android SDL resolver strategy is not pinned")
+if android_sdl.get("javaBridge") != (
+    "vendor/sdl-compat/org/lwjgl/sdl/MCLauncherSDLCompat.java"
+):
+    errors.append("vendor/engine-lock.json: Android SDL Java bridge is not pinned")
+turnip = lock.get("drivers", {}).get("turnip", {})
+if turnip.get("versionMarker") != "Mesa 26.1.2 (git-e1098c6a3c)":
+    errors.append("vendor/engine-lock.json: bundled Turnip version is not pinned")
 for major in (8, 17, 21, 25):
     source = lock.get("runtimes", {}).get("sources", {}).get(str(major))
     if not source:
@@ -154,8 +161,8 @@ if openltw.get("patch") != "vendor/patches/ltw-minecraft-26.2.patch":
 
 require_contains(
     "app/build.gradle.kts",
-    'versionName = "11.0.0-alpha27"',
-    'versionCode = 37',
+    'versionName = "11.0.0-alpha28"',
+    'versionCode = 38',
     'generated/sdl/mojo-sdl-bindings.aar',
     'generated/sdl/jniLibs',
     'mclauncherAbi',
@@ -170,7 +177,7 @@ require_contains(
     "scripts/source_sanity.py",
     'assembleNoruntimeDebug',
     'assembleDebug -PmclauncherAbi=',
-    'MCLauncher-11.0-alpha27-',
+    'MCLauncher-11.0-alpha28-',
     ':sdl:jni_bindings:assembleDebug',
     '--sdl-bindings-aar',
     'scripts/verify_sdl_apk.py',
@@ -191,9 +198,16 @@ require_contains(
     'No Android LWJGL substitution is defined',
     'prepareAndroidNatives',
     'applyMinecraftOptions',
-    '-Dmclauncher.version=11.0.0-alpha27',
+    '-Dmclauncher.version=11.0.0-alpha28',
     'authSession?.accessToken ?: "0"',
     'AccountType.MICROSOFT) "msa" else "legacy"',
+)
+require_contains(
+    "vendor/sdl-compat/org/lwjgl/sdl/MCLauncherSDLCompat.java",
+    "mclauncher.sdlOpenGLProcIdentity",
+    "GL.getFunctionProvider",
+    "glGetError",
+    "SDLVideo.Functions.GL_GetProcAddress",
 )
 require_contains(
     "vendor/patches/mojosdl-android-opengl-proc-identity.patch",
@@ -222,6 +236,9 @@ require_contains(
     'libpojavexec.so',
     'MCLAUNCHER_RENDERER_TOKEN',
     'environment.remove("POJAV_RENDERER")',
+    'supportsSnapshotSdlGraphicsCompatibility',
+    'mclauncher.sdlOpenGLProcIdentity',
+    'libvulkan_freedreno.so',
 )
 require_contains(
     "app/src/main/AndroidManifest.xml",

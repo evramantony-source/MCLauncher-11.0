@@ -1,5 +1,12 @@
 # Changelog
 
+## 11.0.0-alpha28
+
+- Make 26.3 Snapshot 6 and later use the bundled Mesa 26.1.2 Turnip driver automatically on Qualcomm/Adreno devices when the per-instance driver remains **Automatic**, while preserving explicit driver choices and every pre-Snapshot-6 launch path.
+- Fix Snapshot 6's strict `glGetError` pointer check deterministically inside the vendored LWJGL SDL binding: SDL returns LWJGL's own OpenGL-provider address for that one identity probe and retains its native behavior for every other function.
+- Promote the already-pinned `libvulkan_freedreno.so` payload into a real verified Turnip driver pack, route it through MojoExec before Minecraft probes Vulkan, and verify the exact Mesa build marker plus bridge bytecode in CI.
+- Preserve Alpha 27's physical keyboard/mouse routing, legacy GLFW backend, complete vanilla texture-tree catalog and resource-pack editor.
+
 ## 11.0.0-alpha27
 
 - Replace Alpha 26's ineffective SDL fallback change with an Android SDL3 resolver that mirrors LWJGL's exact lookup order: use `glXGetProcAddress` from the loaded OpenLTW library, then its direct symbol fallback.

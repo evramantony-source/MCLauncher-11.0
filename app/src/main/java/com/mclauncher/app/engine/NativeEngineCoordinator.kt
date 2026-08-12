@@ -1,9 +1,11 @@
 package com.mclauncher.app.engine
 
 import android.content.Context
+import android.os.Build
 import android.view.Surface
 import com.mclauncher.minecraft.LaunchPlan
 import com.mclauncher.minecraft.MinecraftLayout
+import com.mclauncher.minecraft.MinecraftVersionCapabilities
 import com.mclauncher.minecraft.ToolLaunchPlan
 import com.mclauncher.model.GraphicsDriver
 import kotlinx.coroutines.Dispatchers
@@ -44,20 +46,45 @@ class NativeEngineCoordinator(
             "Prepared AWT compatibility library ${awtCompatibilityLibrary.absolutePath}\n"
         )
         val cacheDirectory = File(plan.workingDirectory, ".mclauncher-cache").apply { mkdirs() }
+        val usesSdl = plan.classpath.any { path ->
+            File(path).name.startsWith("lwjgl-sdl-")
+        }
+        val snapshotSdlCompatibility =
+            usesSdl &&
+                MinecraftVersionCapabilities.supportsSnapshotSdlGraphicsCompatibility(
+                    plan.versionId
+                )
+        val bundledTurnip = File(
+            layout.engineDriverDirectory(
+                plan.runtime.architecture,
+                GraphicsDriver.TURNIP.id
+            ),
+            "libvulkan_freedreno.so"
+        )
+        val autoTurnip =
+            snapshotSdlCompatibility &&
+                plan.graphicsDriver == GraphicsDriver.AUTO &&
+                bundledTurnip.isFile &&
+                isQualcommDevice()
+        val effectiveDriver =
+            if (autoTurnip) GraphicsDriver.TURNIP else plan.graphicsDriver
         val graphics = GraphicsRegistry(layout, plan.runtime.architecture, json)
-            .resolve(plan.renderer, plan.graphicsDriver, cacheDirectory)
+            .resolve(plan.renderer, effectiveDriver, cacheDirectory)
         sessionLog?.appendText(
             "Resolved graphics renderer=${graphics.renderer.id} " +
                 "(requested=${plan.renderer.id}), driver=${graphics.driver.id} " +
                 "(requested=${plan.graphicsDriver.id}), Minecraft API=" +
                 plan.minecraftGraphicsApi.optionsValue + "\n"
         )
+        if (autoTurnip) {
+            sessionLog?.appendText(
+                "Snapshot SDL compatibility auto-selected bundled Turnip " +
+                    "for this Qualcomm/Adreno device\n"
+            )
+        }
 
         val environment = LinkedHashMap(plan.environment)
         val appNativeDirectory = context.applicationInfo.nativeLibraryDir
-        val usesSdl = plan.classpath.any { path ->
-            File(path).name.startsWith("lwjgl-sdl-")
-        }
         val runtimeLibraryDirectories = listOfNotNull(
             findFile(javaHome, "libjvm.so")?.parentFile,
             findFile(javaHome, "libjava.so")?.parentFile,
@@ -177,6 +204,12 @@ class NativeEngineCoordinator(
         putSystemProperty(jvmArguments, "mclauncher.renderer", graphics.renderer.id)
         putSystemProperty(jvmArguments, "mclauncher.graphicsDriver", graphics.driver.id)
         putSystemProperty(jvmArguments, "mclauncher.graphicsApi", plan.minecraftGraphicsApi.optionsValue)
+        if (snapshotSdlCompatibility) {
+            putSystemProperty(jvmArguments, "mclauncher.sdlOpenGLProcIdentity", "true")
+            sessionLog?.appendText(
+                "Enabled Snapshot SDL/OpenGL function identity bridge\n"
+            )
+        }
         if (selectedCacioJars.isNotEmpty()) {
             putSystemProperty(jvmArguments, "java.awt.headless", "false")
             putSystemProperty(jvmArguments, "cacio.managed.screensize", "${plan.windowWidth}x${plan.windowHeight}")
@@ -558,6 +591,25 @@ class NativeEngineCoordinator(
         // the last value, so replacing only the first entry silently leaves stale values.
         arguments.removeAll { it.startsWith(prefix) }
         arguments += prefix + value
+    }
+
+    private fun isQualcommDevice(): Boolean {
+        val hints = buildList {
+            add(Build.HARDWARE)
+            add(Build.BOARD)
+            add(Build.DEVICE)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                add(Build.SOC_MANUFACTURER)
+                add(Build.SOC_MODEL)
+            }
+        }
+        return hints.any { hint ->
+            val value = hint.lowercase()
+            value.contains("qcom") ||
+                value.contains("qualcomm") ||
+                value.contains("snapdragon") ||
+                Regex("""\\bsm\\d{4}""").containsMatchIn(value)
+        }
     }
 
     private fun findFile(root: File, name: String): File? =

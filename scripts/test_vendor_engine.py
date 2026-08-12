@@ -122,6 +122,36 @@ class VendorEngineTest(unittest.TestCase):
                 64,
             )
 
+
+    def test_bundled_turnip_is_promoted_to_driver_pack(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            output = Path(temporary)
+            abi = "arm64-v8a"
+            native_root = output / abi / "natives"
+            native_root.mkdir(parents=True)
+            marker = b"Mesa 26.1.2 (git-e1098c6a3c)"
+            (native_root / "libvulkan_freedreno.so").write_bytes(
+                b"\\x7fELF" + marker
+            )
+            native_records = {abi: ["libvulkan_freedreno.so"]}
+            records = vendor_engine.vendor_bundled_turnip(
+                output,
+                native_records,
+                (abi,),
+                {
+                    "version": "26.1.2",
+                    "versionMarker": marker.decode(),
+                    "sourceProject": "https://gitlab.freedesktop.org/mesa/mesa",
+                    "license": "MIT",
+                },
+            )
+
+            driver = output / abi / "drivers/turnip/libvulkan_freedreno.so"
+            self.assertTrue(driver.is_file())
+            self.assertFalse((native_root / "libvulkan_freedreno.so").exists())
+            self.assertNotIn("libvulkan_freedreno.so", native_records[abi])
+            self.assertEqual(records[0]["id"], "turnip")
+
     def test_mobileglues_and_jna_are_vendored_by_abi(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

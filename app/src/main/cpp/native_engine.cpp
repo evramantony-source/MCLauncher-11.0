@@ -530,15 +530,35 @@ bool configureMojoRenderer(JNIEnv* env, const std::vector<std::string>& preloadL
             glesVersion = parsed >= 3 ? 3 : 2;
         }
     }
+    const std::string driver = getenv("MCLAUNCHER_GRAPHICS_DRIVER")
+        ? getenv("MCLAUNCHER_GRAPHICS_DRIVER")
+        : "system";
+    const bool useTurnip = driver == "turnip";
+    if (hasMojoExecRenderspec) {
+        if (mojoExecSetUseTurnip) {
+            // Always write the flag: a later system-driver launch must not retain
+            // Turnip state from an earlier embedded JVM session.
+            mojoExecSetUseTurnip(
+                env,
+                nullptr,
+                useTurnip ? JNI_TRUE : JNI_FALSE
+            );
+        } else if (useTurnip) {
+            pushError("Bundled MojoExec cannot enable the selected Turnip driver");
+            return false;
+        }
+        if (useTurnip) {
+            if (!mojoExecPreloadVulkan) {
+                pushError("Bundled MojoExec cannot preload the selected Turnip driver");
+                return false;
+            }
+            mojoExecPreloadVulkan(env, nullptr);
+            pushLog("Configured bundled Turnip Vulkan driver through MojoExec");
+        }
+    }
+
     if (renderer == "vulkan") {
         if (hasMojoExecRenderspec) {
-            const std::string driver = getenv("MCLAUNCHER_GRAPHICS_DRIVER")
-                ? getenv("MCLAUNCHER_GRAPHICS_DRIVER")
-                : "system";
-            if (driver == "turnip" && mojoExecSetUseTurnip && mojoExecPreloadVulkan) {
-                mojoExecSetUseTurnip(env, nullptr, JNI_TRUE);
-                mojoExecPreloadVulkan(env, nullptr);
-            }
             pushLog("Configured native Vulkan surface mode through MojoExec");
             return true;
         }

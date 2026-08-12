@@ -10,7 +10,8 @@
       "submoduleCommit": "2e0e947f0b2022e864ae8da884a7e9dd40d0fa62",
       "upstreamFixCommit": "d20558de674a44b39f77ff9632785d2077ea6ee5",
       "patch": "vendor/patches/mojosdl-android-opengl-proc-identity.patch",
-      "resolverStrategy": "lwjgl-glx-provider-first"
+      "resolverStrategy": "java-sdl-gl-provider-identity",
+      "javaBridge": "vendor/sdl-compat/org/lwjgl/sdl/MCLauncherSDLCompat.java"
     }
   },
   "runtimes": {
@@ -68,6 +69,15 @@
       "license": "Apache-2.0 OR LGPL-2.1-or-later",
       "licenseUrl": "https://raw.githubusercontent.com/java-native-access/jna/5.17.0/LICENSE",
       "licenseSha256": "07c938b23950ab7d47a24ef35f9f5da3a05ae164278dc959ad6994135ed59ff1"
+    }
+  },
+  "drivers": {
+    "turnip": {
+      "version": "26.1.2",
+      "versionMarker": "Mesa 26.1.2 (git-e1098c6a3c)",
+      "sourceProject": "https://gitlab.freedesktop.org/mesa/mesa",
+      "sourceBundle": "MojoLauncher pinned engine build",
+      "license": "MIT"
     }
   }
 }

@@ -14,6 +14,7 @@ import hashlib
 import io
 import json
 import shutil
+import struct
 import subprocess
 import tempfile
 import time
@@ -25,7 +26,7 @@ from typing import Iterable
 
 SUPPORTED_ABIS = ("arm64-v8a", "armeabi-v7a", "x86_64")
 RUNTIME_VERSIONS = (8, 17, 21, 25)
-USER_AGENT = "MCLauncher-engine-vendor/11.0-alpha27"
+USER_AGENT = "MCLauncher-engine-vendor/11.0-alpha28"
 
 
 def digest(path: Path, algorithm: str) -> str:
@@ -58,7 +59,7 @@ def bundle_version(lock: dict) -> str:
     ).hexdigest()[:12]
     return (
         f"mojo-{lock['engine']['commit'][:12]}-"
-        f"lock-{lock_digest}-mclauncher-11.0-alpha27"
+        f"lock-{lock_digest}-mclauncher-11.0-alpha28"
     )
 
 
@@ -125,6 +126,214 @@ def safe_relative_path(value: str, *, label: str) -> Path:
     if not value or path.is_absolute() or ".." in path.parts:
         raise RuntimeError(f"Unsafe {label}: {value!r}")
     return path
+
+
+
+def _read_u2(data: bytes | bytearray, offset: int) -> int:
+    return struct.unpack_from(">H", data, offset)[0]
+
+
+def _read_u4(data: bytes | bytearray, offset: int) -> int:
+    return struct.unpack_from(">I", data, offset)[0]
+
+
+def _parse_class_constant_pool(
+    data: bytes,
+    count: int,
+    offset: int,
+) -> tuple[dict[int, str], int]:
+    utf8: dict[int, str] = {}
+    index = 1
+    while index < count:
+        tag = data[offset]
+        offset += 1
+        if tag == 1:
+            length = _read_u2(data, offset)
+            offset += 2
+            utf8[index] = data[offset:offset + length].decode("utf-8")
+            offset += length
+        elif tag in (3, 4):
+            offset += 4
+        elif tag in (5, 6):
+            offset += 8
+            index += 1
+        elif tag in (7, 8, 16, 19, 20):
+            offset += 2
+        elif tag in (9, 10, 11, 12, 17, 18):
+            offset += 4
+        elif tag == 15:
+            offset += 3
+        else:
+            raise RuntimeError(f"Unsupported class constant-pool tag {tag}")
+        index += 1
+    return utf8, offset
+
+
+def _skip_class_attributes(data: bytes | bytearray, offset: int, count: int) -> int:
+    for _ in range(count):
+        offset += 2
+        length = _read_u4(data, offset)
+        offset += 4 + length
+    return offset
+
+
+def patch_sdl_video_class(data: bytes) -> bytes:
+    """Redirect SDL's one strict identity probe to LWJGL's own GL provider.
+
+    Minecraft 26.3 Snapshot 6 compares the raw pointer returned by LWJGL's
+    OpenGL provider with SDL_GL_GetProcAddress("glGetError"). Equivalent
+    OpenLTW entry points are rejected if the pointers differ. The generated
+    LWJGL method is branch-free and ten bytes long, so replace it with an
+    equally sized verified call to MCLauncherSDLCompat and leave every public
+    signature, stack-map and native SDL function unchanged.
+    """
+    if data[:4] != b"\xca\xfe\xba\xbe":
+        raise RuntimeError("SDLVideo.class is not a Java class file")
+    old_count = _read_u2(data, 8)
+    utf8, constant_pool_end = _parse_class_constant_pool(data, old_count, 10)
+
+    additions = bytearray()
+    helper_name = old_count
+    raw_name = b"org/lwjgl/sdl/MCLauncherSDLCompat"
+    additions += b"\x01" + struct.pack(">H", len(raw_name)) + raw_name
+    helper_class = old_count + 1
+    additions += b"\x07" + struct.pack(">H", helper_name)
+    method_name = old_count + 2
+    raw_method = b"getProcAddress"
+    additions += b"\x01" + struct.pack(">H", len(raw_method)) + raw_method
+    descriptor = old_count + 3
+    additions += b"\x01\x00\x04(J)J"
+    name_and_type = old_count + 4
+    additions += b"\x0c" + struct.pack(">HH", method_name, descriptor)
+    method_ref = old_count + 5
+    additions += b"\x0a" + struct.pack(">HH", helper_class, name_and_type)
+
+    patched = bytearray(data[:8])
+    patched += struct.pack(">H", old_count + 6)
+    patched += data[10:constant_pool_end]
+    patched += additions
+    patched += data[constant_pool_end:]
+
+    offset = constant_pool_end + len(additions)
+    offset += 6  # access_flags, this_class, super_class
+    interface_count = _read_u2(patched, offset)
+    offset += 2 + interface_count * 2
+    field_count = _read_u2(patched, offset)
+    offset += 2
+    for _ in range(field_count):
+        offset += 6
+        attribute_count = _read_u2(patched, offset)
+        offset += 2
+        offset = _skip_class_attributes(patched, offset, attribute_count)
+
+    method_count = _read_u2(patched, offset)
+    offset += 2
+    found = False
+    for _ in range(method_count):
+        name_index = _read_u2(patched, offset + 2)
+        descriptor_index = _read_u2(patched, offset + 4)
+        attribute_count = _read_u2(patched, offset + 6)
+        offset += 8
+        for _ in range(attribute_count):
+            attribute_name_index = _read_u2(patched, offset)
+            attribute_length = _read_u4(patched, offset + 2)
+            body = offset + 6
+            if (
+                utf8.get(name_index) == "nSDL_GL_GetProcAddress"
+                and utf8.get(descriptor_index) == "(J)J"
+                and utf8.get(attribute_name_index) == "Code"
+            ):
+                code_length = _read_u4(patched, body + 4)
+                code_start = body + 8
+                original = bytes(patched[code_start:code_start + code_length])
+                if code_length != 10 or original[0] != 0xB2 or original[-1] != 0xAD:
+                    raise RuntimeError(
+                        "Unexpected LWJGL SDL_GL_GetProcAddress bytecode: "
+                        + original.hex()
+                    )
+                # lload_0; invokestatic helper; lstore_2; lload_2;
+                # nop; nop; nop; lreturn -- exactly the original ten bytes.
+                patched[code_start:code_start + code_length] = bytes((
+                    0x1E,
+                    0xB8, (method_ref >> 8) & 0xFF, method_ref & 0xFF,
+                    0x41, 0x20,
+                    0x00, 0x00, 0x00,
+                    0xAD,
+                ))
+                found = True
+            offset = body + attribute_length
+    if not found:
+        raise RuntimeError("nSDL_GL_GetProcAddress(J)J was not found")
+    return bytes(patched)
+
+
+def patch_sdl_proc_identity_jar(
+    sdl_jar: Path,
+    core_jar: Path,
+    opengl_jar: Path,
+    source: Path,
+) -> str:
+    if not source.is_file():
+        raise RuntimeError(f"SDL/OpenGL compatibility source is missing: {source}")
+    compiler = shutil.which("javac")
+    if not compiler:
+        raise RuntimeError("javac is required to build the SDL/OpenGL compatibility bridge")
+
+    with tempfile.TemporaryDirectory(prefix="mclauncher-sdl-proc-") as temporary:
+        root = Path(temporary)
+        classes = root / "classes"
+        classes.mkdir()
+        result = subprocess.run(
+            [
+                compiler,
+                "--release", "8",
+                "-classpath",
+                str(core_jar) + ":" + str(opengl_jar) + ":" + str(sdl_jar),
+                "-d", str(classes),
+                str(source),
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            check=False,
+        )
+        if result.returncode != 0:
+            raise RuntimeError(
+                "Could not compile SDL/OpenGL compatibility bridge:\n"
+                + result.stdout.strip()
+            )
+        helper = classes / "org/lwjgl/sdl/MCLauncherSDLCompat.class"
+        if not helper.is_file():
+            raise RuntimeError("javac did not produce MCLauncherSDLCompat.class")
+
+        temporary_jar = root / sdl_jar.name
+        patched_sdl_video = False
+        with zipfile.ZipFile(sdl_jar) as input_jar, zipfile.ZipFile(temporary_jar, "w") as output_jar:
+            for info in input_jar.infolist():
+                payload = input_jar.read(info.filename)
+                if info.filename == "org/lwjgl/sdl/SDLVideo.class":
+                    payload = patch_sdl_video_class(payload)
+                    patched_sdl_video = True
+                output_jar.writestr(info, payload)
+            helper_info = zipfile.ZipInfo(
+                "org/lwjgl/sdl/MCLauncherSDLCompat.class",
+                date_time=(1980, 1, 1, 0, 0, 0),
+            )
+            helper_info.compress_type = zipfile.ZIP_DEFLATED
+            helper_info.external_attr = 0o100644 << 16
+            output_jar.writestr(helper_info, helper.read_bytes())
+        if not patched_sdl_video:
+            raise RuntimeError(f"{sdl_jar.name} does not contain SDLVideo.class")
+        with zipfile.ZipFile(temporary_jar) as check:
+            if check.testzip() is not None:
+                raise RuntimeError(f"Patched SDL JAR is corrupt: {sdl_jar.name}")
+            names = set(check.namelist())
+            if "org/lwjgl/sdl/MCLauncherSDLCompat.class" not in names:
+                raise RuntimeError("Patched SDL JAR lacks MCLauncherSDLCompat.class")
+            if b"MCLauncherSDLCompat" not in check.read("org/lwjgl/sdl/SDLVideo.class"):
+                raise RuntimeError("SDLVideo.class does not reference the compatibility bridge")
+        shutil.copy2(temporary_jar, sdl_jar)
+    return sha256(source)
 
 
 def parse_signature_bundle(document: str) -> dict[str, bytes]:
@@ -296,6 +505,70 @@ def vendor_android_sdl_runtime(
         "bindingsAarSha256": sha256(packaged_aar),
         "nativeLibraries": native_digests,
     }
+
+
+
+def vendor_bundled_turnip(
+    output: Path,
+    native_libraries: dict[str, list[str]],
+    abis: Iterable[str],
+    source: dict,
+) -> list[dict]:
+    """Promote MojoLauncher's pinned Turnip ELF into a selectable driver pack."""
+    records: list[dict] = []
+    filename = "libvulkan_freedreno.so"
+    version_marker = str(source["versionMarker"]).encode("utf-8")
+    for abi in abis:
+        native_root = output / abi / "natives"
+        bundled = native_root / filename
+        if not bundled.is_file():
+            if abi == "arm64-v8a":
+                raise RuntimeError("Pinned arm64 engine build lacks its Turnip Vulkan driver")
+            continue
+        if version_marker not in bundled.read_bytes():
+            raise RuntimeError(
+                f"Pinned Turnip/{abi} does not contain {source['versionMarker']!r}"
+            )
+
+        pack = output / abi / "drivers/turnip"
+        pack.mkdir(parents=True, exist_ok=True)
+        target = pack / filename
+        bundled.replace(target)
+        native_libraries[abi].remove(filename)
+        manifest = {
+            "schemaVersion": 1,
+            "id": "turnip",
+            "name": "Bundled Turnip",
+            "version": str(source["version"]),
+            "kind": "driver",
+            "architecture": abi,
+            "renderer": None,
+            "driver": "TURNIP",
+            "pojavRenderer": None,
+            "preload": [filename],
+            "environment": {
+                "MCLAUNCHER_VULKAN_DRIVER": "turnip",
+            },
+            "files": [filename],
+            "sourceName": "MCLauncher pinned MojoLauncher engine build",
+            "sourceProject": str(source["sourceProject"]),
+            "license": str(source["license"]),
+            "importedAtEpochMs": 0,
+        }
+        (pack / "mclauncher-graphics.json").write_text(
+            json.dumps(manifest, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        records.append({
+            "abi": abi,
+            "id": "turnip",
+            "version": str(source["version"]),
+            "files": [filename],
+            "librarySha256": sha256(target),
+            "versionMarker": str(source["versionMarker"]),
+            "sourceProject": str(source["sourceProject"]),
+        })
+    return records
 
 
 def write_graphics_packs(output: Path, copied: dict[str, list[str]]) -> list[dict]:
@@ -670,6 +943,43 @@ def vendor_patched_libraries(
         for classifier, descriptor in (downloads.get("classifiers") or {}).items():
             vendor_descriptor(coordinate, "classifier", descriptor or {}, classifier)
 
+    compatibility_source = (
+        Path(__file__).resolve().parents[1]
+        / "vendor/sdl-compat/org/lwjgl/sdl/MCLauncherSDLCompat.java"
+    )
+    artifacts = {
+        str(record["coordinate"]): record
+        for record in records
+        if record["kind"] == "artifact"
+    }
+    for coordinate, record in sorted(artifacts.items()):
+        if not coordinate.startswith("org.lwjgl:lwjgl-sdl:"):
+            continue
+        version = coordinate.rsplit(":", 1)[-1]
+        core = artifacts.get(f"org.lwjgl:lwjgl:{version}")
+        opengl = artifacts.get(f"org.lwjgl:lwjgl-opengl:{version}")
+        if core is None or opengl is None:
+            raise RuntimeError(
+                f"SDL {version} compatibility patch requires matching LWJGL core and OpenGL JARs"
+            )
+        target = output / "common/jars" / safe_relative_path(
+            str(record["path"]),
+            label="SDL patched-library path",
+        )
+        source_digest = patch_sdl_proc_identity_jar(
+            target,
+            output / "common/jars" / safe_relative_path(str(core["path"]), label="LWJGL core path"),
+            output / "common/jars" / safe_relative_path(str(opengl["path"]), label="LWJGL OpenGL path"),
+            compatibility_source,
+        )
+        record["upstreamSha1"] = record["sha1"]
+        record["sha1"] = sha1(target)
+        record["sha256"] = sha256(target)
+        record["compatibilityPatch"] = (
+            "vendor/sdl-compat/org/lwjgl/sdl/MCLauncherSDLCompat.java"
+        )
+        record["compatibilityPatchSha256"] = source_digest
+
     if not records:
         raise RuntimeError("No patched LWJGL artifacts were discovered in substitutions.json")
     for abi in abis:
@@ -881,6 +1191,7 @@ def vendor_licenses(mojo_root: Path, output: Path) -> list[str]:
         "OpenLTW source: https://github.com/MojoLauncher/LTW\n"
         "OpenLTW compatibility patch: vendor/patches/ltw-minecraft-26.2.patch\n"
         "Runtime source: https://github.com/MojoLauncher/android-openjdk-build-multiarch\n"
+        "Bundled Turnip driver: pinned MojoLauncher engine build (Mesa MIT)\n"
         "Patched LWJGL source records: ../jars/substitutions.json and bundle-manifest.json\n",
         encoding="utf-8",
     )
@@ -913,6 +1224,12 @@ def main() -> int:
     args.cache.mkdir(parents=True, exist_ok=True)
 
     natives = copy_apk_native_libraries(args.mojo_apk, output, abis)
+    drivers = vendor_bundled_turnip(
+        output,
+        natives,
+        abis,
+        lock["drivers"]["turnip"],
+    )
     android_sdl_runtime = vendor_android_sdl_runtime(
         args.mojo_apk,
         args.sdl_bindings_aar,
@@ -969,6 +1286,7 @@ def main() -> int:
         "androidSdlRuntime": android_sdl_runtime,
         "nativeLibraries": natives,
         "rendererPacks": renderers,
+        "driverPacks": drivers,
         "patchedLibraries": patched,
         "patchedNativeLibraries": patched_natives,
         "jnaDispatch": jna_dispatch,

@@ -137,6 +137,30 @@ def main() -> int:
                 with zipfile.ZipFile(target) as archive:
                     if archive.testzip() is not None:
                         errors.append(f"Corrupt patched library JAR: {relative}")
+                    if str(entry.get("coordinate", "")).startswith(
+                        "org.lwjgl:lwjgl-sdl:"
+                    ):
+                        names = set(archive.namelist())
+                        helper = "org/lwjgl/sdl/MCLauncherSDLCompat.class"
+                        video = "org/lwjgl/sdl/SDLVideo.class"
+                        if helper not in names:
+                            errors.append(
+                                f"Patched SDL JAR lacks MCLauncherSDLCompat: {relative}"
+                            )
+                        if (
+                            video not in names
+                            or b"MCLauncherSDLCompat" not in archive.read(video)
+                        ):
+                            errors.append(
+                                f"Patched SDLVideo does not use the identity bridge: {relative}"
+                            )
+                        if entry.get("compatibilityPatch") != (
+                            "vendor/sdl-compat/org/lwjgl/sdl/"
+                            "MCLauncherSDLCompat.java"
+                        ):
+                            errors.append(
+                                f"Patched SDL compatibility source is not recorded: {relative}"
+                            )
             except zipfile.BadZipFile:
                 errors.append(f"Invalid patched library JAR: {relative}")
 
@@ -186,6 +210,7 @@ def main() -> int:
                     errors.append(f"Java {major}/{abi}: platform archive digest does not match")
 
     renderer_records = manifest.get("rendererPacks") or []
+    driver_records = manifest.get("driverPacks") or []
     native_records = manifest.get("nativeLibraries") or {}
     jna_dispatch = manifest.get("jnaDispatch") or {}
     if jna_dispatch.get("version") != "5.17.0":
@@ -195,6 +220,25 @@ def main() -> int:
     for abi in abis:
         native_dir = root / abi / "natives"
         names = set(native_records.get(abi) or [])
+        if abi == "arm64-v8a":
+            turnip_record = next(
+                (
+                    record for record in driver_records
+                    if record.get("abi") == abi and record.get("id") == "turnip"
+                ),
+                None,
+            )
+            turnip = root / abi / "drivers/turnip/libvulkan_freedreno.so"
+            if turnip_record is None:
+                errors.append(f"{abi}: bundled Turnip driver record is missing")
+            if not has_magic(turnip, ELF_MAGIC):
+                errors.append(f"{abi}: bundled Turnip driver ELF is missing")
+            elif not contains_bytes(turnip, b"Mesa 26.1.2 (git-e1098c6a3c)"):
+                errors.append(f"{abi}: bundled Turnip version marker is wrong")
+            if (native_dir / "libvulkan_freedreno.so").exists():
+                errors.append(
+                    f"{abi}: Turnip must live in its driver pack, not native root"
+                )
         for required in (
             "libpojavexec.so",
             "libpojavexec_awt.so",
@@ -211,6 +255,8 @@ def main() -> int:
             b"Java_git_artdeell_mojoexec_MojoExec_prepareEgl",
             b"Java_git_artdeell_mojoexec_MojoExec_setNativeLibraryDir",
             b"Java_git_artdeell_mojoexec_MojoExec_setDisplayParams",
+            b"Java_git_artdeell_mojoexec_MojoExec_setUseTurnip",
+            b"Java_git_artdeell_mojoexec_MojoExec_preloadVulkan",
         ):
             if has_magic(mojoexec, ELF_MAGIC) and not contains_bytes(mojoexec, symbol):
                 errors.append(
