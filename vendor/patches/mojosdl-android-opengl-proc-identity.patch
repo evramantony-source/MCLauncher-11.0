@@ -36,3 +36,32 @@ diff --git a/src/video/SDL_egl.c b/src/video/SDL_egl.c
          // EGL 1.5 can use eglGetProcAddress() for any symbol. 1.4 and earlier can't use it for core entry points.
          if (!result && is_egl_15_or_later && _this->egl_data->eglGetProcAddress) {
              result = _this->egl_data->eglGetProcAddress(proc);
+@@ -829,9 +857,22 @@ static bool SDL_EGL_PrivateChooseConfig(SDL_VideoDevice *_this, bool set_config
+         attribs[i++] = _this->gl_config.multisamplesamples;
+     }
+ 
+-    if (_this->gl_config.floatbuffers) {
+-        attribs[i++] = EGL_COLOR_COMPONENT_TYPE_EXT;
+-        attribs[i++] = EGL_COLOR_COMPONENT_TYPE_FLOAT_EXT;
++    if (_this->gl_config.floatbuffers) {
++#if defined(SDL_VIDEO_DRIVER_ANDROID)
++        /*
++         * Snapshot 6 asks SDL for a floating-point OpenGL window buffer.
++         * On Android, OpenLTW renders desktop GL through an EGL/GLES window
++         * surface. Some Android EGL implementations reject the EXT-only
++         * EGL_COLOR_COMPONENT_TYPE_EXT key with EGL_BAD_ATTRIBUTE instead of
++         * simply returning zero matching configs. Only put that key in the
++         * chooser when the display actually advertises the extension. The
++         * game can still use floating-point textures/FBOs internally; this
++         * only keeps the Android presentation surface on a supported format.
++         */
++        if (SDL_EGL_HasExtension(_this, SDL_EGL_DISPLAY_EXTENSION, "EGL_EXT_pixel_format_float")) {
++#endif
++            attribs[i++] = EGL_COLOR_COMPONENT_TYPE_EXT;
++            attribs[i++] = EGL_COLOR_COMPONENT_TYPE_FLOAT_EXT;
++#if defined(SDL_VIDEO_DRIVER_ANDROID)
++        }
++#endif
+     }
+ 
+     if (_this->egl_data->is_offscreen) {
