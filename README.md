@@ -50,8 +50,8 @@ The large generated runtime/native payload belongs in the APK artifact, not in G
 1. Open **Actions → Build standalone MCLauncher 11 APK**.
 2. Select **Run workflow**.
 3. Keep `arm64-v8a` for modern Android phones and tablets.
-4. Download the `MCLauncher-11.0-alpha26-arm64-v8a` artifact.
-5. Extract it and install `MCLauncher-11.0-alpha26-arm64-v8a.apk`.
+4. Download the `MCLauncher-11.0-alpha27-arm64-v8a` artifact.
+5. Extract it and install `MCLauncher-11.0-alpha27-arm64-v8a.apk`.
 6. Follow `docs/FIRST_DEVICE_TEST.md`.
 
 ## Microsoft and Xbox Game Pass accounts
@@ -71,7 +71,7 @@ repository secrets with a private Android keystore that you control:
 - `MCLAUNCHER_SIGNING_KEY_PASSWORD`
 
 Run **Build standalone MCLauncher 11 APK**, enable **microsoft_accounts**, and
-download the artifact containing `alpha26-microsoft`. Because this APK has a
+download the artifact containing `alpha27-microsoft`. Because this APK has a
 different signer, back up worlds and uninstall the public alpha before installing
 it. In MCLauncher Settings, enter an authorized Microsoft OAuth public-client ID,
 then use **Accounts → Microsoft account → Sign in**. Never commit the private

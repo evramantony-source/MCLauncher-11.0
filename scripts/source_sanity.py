@@ -125,6 +125,8 @@ for key in ("submoduleCommit", "upstreamFixCommit"):
         errors.append(f"vendor/engine-lock.json: Android SDL {key} must be a full SHA")
 if android_sdl.get("patch") != "vendor/patches/mojosdl-android-opengl-proc-identity.patch":
     errors.append("vendor/engine-lock.json: Android SDL compatibility patch is not pinned")
+if android_sdl.get("resolverStrategy") != "lwjgl-glx-provider-first":
+    errors.append("vendor/engine-lock.json: Android SDL resolver strategy is not pinned")
 for major in (8, 17, 21, 25):
     source = lock.get("runtimes", {}).get("sources", {}).get(str(major))
     if not source:
@@ -152,8 +154,8 @@ if openltw.get("patch") != "vendor/patches/ltw-minecraft-26.2.patch":
 
 require_contains(
     "app/build.gradle.kts",
-    'versionName = "11.0.0-alpha26"',
-    'versionCode = 36',
+    'versionName = "11.0.0-alpha27"',
+    'versionCode = 37',
     'generated/sdl/mojo-sdl-bindings.aar',
     'generated/sdl/jniLibs',
     'mclauncherAbi',
@@ -168,7 +170,7 @@ require_contains(
     "scripts/source_sanity.py",
     'assembleNoruntimeDebug',
     'assembleDebug -PmclauncherAbi=',
-    'MCLauncher-11.0-alpha26-',
+    'MCLauncher-11.0-alpha27-',
     ':sdl:jni_bindings:assembleDebug',
     '--sdl-bindings-aar',
     'scripts/verify_sdl_apk.py',
@@ -189,14 +191,15 @@ require_contains(
     'No Android LWJGL substitution is defined',
     'prepareAndroidNatives',
     'applyMinecraftOptions',
-    '-Dmclauncher.version=11.0.0-alpha26',
+    '-Dmclauncher.version=11.0.0-alpha27',
     'authSession?.accessToken ?: "0"',
     'AccountType.MICROSOFT) "msa" else "legacy"',
 )
 require_contains(
     "vendor/patches/mojosdl-android-opengl-proc-identity.patch",
     "SDL_EGL_GetProcAddressInternal",
-    "!defined(SDL_VIDEO_DRIVER_ANDROID)",
+    "MCLauncher_GLGetProcAddress",
+    "glXGetProcAddress",
 )
 require_contains(
     "vendor/patches/mojo-pointer-click-position.patch",

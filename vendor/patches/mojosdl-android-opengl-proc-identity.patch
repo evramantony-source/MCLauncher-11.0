@@ -1,13 +1,38 @@
 diff --git a/src/video/SDL_egl.c b/src/video/SDL_egl.c
-index 1ddcdae72..b398b80da 100644
 --- a/src/video/SDL_egl.c
 +++ b/src/video/SDL_egl.c
-@@ -299,7 +299,7 @@ SDL_FunctionPointer SDL_EGL_GetProcAddressInternal(SDL_VideoDevice *_this, const
-             result = _this->egl_data->eglGetProcAddress(proc);
-         }
+@@ -289,6 +289,34 @@ SDL_FunctionPointer SDL_EGL_GetProcAddressInternal(SDL_VideoDevice *_this, const
+         const Uint32 eglver = (((Uint32)_this->egl_data->egl_version_major) << 16) | ((Uint32)_this->egl_data->egl_version_minor);
+         const bool is_egl_15_or_later = eglver >= ((((Uint32)1) << 16) | 5);
  
--#if !defined(SDL_VIDEO_DRIVER_VITA)
-+#if !defined(SDL_VIDEO_DRIVER_VITA) && !defined(SDL_VIDEO_DRIVER_ANDROID)
-         // Try SDL_LoadFunction() first for EGL <= 1.4, or as a fallback for >= 1.5.
-         if (!result) {
-             result = SDL_LoadFunction(_this->egl_data->opengl_dll_handle, proc);
++#if defined(SDL_VIDEO_DRIVER_ANDROID)
++        /*
++         * LWJGL's Linux OpenGL provider asks glXGetProcAddress from the
++         * library passed to SDL_GL_LoadLibrary(), then falls back to a direct
++         * symbol from that same library. Minecraft 26.3 Snapshot 6 requires
++         * SDL and LWJGL to return the identical pointer for glGetError.
++         *
++         * Mirror LWJGL's lookup order here. Calling EGL's resolver first can
++         * return an equivalent OpenLTW entry point at a different address.
++         */
++        if (_this->egl_data->egl_dll_handle) {
++            typedef SDL_FunctionPointer (*MCLauncher_GLGetProcAddress)(const char *);
++            MCLauncher_GLGetProcAddress get_proc =
++                (MCLauncher_GLGetProcAddress)SDL_LoadFunction(_this->egl_data->egl_dll_handle, "glXGetProcAddress");
++            if (get_proc) {
++                result = get_proc(proc);
++            } else {
++                SDL_ClearError();
++            }
++            if (!result) {
++                result = SDL_LoadFunction(_this->egl_data->egl_dll_handle, proc);
++                if (!result) {
++                    SDL_ClearError();
++                }
++            }
++        }
++#endif
++
+         // EGL 1.5 can use eglGetProcAddress() for any symbol. 1.4 and earlier can't use it for core entry points.
+         if (!result && is_egl_15_or_later && _this->egl_data->eglGetProcAddress) {
+             result = _this->egl_data->eglGetProcAddress(proc);

@@ -1,5 +1,11 @@
 # Changelog
 
+## 11.0.0-alpha27
+
+- Replace Alpha 26's ineffective SDL fallback change with an Android SDL3 resolver that mirrors LWJGL's exact lookup order: use `glXGetProcAddress` from the loaded OpenLTW library, then its direct symbol fallback.
+- Satisfy 26.3 Snapshot 6's OpenGL function-pointer identity check while keeping the change outside the legacy GLFW backend used by working Minecraft versions.
+- Preserve Alpha 26's physical input routing and complete vanilla texture catalog.
+
 ## 11.0.0-alpha26
 
 - Fix the Snapshot 6 `glGetError mismatch` by backporting MojoSDL's upstream Android resolver fix, so SDL obtains OpenGL functions from OpenLTW's EGL resolver instead of an unrelated system GLES handle.

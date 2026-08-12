@@ -9,7 +9,8 @@
       "repository": "https://github.com/MojoLauncher/MojoSDL",
       "submoduleCommit": "2e0e947f0b2022e864ae8da884a7e9dd40d0fa62",
       "upstreamFixCommit": "d20558de674a44b39f77ff9632785d2077ea6ee5",
-      "patch": "vendor/patches/mojosdl-android-opengl-proc-identity.patch"
+      "patch": "vendor/patches/mojosdl-android-opengl-proc-identity.patch",
+      "resolverStrategy": "lwjgl-glx-provider-first"
     }
   },
   "runtimes": {

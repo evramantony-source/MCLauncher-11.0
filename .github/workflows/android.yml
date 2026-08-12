@@ -143,7 +143,7 @@ jobs:
           git apply "$GITHUB_WORKSPACE/vendor/patches/mojo-single-destroy.patch"
           git apply "$GITHUB_WORKSPACE/vendor/patches/mojo-pointer-click-position.patch"
           git -C sdl apply "$GITHUB_WORKSPACE/vendor/patches/mojosdl-android-opengl-proc-identity.patch"
-          grep -q '#if !defined(SDL_VIDEO_DRIVER_VITA) && !defined(SDL_VIDEO_DRIVER_ANDROID)' sdl/src/video/SDL_egl.c
+          grep -q 'MCLauncher_GLGetProcAddress' sdl/src/video/SDL_egl.c
           git -C sdl diff --check
           chmod +x gradlew
           ./gradlew --no-daemon \
@@ -214,9 +214,9 @@ jobs:
         run: |
           APK=app/build/outputs/apk/debug/app-debug.apk
           if [ "$PRIVATE_ACCOUNT_BUILD" = "true" ]; then
-            OUT=app/build/outputs/apk/debug/MCLauncher-11.0-alpha26-microsoft-${TARGET_ABI}.apk
+            OUT=app/build/outputs/apk/debug/MCLauncher-11.0-alpha27-microsoft-${TARGET_ABI}.apk
           else
-            OUT=app/build/outputs/apk/debug/MCLauncher-11.0-alpha26-${TARGET_ABI}.apk
+            OUT=app/build/outputs/apk/debug/MCLauncher-11.0-alpha27-${TARGET_ABI}.apk
           fi
           test -f "$APK"
           cp "$APK" "$OUT"
@@ -233,12 +233,12 @@ jobs:
       - name: Upload standalone APK
         uses: actions/upload-artifact@v4
         with:
-          name: MCLauncher-11.0-alpha26-${{ env.PRIVATE_ACCOUNT_BUILD == 'true' && 'microsoft-' || '' }}${{ env.TARGET_ABI }}
+          name: MCLauncher-11.0-alpha27-${{ env.PRIVATE_ACCOUNT_BUILD == 'true' && 'microsoft-' || '' }}${{ env.TARGET_ABI }}
           retention-days: 14
           path: |
-            app/build/outputs/apk/debug/MCLauncher-11.0-alpha26-${{ env.TARGET_ABI }}.apk
-            app/build/outputs/apk/debug/MCLauncher-11.0-alpha26-${{ env.TARGET_ABI }}.apk.sha256
-            app/build/outputs/apk/debug/MCLauncher-11.0-alpha26-microsoft-${{ env.TARGET_ABI }}.apk
-            app/build/outputs/apk/debug/MCLauncher-11.0-alpha26-microsoft-${{ env.TARGET_ABI }}.apk.sha256
+            app/build/outputs/apk/debug/MCLauncher-11.0-alpha27-${{ env.TARGET_ABI }}.apk
+            app/build/outputs/apk/debug/MCLauncher-11.0-alpha27-${{ env.TARGET_ABI }}.apk.sha256
+            app/build/outputs/apk/debug/MCLauncher-11.0-alpha27-microsoft-${{ env.TARGET_ABI }}.apk
+            app/build/outputs/apk/debug/MCLauncher-11.0-alpha27-microsoft-${{ env.TARGET_ABI }}.apk.sha256
             app/src/main/assets/bundled_engine/bundle-manifest.json
           if-no-files-found: error
