@@ -140,10 +140,22 @@ jobs:
         working-directory: .vendor-build/MojoLauncher
         shell: bash
         run: |
-          git apply "$GITHUB_WORKSPACE/vendor/patches/mojo-single-destroy.patch"
-          git apply "$GITHUB_WORKSPACE/vendor/patches/mojo-pointer-click-position.patch"
-          git -C mojoexec apply "$GITHUB_WORKSPACE/vendor/patches/mojoexec-vulkan-driver-state.patch"
-          git -C sdl apply "$GITHUB_WORKSPACE/vendor/patches/mojosdl-android-opengl-proc-identity.patch"
+          set -o pipefail
+          apply_patch() {
+            local repo="$1"
+            local patch="$2"
+            echo "Applying $(basename "$patch") to $repo"
+            if ! git -C "$repo" apply --3way --whitespace=nowarn "$patch"; then
+              echo "::error::Failed to apply $(basename "$patch") to $repo"
+              git -C "$repo" status --short || true
+              git -C "$repo" diff --check || true
+              exit 1
+            fi
+          }
+          apply_patch . "$GITHUB_WORKSPACE/vendor/patches/mojo-single-destroy.patch"
+          apply_patch . "$GITHUB_WORKSPACE/vendor/patches/mojo-pointer-click-position.patch"
+          apply_patch mojoexec "$GITHUB_WORKSPACE/vendor/patches/mojoexec-vulkan-driver-state.patch"
+          apply_patch sdl "$GITHUB_WORKSPACE/vendor/patches/mojosdl-android-opengl-proc-identity.patch"
           grep -q 'mclauncher_turnip_requested' mojoexec/vulkan_loader.c
           grep -q 'MCLauncher_GLGetProcAddress' sdl/src/video/SDL_egl.c
           grep -q 'recovered Android GLES EGL config' sdl/src/video/SDL_egl.c
