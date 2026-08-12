@@ -36,7 +36,7 @@ diff --git a/src/video/SDL_egl.c b/src/video/SDL_egl.c
          // EGL 1.5 can use eglGetProcAddress() for any symbol. 1.4 and earlier can't use it for core entry points.
          if (!result && is_egl_15_or_later && _this->egl_data->eglGetProcAddress) {
              result = _this->egl_data->eglGetProcAddress(proc);
-@@ -829,9 +857,25 @@ static bool SDL_EGL_PrivateChooseConfig(SDL_VideoDevice *_this, bool set_config
+@@ -829,9 +857,28 @@ static bool SDL_EGL_PrivateChooseConfig(SDL_VideoDevice *_this, bool set_config
          attribs[i++] = _this->gl_config.multisamplesamples;
      }
  
