@@ -142,8 +142,12 @@ jobs:
         run: |
           git apply "$GITHUB_WORKSPACE/vendor/patches/mojo-single-destroy.patch"
           git apply "$GITHUB_WORKSPACE/vendor/patches/mojo-pointer-click-position.patch"
+          git -C mojoexec apply "$GITHUB_WORKSPACE/vendor/patches/mojoexec-vulkan-driver-state.patch"
           git -C sdl apply "$GITHUB_WORKSPACE/vendor/patches/mojosdl-android-opengl-proc-identity.patch"
+          grep -q 'mclauncher_turnip_requested' mojoexec/vulkan_loader.c
           grep -q 'MCLauncher_GLGetProcAddress' sdl/src/video/SDL_egl.c
+          grep -q 'recovered Android GLES EGL config' sdl/src/video/SDL_egl.c
+          git -C mojoexec diff --check
           git -C sdl diff --check
           chmod +x gradlew
           ./gradlew --no-daemon \
