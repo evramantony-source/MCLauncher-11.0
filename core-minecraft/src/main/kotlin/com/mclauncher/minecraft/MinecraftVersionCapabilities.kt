@@ -8,9 +8,9 @@ package com.mclauncher.minecraft
  * instead of assuming the whole ID is a plain release number.
  */
 object MinecraftVersionCapabilities {
-    private val versionPair = Regex("""(?<!\\d)(\\d{1,4})\\.(\\d+)(?!\\d)""")
+    private val versionPair = Regex("""(?<!\d)(\d{1,4})\\.(\d+)(?!\d)""")
     private val calendarVersion = Regex(
-        """(?i)(?<!\\d)(\\d{1,4})\\.(\\d+)(?:[-_.]?snapshot[-_.]?(\\d+))?(?!\\d)"""
+        """(?i)(?<!\d)(\d{1,4})\\.(\d+)(?:[-_.]?snapshot[-_.]?(\d+))?(?!\d)"""
     )
 
     fun supportsGraphicsApi(versionId: String): Boolean =

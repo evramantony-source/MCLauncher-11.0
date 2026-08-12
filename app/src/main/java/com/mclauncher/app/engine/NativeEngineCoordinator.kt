@@ -608,7 +608,7 @@ class NativeEngineCoordinator(
             value.contains("qcom") ||
                 value.contains("qualcomm") ||
                 value.contains("snapdragon") ||
-                Regex("""\\bsm\\d{4}""").containsMatchIn(value)
+                Regex("""\bsm\d{4}""").containsMatchIn(value)
         }
     }
 
