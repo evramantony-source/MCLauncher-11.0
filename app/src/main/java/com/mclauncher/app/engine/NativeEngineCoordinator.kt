@@ -8,6 +8,7 @@ import com.mclauncher.minecraft.MinecraftLayout
 import com.mclauncher.minecraft.MinecraftVersionCapabilities
 import com.mclauncher.minecraft.ToolLaunchPlan
 import com.mclauncher.model.GraphicsDriver
+import com.mclauncher.model.MinecraftGraphicsApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
@@ -61,11 +62,13 @@ class NativeEngineCoordinator(
             ),
             "libvulkan_freedreno.so"
         )
-        val autoTurnip =
-            snapshotSdlCompatibility &&
-                plan.graphicsDriver == GraphicsDriver.AUTO &&
-                bundledTurnip.isFile &&
-                isQualcommDevice()
+        val autoTurnip = shouldAutoSelectBundledTurnip(
+            snapshotSdlCompatibility = snapshotSdlCompatibility,
+            requestedDriver = plan.graphicsDriver,
+            graphicsApi = plan.minecraftGraphicsApi,
+            bundledTurnipAvailable = bundledTurnip.isFile,
+            qualcommDevice = isQualcommDevice()
+        )
         val effectiveDriver =
             if (autoTurnip) GraphicsDriver.TURNIP else plan.graphicsDriver
         val graphics = GraphicsRegistry(layout, plan.runtime.architecture, json)
@@ -78,8 +81,8 @@ class NativeEngineCoordinator(
         )
         if (autoTurnip) {
             sessionLog?.appendText(
-                "Snapshot SDL compatibility auto-selected bundled Turnip " +
-                    "for this Qualcomm/Adreno device\n"
+                "Snapshot Vulkan compatibility auto-selected bundled Turnip " +
+                    "for this Qualcomm/Adreno device; OpenGL remains isolated\n"
             )
         }
 
@@ -389,6 +392,11 @@ class NativeEngineCoordinator(
             // These tiny engine stubs have the same SONAME as the real OpenJDK libraries.
             // Loading them first makes libfontmanager resolve against the wrong library.
             .filterNot { isConflictingAwtStubLibrary(it.name) }
+            // liblinkerhook must only be loaded inside MojoExec's isolated
+            // Turnip namespace. Loading its DF_1_GLOBAL android_dlopen_ext hook
+            // into the app namespace first leaves the hook uninitialised and can
+            // abort the process as soon as Turnip is requested.
+            .filterNot { shouldDeferNativePreload(it.name) }
             .filterNot { isRendererOrDriverLibrary(it.name) }
             .toList()
         val graphicsLibraries = graphics.searchDirectories.asSequence()
@@ -615,6 +623,27 @@ class NativeEngineCoordinator(
     private fun findFile(root: File, name: String): File? =
         root.walkTopDown().firstOrNull { it.isFile && it.name == name }
 }
+
+/**
+ * Snapshot OpenGL and Vulkan have different driver requirements. OpenLTW must
+ * stay on the system GLES stack, while the Vulkan backend on affected Adreno
+ * devices needs Turnip's dynamic-rendering support.
+ */
+internal fun shouldAutoSelectBundledTurnip(
+    snapshotSdlCompatibility: Boolean,
+    requestedDriver: GraphicsDriver,
+    graphicsApi: MinecraftGraphicsApi,
+    bundledTurnipAvailable: Boolean,
+    qualcommDevice: Boolean
+): Boolean =
+    snapshotSdlCompatibility &&
+        requestedDriver == GraphicsDriver.AUTO &&
+        graphicsApi == MinecraftGraphicsApi.VULKAN &&
+        bundledTurnipAvailable &&
+        qualcommDevice
+
+internal fun shouldDeferNativePreload(name: String): Boolean =
+    name.equals("liblinkerhook.so", ignoreCase = true)
 
 internal fun jnaNativeDirectoryName(classpath: List<String>): String? {
     val version = classpath.asSequence()

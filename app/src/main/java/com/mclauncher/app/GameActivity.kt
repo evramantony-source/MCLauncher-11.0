@@ -142,7 +142,7 @@ class GameActivity : ComponentActivity() {
         val dataRoot = File(planPath).parentFile?.parentFile ?: filesDir
         val sessionLog = File(dataRoot, "logs/latest-session.log").apply {
             parentFile?.mkdirs()
-            writeText("MCLauncher 11.0 alpha27 session ${System.currentTimeMillis()}\n")
+            writeText("MCLauncher ${BuildConfig.VERSION_NAME} session ${System.currentTimeMillis()}\n")
         }
 
         setContent {
@@ -292,6 +292,11 @@ class GameActivity : ComponentActivity() {
                                 view.isFocusable = true
                                 view.isFocusableInTouchMode = true
                                 view.requestFocus()
+                                view.setOnCapturedPointerListener { _, event ->
+                                    externalInputDetected = true
+                                    GameInputBridge.handleGenericMotion(event) ||
+                                        GameInputBridge.handlePointerButtonEvent(event)
+                                }
                                 if (targetBufferWidth != null && targetBufferHeight != null) {
                                     // Keep the native buffer in the exact resolution Minecraft was
                                     // launched with. The SurfaceView itself still fills the tablet;
@@ -503,6 +508,12 @@ class GameActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         SdlInputBridge.focusChanged(true)
+        gameSurfaceView?.let { view ->
+            view.requestFocus()
+            if (physicalMouseCapture && GameInputBridge.isPointerGrabbed()) {
+                view.post { runCatching { view.requestPointerCapture() } }
+            }
+        }
         if (gyroEnabled) gyroInputController?.start(gyroSensitivity)
     }
 
@@ -538,7 +549,10 @@ class GameActivity : ComponentActivity() {
     }
 
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
-        if (event.isFromSource(InputDevice.SOURCE_MOUSE)) {
+        if (
+            event.isFromSource(InputDevice.SOURCE_MOUSE) ||
+            event.isFromSource(InputDevice.SOURCE_MOUSE_RELATIVE)
+        ) {
             externalInputDetected = true
             if (physicalMouseCapture && GameInputBridge.isPointerGrabbed() && event.actionMasked == MotionEvent.ACTION_DOWN) {
                 runCatching { gameSurfaceView?.requestPointerCapture() }
@@ -556,7 +570,15 @@ class GameActivity : ComponentActivity() {
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
         SdlInputBridge.focusChanged(hasFocus)
-        if (hasFocus) enterImmersiveMode()
+        if (hasFocus) {
+            enterImmersiveMode()
+            gameSurfaceView?.let { view ->
+                view.requestFocus()
+                if (physicalMouseCapture && GameInputBridge.isPointerGrabbed()) {
+                    view.post { runCatching { view.requestPointerCapture() } }
+                }
+            }
+        }
     }
 
     override fun onDestroy() {

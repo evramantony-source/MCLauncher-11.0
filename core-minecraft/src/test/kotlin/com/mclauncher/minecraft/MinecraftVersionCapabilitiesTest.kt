@@ -37,6 +37,16 @@ class MinecraftVersionCapabilitiesTest {
         )
         assertTrue(
             MinecraftVersionCapabilities.supportsSnapshotSdlGraphicsCompatibility(
+                "26.3_snapshot_6"
+            )
+        )
+        assertTrue(
+            MinecraftVersionCapabilities.supportsSnapshotSdlGraphicsCompatibility(
+                "26.3-snapshot.12"
+            )
+        )
+        assertTrue(
+            MinecraftVersionCapabilities.supportsSnapshotSdlGraphicsCompatibility(
                 "26.3"
             )
         )
@@ -57,4 +67,3 @@ class MinecraftVersionCapabilitiesTest {
         )
     }
 }
-

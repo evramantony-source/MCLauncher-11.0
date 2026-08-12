@@ -2,7 +2,7 @@
 
 Use an MCLauncher 11.0 Alpha 27 installation. It can update Alpha 26 in place without deleting instances.
 
-1. Install the GitHub Actions `MCLauncher-11.0-alpha27-arm64-v8a.apk` over Alpha 26.
+1. Install the GitHub Actions `MCLauncher-11.0-alpha29-arm64-v8a.apk` over the previous public alpha.
 2. Allow file access requested by Android.
 3. Create an offline account for the first launch test.
 4. Install a clean vanilla Minecraft version without mods.

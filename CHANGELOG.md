@@ -1,5 +1,14 @@
 # Changelog
 
+## 11.0.0-alpha29
+
+- Stop forcing Turnip into Snapshot 6+ OpenGL launches: OpenLTW now remains on the system GLES path, while automatic Turnip selection is limited to the Vulkan API on compatible Qualcomm/Adreno devices.
+- Fix Alpha 28's abrupt Turnip startup failure by keeping `liblinkerhook.so` out of the app's global linker namespace and deferring its `android_dlopen_ext` hook to MojoExec's isolated driver namespace, matching the pinned engine's intended loading sequence.
+- Add explicit driver-stage logging and use the real application version in every session header so a hard native failure identifies the exact last completed stage and APK.
+- Complete physical USB/Bluetooth mouse support with Android captured-pointer delivery, focus/capture restoration, relative motion, wheel and five-button routing.
+- Complete physical keyboard support on the SDL3 path by pairing hardware key events with printable SDL text input for chat, commands, signs and search fields.
+- Keep every pre-Snapshot-6 GLFW launch path unchanged and add regression tests for the Vulkan-only Turnip policy and isolated linker hook.
+
 ## 11.0.0-alpha28
 
 - Make 26.3 Snapshot 6 and later use the bundled Mesa 26.1.2 Turnip driver automatically on Qualcomm/Adreno devices when the per-instance driver remains **Automatic**, while preserving explicit driver choices and every pre-Snapshot-6 launch path.

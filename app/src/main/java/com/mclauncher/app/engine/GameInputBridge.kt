@@ -417,6 +417,18 @@ object GameInputBridge {
         val unicode = if (pressed) event.getUnicodeChar(event.metaState) else 0
         if (NativeLaunchBridge.isAvailable && SdlInputBridge.isActive) {
             SdlInputBridge.key(event.keyCode, pressed)
+            // MojoSDL's lightweight binding exposes the native key methods but
+            // not SDLActivity.handleKeyEvent(), which normally creates the
+            // accompanying SDL_TEXT_INPUT event. Commit printable hardware-key
+            // text here so chat, commands, signs and search fields work.
+            if (
+                pressed &&
+                unicode != 0 &&
+                !event.isCtrlPressed &&
+                (event.isPrintingKey || event.keyCode == KeyEvent.KEYCODE_SPACE)
+            ) {
+                SdlInputBridge.commitCodePoint(unicode)
+            }
         } else if (NativeLaunchBridge.isAvailable) {
             // Follow the pinned GLFW engine's physical-keyboard path exactly. Sending
             // a separately translated GLFW event and Unicode event can race its queue.
@@ -445,6 +457,8 @@ object GameInputBridge {
                     mapMouseButton(event.actionButton)?.let { setMouseButtonState(it, pressed) }
                     return true
                 }
+                MotionEvent.ACTION_DOWN,
+                MotionEvent.ACTION_UP -> return handlePointerButtonEvent(event)
                 MotionEvent.ACTION_HOVER_MOVE,
                 MotionEvent.ACTION_MOVE -> {
                     val relativeX = event.getAxisValue(MotionEvent.AXIS_RELATIVE_X)
@@ -522,7 +536,10 @@ object GameInputBridge {
 
     /** Handles mouse ACTION_DOWN/ACTION_UP events delivered through dispatchTouchEvent. */
     fun handlePointerButtonEvent(event: MotionEvent): Boolean {
-        if (!event.isFromSource(InputDevice.SOURCE_MOUSE)) return false
+        if (
+            !event.isFromSource(InputDevice.SOURCE_MOUSE) &&
+            !event.isFromSource(InputDevice.SOURCE_MOUSE_RELATIVE)
+        ) return false
         val pressed = event.actionMasked == MotionEvent.ACTION_DOWN
         if (event.actionMasked !in listOf(MotionEvent.ACTION_DOWN, MotionEvent.ACTION_UP)) return false
         val releaseFallback = if (!pressed) {

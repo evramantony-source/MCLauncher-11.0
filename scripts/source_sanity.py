@@ -161,8 +161,8 @@ if openltw.get("patch") != "vendor/patches/ltw-minecraft-26.2.patch":
 
 require_contains(
     "app/build.gradle.kts",
-    'versionName = "11.0.0-alpha28"',
-    'versionCode = 38',
+    'versionName = "11.0.0-alpha29"',
+    'versionCode = 39',
     'generated/sdl/mojo-sdl-bindings.aar',
     'generated/sdl/jniLibs',
     'mclauncherAbi',
@@ -177,7 +177,7 @@ require_contains(
     "scripts/source_sanity.py",
     'assembleNoruntimeDebug',
     'assembleDebug -PmclauncherAbi=',
-    'MCLauncher-11.0-alpha28-',
+    'MCLauncher-11.0-alpha29-',
     ':sdl:jni_bindings:assembleDebug',
     '--sdl-bindings-aar',
     'scripts/verify_sdl_apk.py',
@@ -198,7 +198,7 @@ require_contains(
     'No Android LWJGL substitution is defined',
     'prepareAndroidNatives',
     'applyMinecraftOptions',
-    '-Dmclauncher.version=11.0.0-alpha28',
+    '-Dmclauncher.version=11.0.0-alpha29',
     'authSession?.accessToken ?: "0"',
     'AccountType.MICROSOFT) "msa" else "legacy"',
 )
@@ -239,6 +239,9 @@ require_contains(
     'supportsSnapshotSdlGraphicsCompatibility',
     'mclauncher.sdlOpenGLProcIdentity',
     'libvulkan_freedreno.so',
+    'shouldAutoSelectBundledTurnip',
+    'graphicsApi == MinecraftGraphicsApi.VULKAN',
+    'shouldDeferNativePreload',
 )
 require_contains(
     "app/src/main/AndroidManifest.xml",
@@ -323,6 +326,20 @@ require_contains(
     "Starting a headless Java tool without renderer or GLFW initialization",
     'gMojoSendMouseAt',
     'nativeSendTouchButton',
+    'Deferring liblinkerhook.so to the isolated Turnip namespace',
+    'Starting isolated bundled Turnip preload',
+)
+require_contains(
+    "app/src/main/java/com/mclauncher/app/GameActivity.kt",
+    'BuildConfig.VERSION_NAME',
+    'setOnCapturedPointerListener',
+    'requestPointerCapture()',
+)
+require_contains(
+    "app/src/main/java/com/mclauncher/app/engine/GameInputBridge.kt",
+    'InputDevice.SOURCE_MOUSE_RELATIVE',
+    'SdlInputBridge.commitCodePoint(unicode)',
+    'event.isPrintingKey',
 )
 require_contains(
     "app/src/main/java/com/mclauncher/app/creation/VanillaTextureCatalog.kt",

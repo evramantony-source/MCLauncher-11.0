@@ -538,11 +538,13 @@ bool configureMojoRenderer(JNIEnv* env, const std::vector<std::string>& preloadL
         if (mojoExecSetUseTurnip) {
             // Always write the flag: a later system-driver launch must not retain
             // Turnip state from an earlier embedded JVM session.
+            pushLog("Setting MojoExec Vulkan driver mode=" + driver);
             mojoExecSetUseTurnip(
                 env,
                 nullptr,
                 useTurnip ? JNI_TRUE : JNI_FALSE
             );
+            pushLog("MojoExec Vulkan driver mode configured");
         } else if (useTurnip) {
             pushError("Bundled MojoExec cannot enable the selected Turnip driver");
             return false;
@@ -552,6 +554,7 @@ bool configureMojoRenderer(JNIEnv* env, const std::vector<std::string>& preloadL
                 pushError("Bundled MojoExec cannot preload the selected Turnip driver");
                 return false;
             }
+            pushLog("Starting isolated bundled Turnip preload");
             mojoExecPreloadVulkan(env, nullptr);
             pushLog("Configured bundled Turnip Vulkan driver through MojoExec");
         }
@@ -776,6 +779,15 @@ Java_com_mclauncher_app_engine_NativeLaunchBridge_nativeStart(
         }
         if (unsupportedProcessHookLibrary(filename)) {
             pushLog("Skipping unrelated process-hook library " + filename);
+            continue;
+        }
+        if (filename == "liblinkerhook.so") {
+            // This library exports a DF_1_GLOBAL android_dlopen_ext hook whose
+            // function pointers are initialised by MojoExec only after it has
+            // been loaded inside the isolated Turnip namespace. Preloading it
+            // here puts an uninitialised hook in the app namespace and can abort
+            // Android 16 during the first Turnip request.
+            pushLog("Deferring liblinkerhook.so to the isolated Turnip namespace");
             continue;
         }
         // Renderer/driver libraries are opened by the configured engine after its
