@@ -68,3 +68,84 @@ diff --git a/src/video/SDL_egl.c b/src/video/SDL_egl.c
      }
  
      if (_this->egl_data->is_offscreen) {
+@@ -878,10 +925,74 @@ static bool SDL_EGL_PrivateChooseConfig(SDL_VideoDevice *_this, bool set_config
+ 
+     SDL_assert(i < SDL_arraysize(attribs));
+ 
+-    if (_this->egl_data->eglChooseConfig(_this->egl_data->egl_display,
+-                                         attribs,
+-                                         configs, SDL_arraysize(configs),
+-                                         &found_configs) == EGL_FALSE ||
+-        found_configs == 0) {
++    EGLBoolean choose_result = _this->egl_data->eglChooseConfig(
++        _this->egl_data->egl_display,
++        attribs,
++        configs, SDL_arraysize(configs),
++        &found_configs);
++
++#if defined(SDL_VIDEO_DRIVER_ANDROID)
++    /*
++     * Minecraft 26.3 Snapshot 6 asks SDL3 for a desktop-style OpenGL
++     * framebuffer before OpenLTW translates it to GLES. Some Android EGL
++     * implementations reject one of those optional config attributes with
++     * EGL_BAD_ATTRIBUTE instead of simply returning zero matching configs.
++     *
++     * Only retry after the normal request failed and MojoExec is forcing GLES.
++     * Existing versions whose normal EGL request succeeds never enter this
++     * path. The fallback keeps the required color/depth/stencil/window shape
++     * but drops optional desktop/extension config attributes and asks for the
++     * broadly-supported ES2 renderable bit; the actual context is still
++     * created at MojoExec's requested GLES 3 version.
++     */
++    if ((choose_result == EGL_FALSE || found_configs == 0) &&
++        mojoexec_renderspec.force_gles_context) {
++        EGLint compatibility_attribs[32];
++        int compatibility_i = 0;
++
++        compatibility_attribs[compatibility_i++] = EGL_RED_SIZE;
++        compatibility_attribs[compatibility_i++] = _this->gl_config.red_size;
++        compatibility_attribs[compatibility_i++] = EGL_GREEN_SIZE;
++        compatibility_attribs[compatibility_i++] = _this->gl_config.green_size;
++        compatibility_attribs[compatibility_i++] = EGL_BLUE_SIZE;
++        compatibility_attribs[compatibility_i++] = _this->gl_config.blue_size;
++        if (_this->gl_config.alpha_size) {
++            compatibility_attribs[compatibility_i++] = EGL_ALPHA_SIZE;
++            compatibility_attribs[compatibility_i++] = _this->gl_config.alpha_size;
++        }
++        if (_this->gl_config.depth_size) {
++            compatibility_attribs[compatibility_i++] = EGL_DEPTH_SIZE;
++            compatibility_attribs[compatibility_i++] = _this->gl_config.depth_size;
++        }
++        if (_this->gl_config.stencil_size) {
++            compatibility_attribs[compatibility_i++] = EGL_STENCIL_SIZE;
++            compatibility_attribs[compatibility_i++] = _this->gl_config.stencil_size;
++        }
++        compatibility_attribs[compatibility_i++] = EGL_RENDERABLE_TYPE;
++        compatibility_attribs[compatibility_i++] = EGL_OPENGL_ES2_BIT;
++        if (_this->egl_data->egl_surfacetype) {
++            compatibility_attribs[compatibility_i++] = EGL_SURFACE_TYPE;
++            compatibility_attribs[compatibility_i++] = _this->egl_data->egl_surfacetype;
++        }
++        compatibility_attribs[compatibility_i++] = EGL_NONE;
++
++        found_configs = 0;
++        choose_result = _this->egl_data->eglChooseConfig(
++            _this->egl_data->egl_display,
++            compatibility_attribs,
++            configs, SDL_arraysize(configs),
++            &found_configs);
++        if (choose_result != EGL_FALSE && found_configs > 0) {
++            SDL_memcpy(
++                attribs,
++                compatibility_attribs,
++                compatibility_i * sizeof(EGLint));
++            i = compatibility_i;
++            SDL_Log("MCLauncher: recovered Android GLES EGL config with conservative attributes");
++        }
++    }
++#endif
++
++    if (choose_result == EGL_FALSE || found_configs == 0) {
+         return false;
+     }
+ 
