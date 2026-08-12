@@ -140,18 +140,46 @@ jobs:
         working-directory: .vendor-build/MojoLauncher
         shell: bash
         run: |
-          set -o pipefail
+          set -euo pipefail
+
+          # The previous CI attempt used --3way against depth-1 repositories.
+          # These vendor patches are maintained as source patches, so give Git
+          # the full object history first; this lets --3way resolve context
+          # changes in pinned submodules instead of failing immediately.
+          git fetch --unshallow origin
+          git -C glfw fetch --unshallow origin || true
+          git -C mojoexec fetch --unshallow origin || true
+          git -C sdl fetch --unshallow origin || true
+
           apply_patch() {
             local repo="$1"
             local patch="$2"
-            echo "Applying $(basename "$patch") to $repo"
-            if ! git -C "$repo" apply --3way --whitespace=nowarn "$patch"; then
-              echo "::error::Failed to apply $(basename "$patch") to $repo"
-              git -C "$repo" status --short || true
-              git -C "$repo" diff --check || true
-              exit 1
+            local name
+            name="$(basename "$patch")"
+            echo "=== Applying $name to $repo ==="
+
+            if git -C "$repo" apply --check --whitespace=nowarn "$patch"; then
+              git -C "$repo" apply --whitespace=nowarn "$patch"
+              echo "Applied $name with a clean context match."
+              return 0
             fi
+
+            echo "Clean patch application failed; retrying with Git 3-way merge."
+            if git -C "$repo" apply --3way --whitespace=nowarn "$patch"; then
+              echo "Applied $name with a 3-way merge."
+              return 0
+            fi
+
+            echo "::error::Failed to apply $name to $repo"
+            echo "--- repository status ---"
+            git -C "$repo" status --short || true
+            echo "--- patch check ---"
+            git -C "$repo" apply --check --whitespace=nowarn "$patch" || true
+            echo "--- diff check ---"
+            git -C "$repo" diff --check || true
+            exit 1
           }
+
           apply_patch . "$GITHUB_WORKSPACE/vendor/patches/mojo-single-destroy.patch"
           apply_patch . "$GITHUB_WORKSPACE/vendor/patches/mojo-pointer-click-position.patch"
           apply_patch mojoexec "$GITHUB_WORKSPACE/vendor/patches/mojoexec-vulkan-driver-state.patch"
@@ -210,7 +238,7 @@ jobs:
         run: |
           test -n "$PRIVATE_SIGNING_KEY_BASE64" || { echo "Missing MCLAUNCHER_SIGNING_KEY_BASE64 secret"; exit 1; }
           test -n "$MCLAUNCHER_SIGNING_STORE_PASSWORD" || { echo "Missing MCLAUNCHER_SIGNING_STORE_PASSWORD secret"; exit 1; }
-          test -n "$MCLAUNCHER_SIGNING_KEY_ALIAS" || { echo "Missing MCLAUNCHER_SIGNING_KEY_ALIAS secret"; exit 1; }
+          test -n "$MCLAUNCHER_SIGNING_KEY_ALIAS" || { echo "Missing MCLAUNCHER_SIGNING_KEY_ALIAS"; exit 1; }
           test -n "$MCLAUNCHER_SIGNING_KEY_PASSWORD" || { echo "Missing MCLAUNCHER_SIGNING_KEY_PASSWORD secret"; exit 1; }
           mkdir -p .ci-signing
           printf '%s' "$PRIVATE_SIGNING_KEY_BASE64" | base64 --decode > .ci-signing/mclauncher-account.jks
