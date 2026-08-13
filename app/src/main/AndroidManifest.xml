@@ -43,7 +43,7 @@
             android:launchMode="singleTask"
             android:process=":minecraft"
             android:resizeableActivity="false"
-            android:screenOrientation="sensorLandscape" />
+            android:screenOrientation="landscape" />
 
         <activity
             android:name=".creation.LocalBuildActivity"
