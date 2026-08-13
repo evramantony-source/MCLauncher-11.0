@@ -74,7 +74,7 @@ object SdlInputBridge {
             val loader = activity.classLoader
             val sdl = Class.forName(SDL_CLASS, true, loader)
             val sdlActivity = Class.forName(SDL_ACTIVITY_CLASS, true, loader)
-            val inputConnection = Class.forName(SDL_INPUT_CONNECTION, true, loader)
+            val inputConnection = Class.forName(SDL_INPUT_CONNECTION_CLASS, true, loader)
             val grabInterface = Class.forName(GRAB_LISTENER_CLASS, true, loader)
             val clipboardInterface = Class.forName(CLIPBOARD_CLASS, true, loader)
             val intType = Int::class.javaPrimitiveType!!
