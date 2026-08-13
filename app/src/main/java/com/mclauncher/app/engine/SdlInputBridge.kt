@@ -4,29 +4,27 @@ import android.app.Activity
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.pm.ActivityInfo
-import android.util.DisplayMetrics
+import android.content.res.Configuration
+import android.view.Display
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.Surface
-import android.view.SurfaceView
-import android.view.View
-import android.view.ViewGroup
 import java.lang.reflect.Method
 import java.lang.reflect.Proxy
 
-/**
- * Android/ART side of MojoSDL for Minecraft 26.3 Snapshot 4 and newer.
- *
- * The exact SDL bindings are produced from the pinned engine source and added to
- * the final APK at build time. Reflection lets normal JVM tests compile without
- * a generated AAR while keeping every JNI class name identical to MojoSDL.
- */
+/** Android/ART bridge for the SDL3 backend used by Minecraft 26.3 Snapshot 4+. */
 object SdlInputBridge {
     private const val SDL_CLASS = "git.mojo.sdl.SDL"
     private const val SDL_ACTIVITY_CLASS = "git.mojo.sdl.SDLActivity"
     private const val SDL_INPUT_CONNECTION_CLASS = "git.mojo.sdl.SDLInputConnection"
     private const val GRAB_LISTENER_CLASS = "git.mojo.sdl.GrabListener"
     private const val CLIPBOARD_CLASS = "git.mojo.sdl.SDLClipboard"
+
+    private const val SDL_ORIENTATION_UNKNOWN = 0
+    private const val SDL_ORIENTATION_LANDSCAPE = 1
+    private const val SDL_ORIENTATION_LANDSCAPE_FLIPPED = 2
+    private const val SDL_ORIENTATION_PORTRAIT = 3
+    private const val SDL_ORIENTATION_PORTRAIT_FLIPPED = 4
 
     @Volatile private var prepared = false
     @Volatile private var active = false
@@ -58,20 +56,21 @@ object SdlInputBridge {
     private lateinit var onNativeMouse: Method
     private lateinit var nativeFocusChanged: Method
     private lateinit var nativeCommitText: Method
+    private var nativeSetNaturalOrientation: Method? = null
+    private var onNativeRotationChanged: Method? = null
 
     val isPrepared: Boolean get() = prepared
     val isActive: Boolean get() = active
     val isGrabbing: Boolean get() = grabbing
 
-    fun setGrabStateListener(listener: ((Boolean) -> Unit)?) {
-        grabListener = listener
-    }
+    fun setGrabStateListener(listener: ((Boolean) -> Unit)?) { grabListener = listener }
 
     @Synchronized
     fun prepare(activity: Activity): Result<Unit> {
         if (prepared) {
             hostActivity = activity
             activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+            publishAndroidOrientation()
             return Result.success(Unit)
         }
         return runCatching {
@@ -95,40 +94,24 @@ object SdlInputBridge {
             onNativeSurfaceChanged = sdlActivity.getMethod("onNativeSurfaceChanged")
             onNativeSurfaceDestroyed = sdlActivity.getMethod("onNativeSurfaceDestroyed")
             nativeSetScreenResolution = sdlActivity.getMethod(
-                "nativeSetScreenResolution",
-                intType,
-                intType,
-                intType,
-                intType,
-                floatType,
-                floatType
+                "nativeSetScreenResolution", intType, intType, intType, intType, floatType, floatType
             )
             onNativeResize = sdlActivity.getMethod("onNativeResize")
             onNativeKeyDown = sdlActivity.getMethod("onNativeKeyDown", intType)
             onNativeKeyUp = sdlActivity.getMethod("onNativeKeyUp", intType)
             onNativeKeyboardFocusLost = sdlActivity.getMethod("onNativeKeyboardFocusLost")
-            onNativeMouse = sdlActivity.getMethod(
-                "onNativeMouse",
-                intType,
-                intType,
-                floatType,
-                floatType,
-                booleanType
-            )
+            onNativeMouse = sdlActivity.getMethod("onNativeMouse", intType, intType, floatType, floatType, booleanType)
             nativeFocusChanged = sdlActivity.getMethod("nativeFocusChanged", booleanType)
-            nativeCommitText = inputConnection.getMethod(
-                "nativeCommitText",
-                String::class.java,
-                intType
-            )
+            nativeCommitText = inputConnection.getMethod("nativeCommitText", String::class.java, intType)
 
-            val initCallback = Runnable { onSdlInitialized() }
-            setInitCallback.invoke(null, initCallback)
+            // SDL 3.2+ added these callbacks as part of Android natural-orientation
+            // handling. They are optional so older pinned bindings still work.
+            nativeSetNaturalOrientation = runCatching { sdlActivity.getMethod("nativeSetNaturalOrientation", intType) }.getOrNull()
+            onNativeRotationChanged = runCatching { sdlActivity.getMethod("onNativeRotationChanged", intType) }.getOrNull()
 
-            grabListenerProxy = Proxy.newProxyInstance(
-                loader,
-                arrayOf(grabInterface)
-            ) { proxy, method, arguments ->
+            setInitCallback.invoke(null, Runnable { onSdlInitialized() })
+
+            grabListenerProxy = Proxy.newProxyInstance(loader, arrayOf(grabInterface)) { proxy, method, arguments ->
                 when (method.name) {
                     "onGrabState" -> {
                         val next = arguments?.firstOrNull() as? Boolean ?: false
@@ -143,19 +126,10 @@ object SdlInputBridge {
                 }
             }.also { addGrabListener.invoke(null, it) }
 
-            val clipboard = requireNotNull(
-                activity.getSystemService(ClipboardManager::class.java)
-            ) { "Android clipboard service is unavailable" }
-            clipboardProxy = Proxy.newProxyInstance(
-                loader,
-                arrayOf(clipboardInterface)
-            ) { proxy, method, arguments ->
+            val clipboard = requireNotNull(activity.getSystemService(ClipboardManager::class.java))
+            clipboardProxy = Proxy.newProxyInstance(loader, arrayOf(clipboardInterface)) { proxy, method, arguments ->
                 when (method.name) {
-                    "getClipboardString" -> clipboard.primaryClip
-                        ?.getItemAt(0)
-                        ?.coerceToText(activity)
-                        ?.toString()
-                        .orEmpty()
+                    "getClipboardString" -> clipboard.primaryClip?.getItemAt(0)?.coerceToText(activity)?.toString().orEmpty()
                     "setClipboardString" -> {
                         val value = arguments?.firstOrNull()?.toString().orEmpty()
                         clipboard.setPrimaryClip(ClipData.newPlainText("Minecraft", value))
@@ -168,11 +142,10 @@ object SdlInputBridge {
                 }
             }.also { setClipboard.invoke(null, it) }
 
-            // Match MojoLauncher's proven initialization order. libSDL3.so and
-            // its libmojoexec.so dependency are packaged in the app native dir.
             sdl.getMethod("initialize").invoke(null)
             sdl.getMethod("setContext", Activity::class.java).invoke(null, activity)
             sdl.getMethod("setupJNI").invoke(null)
+            publishAndroidOrientation()
             prepared = true
         }
     }
@@ -180,40 +153,32 @@ object SdlInputBridge {
     @Synchronized
     fun surfaceCreated(surface: Surface, width: Int, height: Int, rate: Float) {
         pendingSurface = surface
-        val normalized = normalizeLandscapeSurface(surface, width, height)
-        surfaceWidth = normalized.first.coerceAtLeast(1)
-        surfaceHeight = normalized.second.coerceAtLeast(1)
+        surfaceWidth = width.coerceAtLeast(1)
+        surfaceHeight = height.coerceAtLeast(1)
         refreshRate = rate.takeIf { it > 0f } ?: 60f
-        applySnapshotVulkanPresentationFix(surface)
+        publishAndroidOrientation()
         if (active) publishSurface(created = !surfacePublished)
     }
 
     @Synchronized
     fun surfaceChanged(surface: Surface, width: Int, height: Int, rate: Float) {
         pendingSurface = surface
-        val normalized = normalizeLandscapeSurface(surface, width, height)
-        surfaceWidth = normalized.first.coerceAtLeast(1)
-        surfaceHeight = normalized.second.coerceAtLeast(1)
+        surfaceWidth = width.coerceAtLeast(1)
+        surfaceHeight = height.coerceAtLeast(1)
         refreshRate = rate.takeIf { it > 0f } ?: 60f
-        applySnapshotVulkanPresentationFix(surface)
+        publishAndroidOrientation()
         if (active) publishSurface(created = !surfacePublished)
     }
 
-    @Synchronized
-    fun surfaceDestroyed() {
+    @Synchronized fun surfaceDestroyed() {
         if (active && surfacePublished) invokeQuietly(onNativeSurfaceDestroyed)
         surfacePublished = false
         pendingSurface = null
         if (prepared) invokeQuietly(setNativeSurface, null)
     }
 
-    fun focusChanged(hasFocus: Boolean) {
-        if (active) invokeQuietly(nativeFocusChanged, hasFocus)
-    }
-
-    fun keyboardFocusLost() {
-        if (active) invokeQuietly(onNativeKeyboardFocusLost)
-    }
+    fun focusChanged(hasFocus: Boolean) { if (active) invokeQuietly(nativeFocusChanged, hasFocus) }
+    fun keyboardFocusLost() { if (active) invokeQuietly(onNativeKeyboardFocusLost) }
 
     fun key(androidKeyCode: Int, pressed: Boolean) {
         if (!active || androidKeyCode == KeyEvent.KEYCODE_UNKNOWN) return
@@ -228,33 +193,19 @@ object SdlInputBridge {
     @Synchronized
     fun mouseButton(androidButton: Int, pressed: Boolean, x: Float, y: Float, relative: Boolean) {
         if (!active) return
-        val next = if (pressed) {
-            mouseButtonState or androidButton
-        } else {
-            mouseButtonState and androidButton.inv()
-        }
+        val next = if (pressed) mouseButtonState or androidButton else mouseButtonState and androidButton.inv()
         if (next == mouseButtonState) return
         mouseButtonState = next
-        invokeQuietly(
-            onNativeMouse,
-            mouseButtonState,
-            if (pressed) MotionEvent.ACTION_DOWN else MotionEvent.ACTION_UP,
-            x,
-            y,
-            relative
-        )
+        invokeQuietly(onNativeMouse, mouseButtonState,
+            if (pressed) MotionEvent.ACTION_DOWN else MotionEvent.ACTION_UP, x, y, relative)
     }
 
     fun mouseMotion(x: Float, y: Float, relative: Boolean) {
-        if (active) {
-            invokeQuietly(onNativeMouse, 0, MotionEvent.ACTION_MOVE, x, y, relative)
-        }
+        if (active) invokeQuietly(onNativeMouse, 0, MotionEvent.ACTION_MOVE, x, y, relative)
     }
 
     fun mouseScroll(x: Float, y: Float) {
-        if (active) {
-            invokeQuietly(onNativeMouse, 0, MotionEvent.ACTION_SCROLL, x, y, false)
-        }
+        if (active) invokeQuietly(onNativeMouse, 0, MotionEvent.ACTION_SCROLL, x, y, false)
     }
 
     @Synchronized
@@ -269,95 +220,53 @@ object SdlInputBridge {
         hostActivity = null
     }
 
-    @Synchronized
-    private fun onSdlInitialized() {
+    @Synchronized private fun onSdlInitialized() {
         active = true
+        publishAndroidOrientation()
         pendingSurface?.let { publishSurface(created = !surfacePublished) }
     }
 
-    @Suppress("DEPRECATION")
-    private fun normalizeLandscapeSurface(surface: Surface, fallbackWidth: Int, fallbackHeight: Int): Pair<Int, Int> {
-        val activity = hostActivity
-        if (activity == null) return Pair(fallbackWidth, fallbackHeight)
-
-        val root = activity.window.decorView
-        val windowWidth = root.width
-        val windowHeight = root.height
-        val width = if (windowWidth > 0) windowWidth else fallbackWidth
-        val height = if (windowHeight > 0) windowHeight else fallbackHeight
-
-        // Keep the native buffer in the actual landscape coordinate space rather than
-        // mixing the requested Minecraft buffer with the display's physical orientation.
-        // The SurfaceView itself is transformed below when Snapshot 6 needs the explicit
-        // 90-degree presentation compensation.
-        val surfaceView = findSurfaceView(root)
-        if (surfaceView != null && surfaceView.holder.surface === surface) {
-            if (width > 1 && height > 1) {
-                runCatching { surfaceView.holder.setFixedSize(width, height) }
-            }
-        }
-
-        return if (width >= height) Pair(width, height) else Pair(height, width)
-    }
-
-    /**
-     * Snapshot 6 is reaching Android as a landscape SurfaceView but the Vulkan/SDL
-     * presentation is arriving with a 90-degree visual rotation. Rotate only the
-     * game SurfaceView; the Compose launcher overlay remains in normal landscape.
-     *
-     * Scaling is reciprocal so the rotated 16:9 surface still occupies exactly the
-     * original full-screen bounds. SurfaceView recreation resets View transforms,
-     * therefore this is reapplied on every surface create/change callback.
-     */
-    private fun applySnapshotVulkanPresentationFix(surface: Surface) {
+    /** Mirrors SDL's Android getNaturalOrientation()/getCurrentRotation() logic. */
+    private fun publishAndroidOrientation() {
         val activity = hostActivity ?: return
-        activity.runOnUiThread {
-            val surfaceView = findSurfaceView(activity.window.decorView) ?: return@runOnUiThread
-            if (surfaceView.holder.surface !== surface) return@runOnUiThread
-            val width = surfaceView.width
-            val height = surfaceView.height
-            if (width <= 0 || height <= 0) {
-                surfaceView.post { applySnapshotVulkanPresentationFix(surface) }
-                return@runOnUiThread
+        val natural = runCatching {
+            val config = activity.resources.configuration
+            val rotation = activity.windowManager.defaultDisplay.rotation
+            if (((rotation == Surface.ROTATION_0 || rotation == Surface.ROTATION_180) &&
+                    config.orientation == Configuration.ORIENTATION_LANDSCAPE) ||
+                ((rotation == Surface.ROTATION_90 || rotation == Surface.ROTATION_270) &&
+                    config.orientation == Configuration.ORIENTATION_PORTRAIT)) {
+                SDL_ORIENTATION_LANDSCAPE
+            } else {
+                SDL_ORIENTATION_PORTRAIT
             }
-            surfaceView.pivotX = width / 2f
-            surfaceView.pivotY = height / 2f
-            surfaceView.rotation = 90f
-            surfaceView.scaleX = height.toFloat() / width.toFloat()
-            surfaceView.scaleY = width.toFloat() / height.toFloat()
+        }.getOrDefault(SDL_ORIENTATION_LANDSCAPE)
+        val rotation = when (runCatching { activity.windowManager.defaultDisplay.rotation }.getOrDefault(0)) {
+            Surface.ROTATION_90 -> 90
+            Surface.ROTATION_180 -> 180
+            Surface.ROTATION_270 -> 270
+            else -> 0
         }
-    }
-
-    private fun findSurfaceView(view: View): SurfaceView? {
-        if (view is SurfaceView) return view
-        if (view !is ViewGroup) return null
-        for (index in 0 until view.childCount) {
-            findSurfaceView(view.getChildAt(index))?.let { return it }
-        }
-        return null
+        // SDL's native Android implementation adjusts rotation by +90 when the
+        // natural orientation is landscape. Let SDL perform that exact conversion;
+        // do not rotate the SurfaceView or Vulkan buffers ourselves.
+        invokeOptional(nativeSetNaturalOrientation, natural)
+        invokeOptional(onNativeRotationChanged, rotation)
     }
 
     private fun publishSurface(created: Boolean) {
         val surface = pendingSurface ?: return
         invokeQuietly(setNativeSurface, surface)
         if (created) invokeQuietly(onNativeSurfaceCreated)
-
-        // Keep all SDL/Vulkan screen-resolution values in the SurfaceView's landscape
-        // coordinate space. Feeding physical display metrics here previously caused the
-        // renderer to see a mismatched orientation on the target tablet.
-        val density = 1f
-        invokeQuietly(
-            nativeSetScreenResolution,
-            surfaceWidth,
-            surfaceHeight,
-            surfaceWidth,
-            surfaceHeight,
-            density,
-            refreshRate
-        )
+        invokeQuietly(nativeSetScreenResolution,
+            surfaceWidth, surfaceHeight, surfaceWidth, surfaceHeight, 1f, refreshRate)
         invokeQuietly(onNativeResize)
         invokeQuietly(onNativeSurfaceChanged)
         surfacePublished = true
+    }
+
+    private fun invokeOptional(method: Method?, vararg args: Any?) {
+        if (method != null) runCatching { method.invoke(null, *args) }
     }
 
     private fun invokeQuietly(method: Method, vararg arguments: Any?) {
