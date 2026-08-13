@@ -3,6 +3,7 @@ package com.mclauncher.app.engine
 import android.app.Activity
 import android.content.ClipData
 import android.content.ClipboardManager
+import android.util.DisplayMetrics
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.Surface
@@ -28,6 +29,7 @@ object SdlInputBridge {
     @Volatile private var grabbing = false
     @Volatile private var grabListener: ((Boolean) -> Unit)? = null
 
+    private var hostActivity: Activity? = null
     private var pendingSurface: Surface? = null
     private var surfacePublished = false
     private var surfaceWidth = 1
@@ -63,12 +65,16 @@ object SdlInputBridge {
 
     @Synchronized
     fun prepare(activity: Activity): Result<Unit> {
-        if (prepared) return Result.success(Unit)
+        if (prepared) {
+            hostActivity = activity
+            return Result.success(Unit)
+        }
         return runCatching {
+            hostActivity = activity
             val loader = activity.classLoader
             val sdl = Class.forName(SDL_CLASS, true, loader)
             val sdlActivity = Class.forName(SDL_ACTIVITY_CLASS, true, loader)
-            val inputConnection = Class.forName(SDL_INPUT_CONNECTION_CLASS, true, loader)
+            val inputConnection = Class.forName(SDL_INPUT_CONNECTION, true, loader)
             val grabInterface = Class.forName(GRAB_LISTENER_CLASS, true, loader)
             val clipboardInterface = Class.forName(CLIPBOARD_CLASS, true, loader)
             val intType = Int::class.javaPrimitiveType!!
@@ -253,6 +259,7 @@ object SdlInputBridge {
         grabbing = false
         mouseButtonState = 0
         grabListener = null
+        hostActivity = null
     }
 
     @Synchronized
@@ -261,17 +268,39 @@ object SdlInputBridge {
         pendingSurface?.let { publishSurface(created = !surfacePublished) }
     }
 
+    @Suppress("DEPRECATION")
     private fun publishSurface(created: Boolean) {
         val surface = pendingSurface ?: return
         invokeQuietly(setNativeSurface, surface)
         if (created) invokeQuietly(onNativeSurfaceCreated)
+
+        // SDL's Android backend deliberately keeps the render-buffer dimensions
+        // separate from the physical display dimensions. Passing the fixed
+        // SurfaceView buffer as both values makes SDL think a landscape tablet is
+        // portrait when the buffer has been resized, which rotates Minecraft while
+        // the Android overlay remains correctly oriented. Mirror upstream SDLSurface:
+        // report the fixed Surface dimensions first and the real display metrics
+        // second, including Android's logical density.
+        val metrics = DisplayMetrics()
+        val displayMetricsAvailable = runCatching {
+            hostActivity?.windowManager?.defaultDisplay?.getRealMetrics(metrics)
+            metrics.widthPixels > 0 && metrics.heightPixels > 0
+        }.getOrDefault(false)
+        val deviceWidth = if (displayMetricsAvailable) metrics.widthPixels else surfaceWidth
+        val deviceHeight = if (displayMetricsAvailable) metrics.heightPixels else surfaceHeight
+        val density = if (displayMetricsAvailable && metrics.densityDpi > 0) {
+            metrics.densityDpi / 160f
+        } else {
+            1f
+        }
+
         invokeQuietly(
             nativeSetScreenResolution,
             surfaceWidth,
             surfaceHeight,
-            surfaceWidth,
-            surfaceHeight,
-            1f,
+            deviceWidth,
+            deviceHeight,
+            density,
             refreshRate
         )
         invokeQuietly(onNativeResize)
