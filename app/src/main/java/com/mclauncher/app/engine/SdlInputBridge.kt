@@ -3,9 +3,14 @@ package com.mclauncher.app.engine
 import android.app.Activity
 import android.content.ClipData
 import android.content.ClipboardManager
+import android.content.pm.ActivityInfo
+import android.util.DisplayMetrics
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.Surface
+import android.view.SurfaceView
+import android.view.View
+import android.view.ViewGroup
 import java.lang.reflect.Method
 import java.lang.reflect.Proxy
 
@@ -66,10 +71,12 @@ object SdlInputBridge {
     fun prepare(activity: Activity): Result<Unit> {
         if (prepared) {
             hostActivity = activity
+            activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
             return Result.success(Unit)
         }
         return runCatching {
             hostActivity = activity
+            activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
             val loader = activity.classLoader
             val sdl = Class.forName(SDL_CLASS, true, loader)
             val sdlActivity = Class.forName(SDL_ACTIVITY_CLASS, true, loader)
@@ -176,8 +183,9 @@ object SdlInputBridge {
     @Synchronized
     fun surfaceCreated(surface: Surface, width: Int, height: Int, rate: Float) {
         pendingSurface = surface
-        surfaceWidth = width.coerceAtLeast(1)
-        surfaceHeight = height.coerceAtLeast(1)
+        val normalized = normalizeLandscapeSurface(surface, width, height)
+        surfaceWidth = normalized.first.coerceAtLeast(1)
+        surfaceHeight = normalized.second.coerceAtLeast(1)
         refreshRate = rate.takeIf { it > 0f } ?: 60f
         if (active) publishSurface(created = !surfacePublished)
     }
@@ -185,8 +193,9 @@ object SdlInputBridge {
     @Synchronized
     fun surfaceChanged(surface: Surface, width: Int, height: Int, rate: Float) {
         pendingSurface = surface
-        surfaceWidth = width.coerceAtLeast(1)
-        surfaceHeight = height.coerceAtLeast(1)
+        val normalized = normalizeLandscapeSurface(surface, width, height)
+        surfaceWidth = normalized.first.coerceAtLeast(1)
+        surfaceHeight = normalized.second.coerceAtLeast(1)
         refreshRate = rate.takeIf { it > 0f } ?: 60f
         if (active) publishSurface(created = !surfacePublished)
     }
@@ -267,31 +276,58 @@ object SdlInputBridge {
         pendingSurface?.let { publishSurface(created = !surfacePublished) }
     }
 
+    @Suppress("DEPRECATION")
+    private fun normalizeLandscapeSurface(surface: Surface, fallbackWidth: Int, fallbackHeight: Int): Pair<Int, Int> {
+        val activity = hostActivity
+        if (activity == null) return Pair(fallbackWidth, fallbackHeight)
+
+        val root = activity.window.decorView
+        val windowWidth = root.width
+        val windowHeight = root.height
+        val width = if (windowWidth > 0) windowWidth else fallbackWidth
+        val height = if (windowHeight > 0) windowHeight else fallbackHeight
+
+        // The launcher historically calls SurfaceHolder.setFixedSize() with Minecraft's
+        // requested 1120x630 buffer. On Android large-screen Vulkan, that fixed buffer can
+        // retain a stale buffer transform even while the Activity is already landscape,
+        // which produces the exact 90-degree presentation shown by Snapshot 6.
+        // SDL should own a buffer in the Activity's current landscape coordinate space.
+        val surfaceView = findSurfaceView(root)
+        if (surfaceView != null && surfaceView.holder.surface === surface) {
+            if (width > 1 && height > 1) {
+                runCatching { surfaceView.holder.setFixedSize(width, height) }
+            }
+        }
+
+        return if (width >= height) Pair(width, height) else Pair(height, width)
+    }
+
+    private fun findSurfaceView(view: View): SurfaceView? {
+        if (view is SurfaceView) return view
+        if (view !is ViewGroup) return null
+        for (index in 0 until view.childCount) {
+            findSurfaceView(view.getChildAt(index))?.let { return it }
+        }
+        return null
+    }
+
     private fun publishSurface(created: Boolean) {
         val surface = pendingSurface ?: return
         invokeQuietly(setNativeSurface, surface)
         if (created) invokeQuietly(onNativeSurfaceCreated)
 
-        /*
-         * Minecraft 26.3 Snapshot 6 is presenting Vulkan through SDL's Android
-         * surface. The SurfaceView dimensions are already in the current Android
-         * orientation (1120x630 on the target landscape device). Feeding
-         * getRealMetrics() here mixes the application's rotated coordinate space
-         * with the display's physical coordinate space (2560x1600). That can make
-         * SDL/Minecraft interpret the Vulkan surface transform as a 90-degree
-         * rotation while the Android overlay remains upright.
-         *
-         * Keep all SDL screen-resolution values in the actual Surface coordinate
-         * space. Android's compositor handles mapping that buffer onto the physical
-         * display; Minecraft does not need the natural display dimensions here.
-         */
+        // Keep SDL screen-resolution and Vulkan swapchain dimensions in the same
+        // coordinate space as the Android SurfaceView. Do not mix in the display's
+        // physical 2560x1600 metrics: Android is already presenting the landscape
+        // application buffer onto the physical display.
+        val density = 1f
         invokeQuietly(
             nativeSetScreenResolution,
             surfaceWidth,
             surfaceHeight,
             surfaceWidth,
             surfaceHeight,
-            1f,
+            density,
             refreshRate
         )
         invokeQuietly(onNativeResize)
