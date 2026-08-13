@@ -30,11 +30,11 @@ class MCLauncherApplication : Application() {
             if (activity !is GameActivity) return
             activity.window.decorView.post {
                 val surfaceView = findSurfaceView(activity.window.decorView)
-                surfaceView?.setOnKeyListener { _, event ->
+                surfaceView?.setOnKeyListener { _, keyCode, event ->
                     // GameActivity normally handles this through dispatchKeyEvent().
                     // This fallback covers Android devices that route a physical
                     // keyboard directly to the focused SurfaceView instead.
-                    if (event.keyCode == KeyEvent.KEYCODE_ESCAPE) {
+                    if (keyCode == KeyEvent.KEYCODE_ESCAPE) {
                         GameInputBridge.handleAndroidKey(event)
                     } else {
                         false
