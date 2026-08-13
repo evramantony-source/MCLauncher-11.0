@@ -115,10 +115,7 @@ object SdlInputBridge {
                 floatType,
                 booleanType
             )
-            nativeFocusChanged = sdlActivity.getMethod(
-                "nativeFocusChanged",
-                booleanType
-            )
+            nativeFocusChanged = sdlActivity.getMethod("nativeFocusChanged", booleanType)
             nativeCommitText = inputConnection.getMethod(
                 "nativeCommitText",
                 String::class.java,
@@ -187,6 +184,7 @@ object SdlInputBridge {
         surfaceWidth = normalized.first.coerceAtLeast(1)
         surfaceHeight = normalized.second.coerceAtLeast(1)
         refreshRate = rate.takeIf { it > 0f } ?: 60f
+        applySnapshotVulkanPresentationFix(surface)
         if (active) publishSurface(created = !surfacePublished)
     }
 
@@ -197,6 +195,7 @@ object SdlInputBridge {
         surfaceWidth = normalized.first.coerceAtLeast(1)
         surfaceHeight = normalized.second.coerceAtLeast(1)
         refreshRate = rate.takeIf { it > 0f } ?: 60f
+        applySnapshotVulkanPresentationFix(surface)
         if (active) publishSurface(created = !surfacePublished)
     }
 
@@ -287,11 +286,10 @@ object SdlInputBridge {
         val width = if (windowWidth > 0) windowWidth else fallbackWidth
         val height = if (windowHeight > 0) windowHeight else fallbackHeight
 
-        // The launcher historically calls SurfaceHolder.setFixedSize() with Minecraft's
-        // requested 1120x630 buffer. On Android large-screen Vulkan, that fixed buffer can
-        // retain a stale buffer transform even while the Activity is already landscape,
-        // which produces the exact 90-degree presentation shown by Snapshot 6.
-        // SDL should own a buffer in the Activity's current landscape coordinate space.
+        // Keep the native buffer in the actual landscape coordinate space rather than
+        // mixing the requested Minecraft buffer with the display's physical orientation.
+        // The SurfaceView itself is transformed below when Snapshot 6 needs the explicit
+        // 90-degree presentation compensation.
         val surfaceView = findSurfaceView(root)
         if (surfaceView != null && surfaceView.holder.surface === surface) {
             if (width > 1 && height > 1) {
@@ -300,6 +298,34 @@ object SdlInputBridge {
         }
 
         return if (width >= height) Pair(width, height) else Pair(height, width)
+    }
+
+    /**
+     * Snapshot 6 is reaching Android as a landscape SurfaceView but the Vulkan/SDL
+     * presentation is arriving with a 90-degree visual rotation. Rotate only the
+     * game SurfaceView; the Compose launcher overlay remains in normal landscape.
+     *
+     * Scaling is reciprocal so the rotated 16:9 surface still occupies exactly the
+     * original full-screen bounds. SurfaceView recreation resets View transforms,
+     * therefore this is reapplied on every surface create/change callback.
+     */
+    private fun applySnapshotVulkanPresentationFix(surface: Surface) {
+        val activity = hostActivity ?: return
+        activity.runOnUiThread {
+            val surfaceView = findSurfaceView(activity.window.decorView) ?: return@runOnUiThread
+            if (surfaceView.holder.surface !== surface) return@runOnUiThread
+            val width = surfaceView.width
+            val height = surfaceView.height
+            if (width <= 0 || height <= 0) {
+                surfaceView.post { applySnapshotVulkanPresentationFix(surface) }
+                return@runOnUiThread
+            }
+            surfaceView.pivotX = width / 2f
+            surfaceView.pivotY = height / 2f
+            surfaceView.rotation = 90f
+            surfaceView.scaleX = height.toFloat() / width.toFloat()
+            surfaceView.scaleY = width.toFloat() / height.toFloat()
+        }
     }
 
     private fun findSurfaceView(view: View): SurfaceView? {
@@ -316,10 +342,9 @@ object SdlInputBridge {
         invokeQuietly(setNativeSurface, surface)
         if (created) invokeQuietly(onNativeSurfaceCreated)
 
-        // Keep SDL screen-resolution and Vulkan swapchain dimensions in the same
-        // coordinate space as the Android SurfaceView. Do not mix in the display's
-        // physical 2560x1600 metrics: Android is already presenting the landscape
-        // application buffer onto the physical display.
+        // Keep all SDL/Vulkan screen-resolution values in the SurfaceView's landscape
+        // coordinate space. Feeding physical display metrics here previously caused the
+        // renderer to see a mismatched orientation on the target tablet.
         val density = 1f
         invokeQuietly(
             nativeSetScreenResolution,
