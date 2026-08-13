@@ -3,7 +3,6 @@ package com.mclauncher.app.engine
 import android.app.Activity
 import android.content.ClipData
 import android.content.ClipboardManager
-import android.util.DisplayMetrics
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.Surface
@@ -268,39 +267,31 @@ object SdlInputBridge {
         pendingSurface?.let { publishSurface(created = !surfacePublished) }
     }
 
-    @Suppress("DEPRECATION")
     private fun publishSurface(created: Boolean) {
         val surface = pendingSurface ?: return
         invokeQuietly(setNativeSurface, surface)
         if (created) invokeQuietly(onNativeSurfaceCreated)
 
-        // SDL's Android backend deliberately keeps the render-buffer dimensions
-        // separate from the physical display dimensions. Passing the fixed
-        // SurfaceView buffer as both values makes SDL think a landscape tablet is
-        // portrait when the buffer has been resized, which rotates Minecraft while
-        // the Android overlay remains correctly oriented. Mirror upstream SDLSurface:
-        // report the fixed Surface dimensions first and the real display metrics
-        // second, including Android's logical density.
-        val metrics = DisplayMetrics()
-        val displayMetricsAvailable = runCatching {
-            hostActivity?.windowManager?.defaultDisplay?.getRealMetrics(metrics)
-            metrics.widthPixels > 0 && metrics.heightPixels > 0
-        }.getOrDefault(false)
-        val deviceWidth = if (displayMetricsAvailable) metrics.widthPixels else surfaceWidth
-        val deviceHeight = if (displayMetricsAvailable) metrics.heightPixels else surfaceHeight
-        val density = if (displayMetricsAvailable && metrics.densityDpi > 0) {
-            metrics.densityDpi / 160f
-        } else {
-            1f
-        }
-
+        /*
+         * Minecraft 26.3 Snapshot 6 is presenting Vulkan through SDL's Android
+         * surface. The SurfaceView dimensions are already in the current Android
+         * orientation (1120x630 on the target landscape device). Feeding
+         * getRealMetrics() here mixes the application's rotated coordinate space
+         * with the display's physical coordinate space (2560x1600). That can make
+         * SDL/Minecraft interpret the Vulkan surface transform as a 90-degree
+         * rotation while the Android overlay remains upright.
+         *
+         * Keep all SDL screen-resolution values in the actual Surface coordinate
+         * space. Android's compositor handles mapping that buffer onto the physical
+         * display; Minecraft does not need the natural display dimensions here.
+         */
         invokeQuietly(
             nativeSetScreenResolution,
             surfaceWidth,
             surfaceHeight,
-            deviceWidth,
-            deviceHeight,
-            density,
+            surfaceWidth,
+            surfaceHeight,
+            1f,
             refreshRate
         )
         invokeQuietly(onNativeResize)
