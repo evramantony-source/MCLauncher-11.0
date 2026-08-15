@@ -30,3 +30,7 @@ The workflow must:
 ## Device proof
 
 Alpha 01 reached Minecraft 1.21.11/Fabric's main menu and a playable world on a physical Android device. Alpha 02 reached the game with mods disabled, while the device log identified Sodium's renderer-marker block. Alpha 03 confirmed that fix. Alpha 04 reached OpenLTW on 26.2 and then failed at the missing `glGetFloatv` export; its Compose menu-touch path also emitted no native pointer markers in the supplied trace. Alpha 05 requires focused checks for patched OpenLTW startup, Activity-level menu navigation, swipe look, external input, the 26.2 graphics-API selector and per-instance settings.
+
+## 2026-08-15 build trigger
+
+Requested by the repository owner to run the standalone arm64-v8a APK build from the current main branch.
