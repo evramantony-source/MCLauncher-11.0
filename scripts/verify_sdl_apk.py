@@ -13,6 +13,9 @@ REQUIRED_DEX_TYPES = (
     b"Lgit/mojo/sdl/SDL;",
     b"Lgit/mojo/sdl/SDLActivity;",
     b"Lgit/mojo/sdl/SDLInputConnection;",
+    # MojoSDL with offscreen hidden/additional windows also ships the cursor
+    # callback that SdlInputBridge must register to avoid an NPE.
+    b"Lgit/mojo/sdl/SDLCursor$CursorChangeCallback;",
 )
 
 

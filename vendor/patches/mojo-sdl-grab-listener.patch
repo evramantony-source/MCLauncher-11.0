@@ -1,0 +1,13 @@
+diff --git a/app_pojavlauncher/src/main/java/net/kdt/pojavlaunch/platform/backend/SDLBackend.java b/app_pojavlauncher/src/main/java/net/kdt/pojavlaunch/platform/backend/SDLBackend.java
+index 8037daafe..3eed6ae5c 100644
+--- a/app_pojavlauncher/src/main/java/net/kdt/pojavlaunch/platform/backend/SDLBackend.java
++++ b/app_pojavlauncher/src/main/java/net/kdt/pojavlaunch/platform/backend/SDLBackend.java
+@@ -17,7 +17,7 @@ import git.mojo.sdl.SDLInputConnection;
+ 
+ public class SDLBackend implements PlatformBackend{
+     public SDLBackend(){
+-        SDLActivity.addGrabListener(isGrabbing -> {
++        SDLActivity.setGrabListener(isGrabbing -> {
+             Tools.runOnUiThread(() -> Platform.grabStateChanged(isGrabbing));
+         });
+     }

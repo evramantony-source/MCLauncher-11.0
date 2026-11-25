@@ -3,6 +3,7 @@ package com.mclauncher.app.engine
 import android.app.Activity
 import android.content.ClipData
 import android.content.ClipboardManager
+import android.graphics.Bitmap
 import android.util.DisplayMetrics
 import android.view.KeyEvent
 import android.view.MotionEvent
@@ -23,11 +24,13 @@ object SdlInputBridge {
     private const val SDL_INPUT_CONNECTION_CLASS = "git.mojo.sdl.SDLInputConnection"
     private const val GRAB_LISTENER_CLASS = "git.mojo.sdl.GrabListener"
     private const val CLIPBOARD_CLASS = "git.mojo.sdl.SDLClipboard"
+    private const val CURSOR_CHANGE_CALLBACK_CLASS = "git.mojo.sdl.SDLCursor\$CursorChangeCallback"
 
     @Volatile private var prepared = false
     @Volatile private var active = false
     @Volatile private var grabbing = false
     @Volatile private var grabListener: ((Boolean) -> Unit)? = null
+    @Volatile private var cursorListener: ((Bitmap?, Int, Int) -> Unit)? = null
 
     private var hostActivity: Activity? = null
     private var pendingSurface: Surface? = null
@@ -38,10 +41,11 @@ object SdlInputBridge {
     private var mouseButtonState = 0
     private var grabListenerProxy: Any? = null
     private var clipboardProxy: Any? = null
+    private var cursorCallbackProxy: Any? = null
 
     private lateinit var setNativeSurface: Method
     private lateinit var setInitCallback: Method
-    private lateinit var addGrabListener: Method
+    private lateinit var registerGrabListener: Method
     private lateinit var setClipboard: Method
     private lateinit var onNativeSurfaceCreated: Method
     private lateinit var onNativeSurfaceChanged: Method
@@ -61,6 +65,14 @@ object SdlInputBridge {
 
     fun setGrabStateListener(listener: ((Boolean) -> Unit)?) {
         grabListener = listener
+    }
+
+    /**
+     * Receives Minecraft's cursor changes: a bitmap with its hotspot for a custom
+     * cursor, or null for the default system cursor. Called on SDL's thread.
+     */
+    fun setCursorListener(listener: ((Bitmap?, Int, Int) -> Unit)?) {
+        cursorListener = listener
     }
 
     @Synchronized
@@ -83,7 +95,11 @@ object SdlInputBridge {
 
             setNativeSurface = sdlActivity.getMethod("setNativeSurface", Surface::class.java)
             setInitCallback = sdlActivity.getMethod("setInitCallback", Runnable::class.java)
-            addGrabListener = sdlActivity.getMethod("addGrabListener", grabInterface)
+            // MojoSDL renamed addGrabListener to setGrabListener (one listener).
+            // Accept either, so the bridge works with both binding generations.
+            registerGrabListener = runCatching {
+                sdlActivity.getMethod("setGrabListener", grabInterface)
+            }.getOrElse { sdlActivity.getMethod("addGrabListener", grabInterface) }
             setClipboard = sdlActivity.getMethod("setClipboard", clipboardInterface)
             onNativeSurfaceCreated = sdlActivity.getMethod("onNativeSurfaceCreated")
             onNativeSurfaceChanged = sdlActivity.getMethod("onNativeSurfaceChanged")
@@ -138,7 +154,9 @@ object SdlInputBridge {
                     "equals" -> proxy === arguments?.firstOrNull()
                     else -> null
                 }
-            }.also { addGrabListener.invoke(null, it) }
+            }.also { registerGrabListener.invoke(null, it) }
+
+            registerCursorCallback(loader, sdlActivity)
 
             val clipboard = requireNotNull(
                 activity.getSystemService(ClipboardManager::class.java)
@@ -172,6 +190,47 @@ object SdlInputBridge {
             sdl.getMethod("setupJNI").invoke(null)
             prepared = true
         }
+    }
+
+    /**
+     * Newer MojoSDL bindings call the cursor callback without a null check from
+     * setCustomCursor and setSystemCursor, so a host that never registers one
+     * crashes with a NullPointerException as soon as Minecraft changes the
+     * cursor. Always register it when the bindings provide the hook.
+     */
+    private fun registerCursorCallback(loader: ClassLoader, sdlActivity: Class<*>) {
+        val callbackInterface = runCatching {
+            Class.forName(CURSOR_CHANGE_CALLBACK_CLASS, true, loader)
+        }.getOrNull() ?: return
+        val setCursorCallback = runCatching {
+            sdlActivity.getMethod("setCursorCallback", callbackInterface)
+        }.getOrNull() ?: return
+        cursorCallbackProxy = Proxy.newProxyInstance(
+            loader,
+            arrayOf(callbackInterface)
+        ) { proxy, method, arguments ->
+            when (method.name) {
+                "onCursorChange" -> {
+                    val cursor = arguments?.firstOrNull()
+                    runCatching {
+                        if (cursor == null) {
+                            cursorListener?.invoke(null, 0, 0)
+                        } else {
+                            val type = cursor.javaClass
+                            val bitmap = type.getMethod("getBitmap").invoke(cursor) as? Bitmap
+                            val hotX = type.getMethod("getXhot").invoke(cursor) as? Int ?: 0
+                            val hotY = type.getMethod("getYhot").invoke(cursor) as? Int ?: 0
+                            cursorListener?.invoke(bitmap, hotX, hotY)
+                        }
+                    }
+                    null
+                }
+                "toString" -> "MCLauncherSDLCursorCallback"
+                "hashCode" -> System.identityHashCode(proxy)
+                "equals" -> proxy === arguments?.firstOrNull()
+                else -> null
+            }
+        }.also { setCursorCallback.invoke(null, it) }
     }
 
     @Synchronized
@@ -259,6 +318,7 @@ object SdlInputBridge {
         grabbing = false
         mouseButtonState = 0
         grabListener = null
+        cursorListener = null
         hostActivity = null
     }
 

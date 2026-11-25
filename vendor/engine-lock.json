@@ -7,7 +7,9 @@
     "license": "LGPL-3.0",
     "androidSdlCompatibility": {
       "repository": "https://github.com/MojoLauncher/MojoSDL",
-      "submoduleCommit": "2e0e947f0b2022e864ae8da884a7e9dd40d0fa62",
+      "submoduleCommit": "567f0321f7305d496fd1b429314dd5b6c5a0953f",
+      "engineSubmoduleCommit": "2e0e947f0b2022e864ae8da884a7e9dd40d0fa62",
+      "submoduleOverride": "CI checks out submoduleCommit in place of the pinned engine's own SDL submodule (engineSubmoduleCommit). It adds MojoSDL's offscreen surfaces for hidden and additional windows, which Minecraft 26.3's OpenGL backend needs, and keeps the exact MojoExec API of the pinned engine. vendor/patches/mojo-sdl-grab-listener.patch adapts the engine to its renamed SDLActivity.setGrabListener.",
       "upstreamFixCommit": "d20558de674a44b39f77ff9632785d2077ea6ee5",
       "patch": "vendor/patches/mojosdl-android-opengl-proc-identity.patch",
       "resolverStrategy": "java-sdl-gl-provider-identity",

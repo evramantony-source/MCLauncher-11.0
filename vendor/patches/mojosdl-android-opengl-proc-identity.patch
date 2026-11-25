@@ -1,8 +1,8 @@
 diff --git a/src/video/SDL_egl.c b/src/video/SDL_egl.c
-index 1ddcdae72..5cfadfe2e 100644
+index 6af2e73c2..7a30a60b6 100644
 --- a/src/video/SDL_egl.c
 +++ b/src/video/SDL_egl.c
-@@ -294,6 +294,34 @@ SDL_FunctionPointer SDL_EGL_GetProcAddressInternal(SDL_VideoDevice *_this, const
+@@ -302,6 +302,34 @@ SDL_FunctionPointer SDL_EGL_GetProcAddressInternal(SDL_VideoDevice *_this, const
          const Uint32 eglver = (((Uint32)_this->egl_data->egl_version_major) << 16) | ((Uint32)_this->egl_data->egl_version_minor);
          const bool is_egl_15_or_later = eglver >= ((((Uint32)1) << 16) | 5);
  
@@ -37,7 +37,7 @@ index 1ddcdae72..5cfadfe2e 100644
          // EGL 1.5 can use eglGetProcAddress() for any symbol. 1.4 and earlier can't use it for core entry points.
          if (!result && is_egl_15_or_later && _this->egl_data->eglGetProcAddress) {
              result = _this->egl_data->eglGetProcAddress(proc);
-@@ -833,8 +861,28 @@ static bool SDL_EGL_PrivateChooseConfig(SDL_VideoDevice *_this, bool set_config_
+@@ -843,8 +871,28 @@ static bool SDL_EGL_PrivateChooseConfig(SDL_VideoDevice *_this, bool set_config_
      }
  
      if (_this->gl_config.floatbuffers) {
@@ -68,7 +68,28 @@ index 1ddcdae72..5cfadfe2e 100644
      }
  
      if (_this->egl_data->is_offscreen) {
-@@ -878,11 +926,77 @@ static bool SDL_EGL_PrivateChooseConfig(SDL_VideoDevice *_this, bool set_config_
+@@ -883,16 +931,114 @@ static bool SDL_EGL_PrivateChooseConfig(SDL_VideoDevice *_this, bool set_config_
+         attribs[i++] = EGL_SURFACE_TYPE;
+         attribs[i++] = _this->egl_data->egl_surfacetype;
+     }
++#if defined(SDL_VIDEO_DRIVER_ANDROID)
++    /*
++     * One EGL config backs every SDL window, and Android gives hidden and
++     * additional windows an offscreen pbuffer instead of a native window.
++     * eglChooseConfig defaults EGL_SURFACE_TYPE to EGL_WINDOW_BIT, which does
++     * not guarantee that eglCreatePbufferSurface accepts the chosen config, so
++     * ask for window+pbuffer support first. A display without such a config
++     * falls back to the window-only request below.
++     */
++    int pbuffer_surface_type_index = -1;
++    if (!_this->egl_data->egl_surfacetype && !_this->egl_data->is_offscreen) {
++        attribs[i++] = EGL_SURFACE_TYPE;
++        pbuffer_surface_type_index = i;
++        attribs[i++] = EGL_WINDOW_BIT | EGL_PBUFFER_BIT;
++    }
++#endif
+ 
+     attribs[i++] = EGL_NONE;
  
      SDL_assert(i < SDL_arraysize(attribs));
  
@@ -82,6 +103,22 @@ index 1ddcdae72..5cfadfe2e 100644
 +        attribs,
 +        configs, SDL_arraysize(configs),
 +        &found_configs);
++
++#if defined(SDL_VIDEO_DRIVER_ANDROID)
++    if ((choose_result == EGL_FALSE || found_configs == 0) &&
++        pbuffer_surface_type_index >= 0) {
++        attribs[pbuffer_surface_type_index] = EGL_WINDOW_BIT;
++        found_configs = 0;
++        choose_result = _this->egl_data->eglChooseConfig(
++            _this->egl_data->egl_display,
++            attribs,
++            configs, SDL_arraysize(configs),
++            &found_configs);
++        if (choose_result != EGL_FALSE && found_configs > 0) {
++            SDL_Log("MCLauncher: no window+pbuffer EGL config; using window-only config");
++        }
++    }
++#endif
 +
 +#if defined(SDL_VIDEO_DRIVER_ANDROID)
 +    /*
