@@ -49,6 +49,19 @@ object CrashAnalyzer {
                     "JNA native mismatch",
                     "Update MCLauncher so it can select the Android JNA native matching this Minecraft version."
                 )
+            "couldn't find matching egl config" in text ||
+                "could not find matching egl config" in text ->
+                CrashDiagnosis(
+                    "Android could not provide the requested OpenGL surface",
+                    "Minecraft asked SDL for a desktop OpenGL framebuffer that Android's EGL cannot match. Update MCLauncher so the launch configures the SDL runtime's own MojoExec instance and falls back to a GLES-renderable config."
+                )
+            "device missing capabilities" in text ||
+                "does not support required features from featureset" in text ||
+                "does not support required extensions from featureset" in text ->
+                CrashDiagnosis(
+                    "This GPU cannot run Minecraft's Vulkan backend",
+                    "The device reports missing Vulkan features or extensions that this Minecraft version requires. Set the Minecraft graphics API to Prefer OpenGL for this instance; a different Vulkan driver pack will not add the missing hardware features."
+                )
             "no android opengl library matched" in text ->
                 CrashDiagnosis(
                     "Renderer package metadata mismatch",

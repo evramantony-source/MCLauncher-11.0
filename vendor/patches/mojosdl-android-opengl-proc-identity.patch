@@ -1,7 +1,8 @@
 diff --git a/src/video/SDL_egl.c b/src/video/SDL_egl.c
+index 1ddcdae72..5cfadfe2e 100644
 --- a/src/video/SDL_egl.c
 +++ b/src/video/SDL_egl.c
-@@ -289,6 +289,34 @@ SDL_FunctionPointer SDL_EGL_GetProcAddressInternal(SDL_VideoDevice *_this, const
+@@ -294,6 +294,34 @@ SDL_FunctionPointer SDL_EGL_GetProcAddressInternal(SDL_VideoDevice *_this, const
          const Uint32 eglver = (((Uint32)_this->egl_data->egl_version_major) << 16) | ((Uint32)_this->egl_data->egl_version_minor);
          const bool is_egl_15_or_later = eglver >= ((((Uint32)1) << 16) | 5);
  
@@ -36,14 +37,12 @@ diff --git a/src/video/SDL_egl.c b/src/video/SDL_egl.c
          // EGL 1.5 can use eglGetProcAddress() for any symbol. 1.4 and earlier can't use it for core entry points.
          if (!result && is_egl_15_or_later && _this->egl_data->eglGetProcAddress) {
              result = _this->egl_data->eglGetProcAddress(proc);
-@@ -829,9 +857,28 @@ static bool SDL_EGL_PrivateChooseConfig(SDL_VideoDevice *_this, bool set_config
-         attribs[i++] = _this->gl_config.multisamplesamples;
+@@ -833,8 +861,28 @@ static bool SDL_EGL_PrivateChooseConfig(SDL_VideoDevice *_this, bool set_config_
      }
  
--    if (_this->gl_config.floatbuffers) {
+     if (_this->gl_config.floatbuffers) {
 -        attribs[i++] = EGL_COLOR_COMPONENT_TYPE_EXT;
 -        attribs[i++] = EGL_COLOR_COMPONENT_TYPE_FLOAT_EXT;
-+    if (_this->gl_config.floatbuffers) {
 +#if defined(SDL_VIDEO_DRIVER_ANDROID)
 +        /*
 +         * Snapshot 6 requests SDL_GL_FLOATBUFFERS. OpenLTW is configured by
@@ -53,12 +52,13 @@ diff --git a/src/video/SDL_egl.c b/src/video/SDL_egl.c
 +         * EXT-only EGL_COLOR_COMPONENT_TYPE_EXT key to that GLES path produces
 +         * EGL_BAD_ATTRIBUTE on affected Android drivers.
 +         *
-+         * Keep the normal SDL behavior for a real non-forced EGL OpenGL path,
-+         * but leave MojoExec's forced-GLES presentation surface at a supported
-+         * fixed-point format. Also verify the extension before using its key.
++         * Ask for the float format only when the display actually advertises
++         * EGL_EXT_pixel_format_float. Keying this off MojoExec's forced-GLES
++         * flag instead would send an unsupported key whenever that flag is
++         * unset, which is exactly when the GLES presentation surface is in use.
 +         */
-+        if (!mojoexec_renderspec.force_gles_context &&
-+            SDL_EGL_HasExtension(_this, SDL_EGL_DISPLAY_EXTENSION, "EGL_EXT_pixel_format_float")) {
++        if (SDL_EGL_HasExtension(_this, SDL_EGL_DISPLAY_EXTENSION,
++                                 "EGL_EXT_pixel_format_float")) {
 +#endif
 +            attribs[i++] = EGL_COLOR_COMPONENT_TYPE_EXT;
 +            attribs[i++] = EGL_COLOR_COMPONENT_TYPE_FLOAT_EXT;
@@ -68,7 +68,7 @@ diff --git a/src/video/SDL_egl.c b/src/video/SDL_egl.c
      }
  
      if (_this->egl_data->is_offscreen) {
-@@ -878,10 +925,74 @@ static bool SDL_EGL_PrivateChooseConfig(SDL_VideoDevice *_this, bool set_config
+@@ -878,11 +926,77 @@ static bool SDL_EGL_PrivateChooseConfig(SDL_VideoDevice *_this, bool set_config_
  
      SDL_assert(i < SDL_arraysize(attribs));
  
@@ -90,15 +90,14 @@ diff --git a/src/video/SDL_egl.c b/src/video/SDL_egl.c
 +     * implementations reject one of those optional config attributes with
 +     * EGL_BAD_ATTRIBUTE instead of simply returning zero matching configs.
 +     *
-+     * Only retry after the normal request failed and MojoExec is forcing GLES.
-+     * Existing versions whose normal EGL request succeeds never enter this
-+     * path. The fallback keeps the required color/depth/stencil/window shape
-+     * but drops optional desktop/extension config attributes and asks for the
-+     * broadly-supported ES2 renderable bit; the actual context is still
-+     * created at MojoExec's requested GLES 3 version.
++     * Retry whenever the normal request matched nothing. Versions whose normal
++     * EGL request succeeds never enter this path. The fallback keeps the
++     * required color/depth/stencil/window shape but drops optional
++     * desktop/extension config attributes and asks for the broadly-supported
++     * ES2 renderable bit, which also recovers a request that asked for the
++     * desktop EGL_OPENGL_BIT that no Android EGL config provides.
 +     */
-+    if ((choose_result == EGL_FALSE || found_configs == 0) &&
-+        mojoexec_renderspec.force_gles_context) {
++    if (choose_result == EGL_FALSE || found_configs == 0) {
 +        EGLint compatibility_attribs[32];
 +        int compatibility_i = 0;
 +
@@ -140,6 +139,9 @@ diff --git a/src/video/SDL_egl.c b/src/video/SDL_egl.c
 +                compatibility_attribs,
 +                compatibility_i * sizeof(EGLint));
 +            i = compatibility_i;
++            /* The recovered config is ES-renderable, so the client API bound
++             * for the desktop-GL request above no longer matches it. */
++            _this->egl_data->eglBindAPI(EGL_OPENGL_ES_API);
 +            SDL_Log("MCLauncher: recovered Android GLES EGL config with conservative attributes");
 +        }
 +    }

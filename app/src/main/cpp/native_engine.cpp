@@ -45,6 +45,13 @@ std::vector<void*> gJniInitializedHandles;
 // the process and still be invisible. Keep the handles and ask them directly.
 std::mutex gPreloadedHandleMutex;
 std::vector<void*> gPreloadedHandles;
+// Handle that reaches the libmojoexec.so instance the SDL3 runtime is linked
+// against. libSDL3.so and libmojoexec.so are packaged in the APK as well as in
+// the engine payload, and Android only de-duplicates dlopen() by inode, so the
+// process holds two copies of each on an SDL launch. mojoexec_renderspec is an
+// exported *data* symbol, so each copy owns its own renderer configuration:
+// configuring the engine copy leaves SDL reading an unconfigured struct.
+void* gSdlBoundMojoExecHandle = nullptr;
 jclass gCallbackBridgeClass = nullptr;
 jmethodID gCallbackSendKey = nullptr;
 jmethodID gCallbackSendChar = nullptr;
@@ -292,6 +299,44 @@ void* resolveEngineSymbol(const char* name) {
     return nullptr;
 }
 
+/**
+ * Finds the MojoExec instance that the loaded SDL3 runtime reads its renderer
+ * configuration from, so MCLauncher configures the copy SDL actually uses.
+ *
+ * SdlInputBridge loads libSDL3.so through System.loadLibrary before the game
+ * starts, and the dynamic linker binds that library's libmojoexec.so by SONAME.
+ * dlsym() on the SDL3 handle searches its dependency tree, so it reaches
+ * exactly that instance. RTLD_NOLOAD keeps this to libraries already in the
+ * process: nothing extra is loaded, and a GLFW launch resolves nothing here.
+ */
+void prepareSdlBoundMojoExec() {
+    gSdlBoundMojoExecHandle = nullptr;
+    if (!gSdlWindowBackend) return;
+    if (void* sdl = dlopen("libSDL3.so", RTLD_NOW | RTLD_NOLOAD)) {
+        if (dlsym(sdl, "Java_git_artdeell_mojoexec_MojoExec_prepareEgl") != nullptr) {
+            gSdlBoundMojoExecHandle = sdl;
+            pushLog("Configuring MojoExec through the loaded SDL3 runtime's own "
+                    "libmojoexec.so instance");
+            return;
+        }
+    }
+    if (void* mojoexec = dlopen("libmojoexec.so", RTLD_NOW | RTLD_NOLOAD)) {
+        gSdlBoundMojoExecHandle = mojoexec;
+        pushLog("Configuring MojoExec through the already-loaded libmojoexec.so SONAME");
+        return;
+    }
+    pushLog("SDL3 runtime exposes no loaded libmojoexec.so; falling back to the "
+            "engine payload copy");
+}
+
+/** Resolves a MojoExec entry point, preferring the instance SDL3 is bound to. */
+void* resolveMojoExecSymbol(const char* name) {
+    if (gSdlBoundMojoExecHandle != nullptr) {
+        if (void* symbol = dlsym(gSdlBoundMojoExecHandle, name)) return symbol;
+    }
+    return resolveEngineSymbol(name);
+}
+
 void initializeUpstreamAndroidJni(JNIEnv* env, const std::string& path, void* handle) {
     if (gAndroidVm == nullptr || handle == nullptr) return;
     const std::string filename = fs::path(path).filename().string();
@@ -500,6 +545,7 @@ std::string findPreloadByTokens(const std::vector<std::string>& libraries,
 }
 
 bool configureMojoRenderer(JNIEnv* env, const std::vector<std::string>& preloadLibraries) {
+    prepareSdlBoundMojoExec();
     auto setPath = reinterpret_cast<MojoSetRendererPath>(
         resolveEngineSymbol("Java_net_kdt_pojavlaunch_utils_JREUtils_nsetRendererLibraryPath"));
     auto configureDisplay = reinterpret_cast<MojoConfigureDisplay>(
@@ -507,15 +553,15 @@ bool configureMojoRenderer(JNIEnv* env, const std::vector<std::string>& preloadL
     auto configureRenderer = reinterpret_cast<MojoConfigureRenderer>(
         resolveEngineSymbol("Java_net_kdt_pojavlaunch_utils_JREUtils_configureRenderspec"));
     auto mojoExecSetNativeLibraryDir = reinterpret_cast<MojoExecSetNativeLibraryDir>(
-        resolveEngineSymbol("Java_git_artdeell_mojoexec_MojoExec_setNativeLibraryDir"));
+        resolveMojoExecSymbol("Java_git_artdeell_mojoexec_MojoExec_setNativeLibraryDir"));
     auto mojoExecSetDisplayParams = reinterpret_cast<MojoExecSetDisplayParams>(
-        resolveEngineSymbol("Java_git_artdeell_mojoexec_MojoExec_setDisplayParams"));
+        resolveMojoExecSymbol("Java_git_artdeell_mojoexec_MojoExec_setDisplayParams"));
     auto mojoExecPrepareEgl = reinterpret_cast<MojoExecPrepareEgl>(
-        resolveEngineSymbol("Java_git_artdeell_mojoexec_MojoExec_prepareEgl"));
+        resolveMojoExecSymbol("Java_git_artdeell_mojoexec_MojoExec_prepareEgl"));
     auto mojoExecSetUseTurnip = reinterpret_cast<MojoExecSetUseTurnip>(
-        resolveEngineSymbol("Java_git_artdeell_mojoexec_MojoExec_setUseTurnip"));
+        resolveMojoExecSymbol("Java_git_artdeell_mojoexec_MojoExec_setUseTurnip"));
     auto mojoExecPreloadVulkan = reinterpret_cast<MojoExecPreloadVulkan>(
-        resolveEngineSymbol("Java_git_artdeell_mojoexec_MojoExec_preloadVulkan"));
+        resolveMojoExecSymbol("Java_git_artdeell_mojoexec_MojoExec_preloadVulkan"));
 
     const bool hasLegacyRenderspec = setPath && configureDisplay && configureRenderer;
     const bool hasMojoExecRenderspec =
