@@ -1,5 +1,5 @@
 diff --git a/app_pojavlauncher/src/main/java/net/kdt/pojavlaunch/platform/backend/SDLBackend.java b/app_pojavlauncher/src/main/java/net/kdt/pojavlaunch/platform/backend/SDLBackend.java
-index 8037daafe..3eed6ae5c 100644
+index 8037daafe..aa1fae04f 100644
 --- a/app_pojavlauncher/src/main/java/net/kdt/pojavlaunch/platform/backend/SDLBackend.java
 +++ b/app_pojavlauncher/src/main/java/net/kdt/pojavlaunch/platform/backend/SDLBackend.java
 @@ -17,7 +17,7 @@ import git.mojo.sdl.SDLInputConnection;
@@ -11,3 +11,15 @@ index 8037daafe..3eed6ae5c 100644
              Tools.runOnUiThread(() -> Platform.grabStateChanged(isGrabbing));
          });
      }
+@@ -77,9 +77,9 @@ public class SDLBackend implements PlatformBackend{
+         float x = (float) (Platform.cursorX * LauncherGLSurface.getWindowWidth());
+         float y = (float) (Platform.cursorY * LauncherGLSurface.getWindowHeight());
+         if(state == KeyEvent.ACTION_DOWN)
+-            SDLActivity.onNativeMouseButton(key, KeyEvent.ACTION_DOWN, x, y, Platform.isGrabbing());
++            SDLActivity.onNativeMouseButton(key, KeyEvent.ACTION_DOWN);
+         else
+-            SDLActivity.onNativeMouseButton(key, KeyEvent.ACTION_UP, x, y, Platform.isGrabbing());
++            SDLActivity.onNativeMouseButton(key, KeyEvent.ACTION_UP);
+     }
+ 
+     @Override
