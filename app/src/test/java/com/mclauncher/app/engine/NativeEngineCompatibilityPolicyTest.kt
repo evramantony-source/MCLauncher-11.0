@@ -54,4 +54,13 @@ class NativeEngineCompatibilityPolicyTest {
         assertFalse(shouldDeferNativePreload("libmojoexec.so"))
         assertFalse(shouldDeferNativePreload("libvulkan_freedreno.so"))
     }
+
+    @Test
+    fun sdlRuntimeLibrariesAreSharedWithTheApkCopy() {
+        assertTrue(isSharedSdlRuntimeLibrary("libSDL3.so"))
+        assertTrue(isSharedSdlRuntimeLibrary("libsdl3.so"))
+        assertTrue(isSharedSdlRuntimeLibrary("libmojoexec.so"))
+        assertFalse(isSharedSdlRuntimeLibrary("libpojavexec.so"))
+        assertFalse(isSharedSdlRuntimeLibrary("libglfw.so"))
+    }
 }

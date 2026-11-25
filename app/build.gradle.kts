@@ -45,7 +45,7 @@ android {
         minSdk = 26
         targetSdk = 35
         versionCode = 39
-        versionName = "11.0.0-alpha29"
+        versionName = "11.0.0-alpha30"
         buildConfigField("boolean", "PUBLIC_ALPHA_SIGNER", (!privateAccountBuild).toString())
         buildConfigField("String", "CURSEFORGE_API_KEY", "\"$escapedCurseForgeApiKey\"")
 

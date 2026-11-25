@@ -1,5 +1,13 @@
 # Changelog
 
+## 11.0.0-alpha30
+
+- Fix the launch gate that made every Minecraft build above 26.3 Snapshot 4 fail: the SDL/OpenGL `glGetError` function-pointer identity bridge and the Vulkan Turnip auto-selection were gated at Snapshot **6**, so Snapshot 5 ran the new SDL3 window backend with the compatibility path switched off. The gate now covers every SDL build newer than the last permissive one (26.3 Snapshot 4) and is expressed as "newer than Snapshot 4" so a later snapshot, pre-release or release can never silently lose it again.
+- Evaluate version capability gates against the inherited base game version instead of the instance's profile ID. A new `baseVersionId` field in the launch plan stops a loader's own version numbers (`fabric-loader-0.19.3-...`, `...-forge-47.2.0`) from deciding which Minecraft compatibility paths run.
+- Keep exactly one `libSDL3.so` and `libmojoexec.so` instance in the process on SDL launches. Both libraries ship in the APK and in the extracted engine payload, and the linker de-duplicates only by inode, so preloading the engine copies created a second instance: SDL bound MojoExec by SONAME to the APK copy while the renderer configuration landed in the engine copy, leaving SDL on a plain GLES context instead of the configured desktop-GL renderer. The already-loaded APK copies are promoted instead.
+- Select a bundled Java runtime that satisfies the version's declared `javaVersion.majorVersion` instead of refusing to launch. Mojang raises the required Java mid-cycle, so a 26.3 snapshot needing Java 25 no longer fails on an instance created with the launcher's default Java 21; the choice is persisted so the pre-launch runtime check and the generated launch plan agree.
+- Preserve every pre-Snapshot-5 launch path, including 26.3 Snapshot 4 and all GLFW versions, and add regression tests for the snapshot boundary, loader-profile gating, the shared SDL runtime libraries and the runtime upgrade.
+
 ## 11.0.0-alpha29
 
 - Stop forcing Turnip into Snapshot 6+ OpenGL launches: OpenLTW now remains on the system GLES path, while automatic Turnip selection is limited to the Vulkan API on compatible Qualcomm/Adreno devices.

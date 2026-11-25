@@ -42,6 +42,7 @@ import com.mclauncher.minecraft.PackRuntimeSpec
 import com.mclauncher.minecraft.MojangVersionRepository
 import com.mclauncher.minecraft.MojangVersionSummary
 import com.mclauncher.minecraft.VanillaInstaller
+import com.mclauncher.minecraft.VersionResolver
 import com.mclauncher.minecraft.baseGameVersion
 import com.mclauncher.model.AccountType
 import com.mclauncher.model.ContentSource
@@ -124,6 +125,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     private val versionRepository = MojangVersionRepository(layout)
     private val installer = VanillaInstaller(layout)
     private val loaderInstaller = LoaderInstaller(layout)
+    private val versionResolver = VersionResolver(layout)
     private val launchPlanBuilder = LaunchPlanBuilder(layout)
     private val launcherEngine = MCLauncherAndroidEngine(launchPlanBuilder)
     private val enginePackManager = EnginePackManager(app, layout)
@@ -1051,9 +1053,12 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         lastPlayRequestAt = now
         viewModelScope.launch {
             val snapshot = _state.value.snapshot
-            val instance = snapshot.instances.firstOrNull { it.id == instanceId }
-            if (instance == null) return@launch _state.update { it.copy(message = "Instance not found") }
-            if (!instance.installed) return@launch _state.update { it.copy(message = "Finish installing this instance first") }
+            val selectedInstance = snapshot.instances.firstOrNull { it.id == instanceId }
+            if (selectedInstance == null) return@launch _state.update { it.copy(message = "Instance not found") }
+            if (!selectedInstance.installed) return@launch _state.update { it.copy(message = "Finish installing this instance first") }
+            val instance = withContext(Dispatchers.IO) {
+                runCatching { requiredRuntimeFor(selectedInstance) }.getOrDefault(selectedInstance)
+            }
             val effectiveSettings = instance.launchSettings.applyTo(snapshot.settings)
             val account = _state.value.selectedAccount
                 ?: return@launch _state.update { it.copy(message = "Add or select an account before playing") }
@@ -1281,6 +1286,29 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
             ".mclauncher/instance-icon/icon.png"
         )
         return runCatching { httpDownloader.download(iconUrl, target).absolutePath }.getOrNull()
+    }
+
+    /**
+     * Mojang can raise a version's required Java in a snapshot, so an instance
+     * created with the global Java selection may be below what the version
+     * declares. Persist the smallest bundled runtime that satisfies it, keeping
+     * the pre-launch runtime check and the generated launch plan in agreement.
+     */
+    private suspend fun requiredRuntimeFor(instance: MinecraftInstance): MinecraftInstance {
+        val requiredJava = versionResolver.requiredJavaMajor(instance.versionId)
+        if (instance.javaVersion.major >= requiredJava) return instance
+        val runtime = JavaVersion.entries
+            .filter { it.major >= requiredJava }
+            .minByOrNull(JavaVersion::major)
+            ?: return instance
+        val upgraded = instance.copy(javaVersion = runtime)
+        val current = _state.value.snapshot
+        updateSnapshot(
+            current.copy(
+                instances = current.instances.map { if (it.id == instance.id) upgraded else it }
+            )
+        )
+        return upgraded
     }
 
     private suspend fun installRuntime(

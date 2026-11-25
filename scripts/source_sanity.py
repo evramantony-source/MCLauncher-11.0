@@ -161,7 +161,7 @@ if openltw.get("patch") != "vendor/patches/ltw-minecraft-26.2.patch":
 
 require_contains(
     "app/build.gradle.kts",
-    'versionName = "11.0.0-alpha29"',
+    'versionName = "11.0.0-alpha30"',
     'versionCode = 39',
     'generated/sdl/mojo-sdl-bindings.aar',
     'generated/sdl/jniLibs',
@@ -177,7 +177,7 @@ require_contains(
     "scripts/source_sanity.py",
     'assembleNoruntimeDebug',
     'assembleDebug -PmclauncherAbi=',
-    'MCLauncher-11.0-alpha29-',
+    'MCLauncher-11.0-alpha30-',
     ':sdl:jni_bindings:assembleDebug',
     '--sdl-bindings-aar',
     'scripts/verify_sdl_apk.py',
@@ -198,7 +198,7 @@ require_contains(
     'No Android LWJGL substitution is defined',
     'prepareAndroidNatives',
     'applyMinecraftOptions',
-    '-Dmclauncher.version=11.0.0-alpha29',
+    '-Dmclauncher.version=11.0.0-alpha30',
     'authSession?.accessToken ?: "0"',
     'AccountType.MICROSOFT) "msa" else "legacy"',
 )

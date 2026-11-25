@@ -50,10 +50,13 @@ class NativeEngineCoordinator(
         val usesSdl = plan.classpath.any { path ->
             File(path).name.startsWith("lwjgl-sdl-")
         }
+        // Loader profile IDs embed the loader's own version numbers, so capability
+        // gates must run against the inherited base game version.
+        val capabilityVersionId = plan.baseVersionId.ifBlank { plan.versionId }
         val snapshotSdlCompatibility =
             usesSdl &&
                 MinecraftVersionCapabilities.supportsSnapshotSdlGraphicsCompatibility(
-                    plan.versionId
+                    capabilityVersionId
                 )
         val bundledTurnip = File(
             layout.engineDriverDirectory(
@@ -256,7 +259,9 @@ class NativeEngineCoordinator(
         val preload = buildPreloadList(
             javaHome = javaHome,
             engineNatives = engineNatives,
-            graphics = graphics
+            graphics = graphics,
+            appNativeDirectory = File(appNativeDirectory),
+            usesSdl = usesSdl
         )
 
         NativeLaunchBridge.nativeStart(
@@ -374,7 +379,9 @@ class NativeEngineCoordinator(
     private fun buildPreloadList(
         javaHome: File,
         engineNatives: File,
-        graphics: ResolvedGraphicsStack
+        graphics: ResolvedGraphicsStack,
+        appNativeDirectory: File,
+        usesSdl: Boolean
     ): List<File> {
         val output = mutableListOf<File>()
         val runtimeLibraries = listOf("libjli.so", "libjvm.so", "libverify.so", "libjava.so", "libzip.so", "libnet.so", "libnio.so")
@@ -398,6 +405,23 @@ class NativeEngineCoordinator(
             // abort the process as soon as Turnip is requested.
             .filterNot { shouldDeferNativePreload(it.name) }
             .filterNot { isRendererOrDriverLibrary(it.name) }
+            // libSDL3.so and libmojoexec.so are packaged in the APK as well, and
+            // SdlInputBridge has already loaded the APK copies through
+            // System.loadLibrary before the game starts. dlopen()ing the engine
+            // asset copies by absolute path adds a *second* instance of each to
+            // the process, because the dynamic linker only de-duplicates by
+            // inode. SDL then resolves libmojoexec.so by SONAME and binds to the
+            // APK copy, while MojoExec's renderer configuration lands in the
+            // engine copy that was made global here: SDL would present a plain
+            // GLES context instead of the configured desktop-GL renderer. Always
+            // keep exactly one instance by promoting the APK copies instead.
+            .map { library ->
+                if (usesSdl && isSharedSdlRuntimeLibrary(library.name)) {
+                    File(appNativeDirectory, library.name).takeIf(File::isFile) ?: library
+                } else {
+                    library
+                }
+            }
             .toList()
         val graphicsLibraries = graphics.searchDirectories.asSequence()
             .filter(File::isDirectory)
@@ -641,6 +665,16 @@ internal fun shouldAutoSelectBundledTurnip(
         graphicsApi == MinecraftGraphicsApi.VULKAN &&
         bundledTurnipAvailable &&
         qualcommDevice
+
+/**
+ * Native libraries that the APK and the extracted engine payload both contain
+ * and that must exist exactly once in the process: SDL3 keeps global state and
+ * reads MojoExec's renderer configuration, so a second copy of either silently
+ * splits that state in two.
+ */
+internal fun isSharedSdlRuntimeLibrary(name: String): Boolean =
+    name.equals("libSDL3.so", ignoreCase = true) ||
+        name.equals("libmojoexec.so", ignoreCase = true)
 
 internal fun shouldDeferNativePreload(name: String): Boolean =
     name.equals("liblinkerhook.so", ignoreCase = true)
