@@ -2,6 +2,7 @@ package com.mclauncher.minecraft
 
 import com.mclauncher.model.AccountType
 import com.mclauncher.model.AuthSession
+import com.mclauncher.model.JavaVersion
 import com.mclauncher.model.LauncherSettings
 import com.mclauncher.model.MinecraftGraphicsApi
 import com.mclauncher.model.MinecraftInstance
@@ -50,8 +51,20 @@ class LaunchPlanBuilder(
 
         val requiredJava = document["javaVersion"]?.jsonObject
             ?.get("majorVersion")?.jsonPrimitive?.content?.toIntOrNull() ?: 8
-        require(instance.javaVersion.major >= requiredJava) {
-            "Minecraft ${instance.versionId} requires Java $requiredJava or newer"
+        // Mojang raises the required Java version mid-cycle, so a newer snapshot
+        // can need a newer runtime than the instance was created with. Use the
+        // smallest bundled runtime that satisfies the version instead of
+        // refusing to launch it.
+        val runtimeJavaVersion = if (instance.javaVersion.major >= requiredJava) {
+            instance.javaVersion
+        } else {
+            JavaVersion.entries
+                .filter { it.major >= requiredJava }
+                .minByOrNull(JavaVersion::major)
+                ?: error(
+                    "Minecraft ${instance.versionId} requires Java $requiredJava, " +
+                        "which this MCLauncher build does not bundle"
+                )
         }
 
         val gameDirectory = layout.instanceGameDirectory(instance.gameDirectoryName).apply { mkdirs() }
@@ -66,7 +79,7 @@ class LaunchPlanBuilder(
         }
         prepareAndroidNatives(document, architecture, nativesDirectory, launchRules)
         val classpath = buildClasspath(baseVersionId, document, launchRules)
-        val runtimeHome = layout.runtimeHome(instance.javaVersion.major, architecture)
+        val runtimeHome = layout.runtimeHome(runtimeJavaVersion.major, architecture)
         val javaBinary = File(runtimeHome, "bin/java")
         val placeholders = placeholders(
             instance = instance,
@@ -86,8 +99,9 @@ class LaunchPlanBuilder(
         LaunchPlan(
             instanceId = instance.id,
             versionId = instance.versionId,
+            baseVersionId = baseVersionId,
             runtime = RuntimeSelection(
-                javaVersion = instance.javaVersion,
+                javaVersion = runtimeJavaVersion,
                 javaHome = runtimeHome.absolutePath,
                 javaBinary = javaBinary.absolutePath,
                 architecture = architecture
@@ -297,7 +311,7 @@ class LaunchPlanBuilder(
         val classpathValue = placeholders.getValue("${'$'}{classpath}")
         output += "-Djava.class.path=$classpathValue"
         output += "-Dmclauncher.name=MCLauncher"
-        output += "-Dmclauncher.version=11.0.0-alpha29"
+        output += "-Dmclauncher.version=11.0.0-alpha30"
         output += "-Dmclauncher.fpsLimit=${settings.fpsLimit}"
         when (settings.performancePreset) {
             PerformancePreset.BATTERY -> {

@@ -274,6 +274,61 @@ class LaunchPlanBuilderAndroidLwjglTest {
         }
     }
 
+    @Test
+    fun upgradesTheRuntimeWhenAVersionRequiresNewerJava() = runBlocking {
+        val root = Files.createTempDirectory("mclauncher-java-upgrade-test").toFile()
+        try {
+            val layout = MinecraftLayout(root).also(MinecraftLayout::ensureBaseDirectories)
+            val versionId = "26.3-snapshot-5"
+            layout.versionDirectory(versionId).mkdirs()
+            layout.clientJar(versionId).writeBytes(byteArrayOf(0x50, 0x4b, 0x03, 0x04))
+            layout.versionJson(versionId).writeText(
+                """
+                {
+                  "id": "$versionId",
+                  "type": "snapshot",
+                  "mainClass": "net.minecraft.client.main.Main",
+                  "javaVersion": { "majorVersion": 25 },
+                  "assetIndex": { "id": "33" },
+                  "arguments": { "jvm": [], "game": [] },
+                  "libraries": []
+                }
+                """.trimIndent()
+            )
+            File(layout.engineJarsDirectory, "substitutions.json").writeText(
+                """{"libraries": {}, "artifactMapping": {}}"""
+            )
+
+            // The instance carries the launcher's default Java 21 selection, which
+            // is below what this snapshot declares.
+            val instance = MinecraftInstance(
+                id = "snapshot-five",
+                name = "Minecraft $versionId",
+                versionId = versionId,
+                gameDirectoryName = "snapshot-five",
+                javaVersion = JavaVersion.JAVA_21,
+                createdAtEpochMs = 1L,
+                installed = true
+            )
+            val plan = LaunchPlanBuilder(layout).build(
+                instance = instance,
+                account = OfflineAccountFactory.create("PlayerOne", nowEpochMs = 1L),
+                settings = LauncherSettings(selectedJava = JavaVersion.JAVA_21),
+                architecture = "arm64-v8a"
+            )
+
+            assertEquals(JavaVersion.JAVA_25, plan.runtime.javaVersion)
+            assertTrue(plan.runtime.javaHome.contains("25"))
+            assertEquals(versionId, plan.baseVersionId)
+            assertEquals(
+                25,
+                VersionResolver(layout).requiredJavaMajor(versionId)
+            )
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
     private fun createJar(file: File, entryName: String, content: String) {
         file.parentFile?.mkdirs()
         ZipOutputStream(file.outputStream()).use { zip ->

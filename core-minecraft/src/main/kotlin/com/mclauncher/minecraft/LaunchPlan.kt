@@ -10,6 +10,13 @@ import kotlinx.serialization.Serializable
 data class LaunchPlan(
     val instanceId: String,
     val versionId: String,
+    /**
+     * The inherited base game version (for example 26.3-snapshot-6 for a
+     * fabric-loader-0.19.3-26.3-snapshot-6 instance). Version capability gates
+     * must use this instead of parsing numbers out of a loader profile ID.
+     * Older saved plans do not carry it; callers fall back to [versionId].
+     */
+    val baseVersionId: String = "",
     val runtime: RuntimeSelection,
     val workingDirectory: String,
     val nativesDirectory: String,

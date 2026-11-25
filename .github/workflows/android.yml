@@ -87,7 +87,23 @@ jobs:
           java-version: "17"
 
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+        shell: bash
+        run: |
+          # android-actions/setup-android@v3 is a Node 20 action that the Node 24
+          # runner now forces, and its unconditional `sdkmanager tools` install
+          # fails because Google removed that obsolete package. The hosted Ubuntu
+          # image already ships the SDK, so locate it instead of installing it.
+          SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          SDKMANAGER="$(ls "$SDK_ROOT"/cmdline-tools/*/bin/sdkmanager 2>/dev/null | sort -V | tail -1 || true)"
+          if [ -z "$SDKMANAGER" ]; then
+            echo "::error::sdkmanager not found under $SDK_ROOT"
+            ls -la "$SDK_ROOT" || true
+            exit 1
+          fi
+          echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "$(dirname "$SDKMANAGER")" >> "$GITHUB_PATH"
+          yes | "$SDKMANAGER" --sdk_root="$SDK_ROOT" --licenses > /dev/null || true
 
       - name: Install Android toolchains
         shell: bash
@@ -135,6 +151,15 @@ jobs:
           git checkout --detach "${{ steps.engine_lock.outputs.commit }}"
           git submodule update --init --recursive --depth 1
           test "$(git rev-parse HEAD)" = "${{ steps.engine_lock.outputs.commit }}"
+          # Replace the engine's own SDL submodule with the MojoSDL commit pinned
+          # in vendor/engine-lock.json. It adds offscreen surfaces for hidden and
+          # additional windows, which Minecraft 26.3's OpenGL backend creates, and
+          # keeps the exact MojoExec API of the pinned engine.
+          SDL_COMMIT="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["engine"]["androidSdlCompatibility"]["submoduleCommit"])' "$GITHUB_WORKSPACE/vendor/engine-lock.json")"
+          git -C sdl fetch --depth 1 origin "$SDL_COMMIT"
+          git -C sdl checkout --detach "$SDL_COMMIT"
+          test "$(git -C sdl rev-parse HEAD)" = "$SDL_COMMIT"
+          echo "Using MojoSDL $SDL_COMMIT"
 
       - name: Build pinned native launch engine
         working-directory: .vendor-build/MojoLauncher
@@ -182,11 +207,14 @@ jobs:
 
           apply_patch . "$GITHUB_WORKSPACE/vendor/patches/mojo-single-destroy.patch"
           apply_patch . "$GITHUB_WORKSPACE/vendor/patches/mojo-pointer-click-position.patch"
+          apply_patch . "$GITHUB_WORKSPACE/vendor/patches/mojo-sdl-grab-listener.patch"
           apply_patch mojoexec "$GITHUB_WORKSPACE/vendor/patches/mojoexec-vulkan-driver-state.patch"
           apply_patch sdl "$GITHUB_WORKSPACE/vendor/patches/mojosdl-android-opengl-proc-identity.patch"
           grep -q 'mclauncher_turnip_requested' mojoexec/vulkan_loader.c
           grep -q 'MCLauncher_GLGetProcAddress' sdl/src/video/SDL_egl.c
           grep -q 'recovered Android GLES EGL config' sdl/src/video/SDL_egl.c
+          grep -q 'Android_CreateOffscreenWindow' sdl/src/video/android/SDL_androidwindow.c
+          grep -q 'SDLActivity.setGrabListener' app_pojavlauncher/src/main/java/net/kdt/pojavlaunch/platform/backend/SDLBackend.java
           git -C mojoexec diff --check
           git -C sdl diff --check
           chmod +x gradlew
@@ -258,9 +286,9 @@ jobs:
         run: |
           APK=app/build/outputs/apk/debug/app-debug.apk
           if [ "$PRIVATE_ACCOUNT_BUILD" = "true" ]; then
-            OUT=app/build/outputs/apk/debug/MCLauncher-11.0-alpha29-microsoft-${TARGET_ABI}.apk
+            OUT=app/build/outputs/apk/debug/MCLauncher-11.0-alpha30-microsoft-${TARGET_ABI}.apk
           else
-            OUT=app/build/outputs/apk/debug/MCLauncher-11.0-alpha29-${TARGET_ABI}.apk
+            OUT=app/build/outputs/apk/debug/MCLauncher-11.0-alpha30-${TARGET_ABI}.apk
           fi
           test -f "$APK"
           cp "$APK" "$OUT"
@@ -277,12 +305,12 @@ jobs:
       - name: Upload standalone APK
         uses: actions/upload-artifact@v4
         with:
-          name: MCLauncher-11.0-alpha29-${{ env.PRIVATE_ACCOUNT_BUILD == 'true' && 'microsoft-' || '' }}${{ env.TARGET_ABI }}
+          name: MCLauncher-11.0-alpha30-${{ env.PRIVATE_ACCOUNT_BUILD == 'true' && 'microsoft-' || '' }}${{ env.TARGET_ABI }}
           retention-days: 14
           path: |
-            app/build/outputs/apk/debug/MCLauncher-11.0-alpha29-${{ env.TARGET_ABI }}.apk
-            app/build/outputs/apk/debug/MCLauncher-11.0-alpha29-${{ env.TARGET_ABI }}.apk.sha256
-            app/build/outputs/apk/debug/MCLauncher-11.0-alpha29-microsoft-${{ env.TARGET_ABI }}.apk
-            app/build/outputs/apk/debug/MCLauncher-11.0-alpha29-microsoft-${{ env.TARGET_ABI }}.apk.sha256
+            app/build/outputs/apk/debug/MCLauncher-11.0-alpha30-${{ env.TARGET_ABI }}.apk
+            app/build/outputs/apk/debug/MCLauncher-11.0-alpha30-${{ env.TARGET_ABI }}.apk.sha256
+            app/build/outputs/apk/debug/MCLauncher-11.0-alpha30-microsoft-${{ env.TARGET_ABI }}.apk
+            app/build/outputs/apk/debug/MCLauncher-11.0-alpha30-microsoft-${{ env.TARGET_ABI }}.apk.sha256
             app/src/main/assets/bundled_engine/bundle-manifest.json
           if-no-files-found: error

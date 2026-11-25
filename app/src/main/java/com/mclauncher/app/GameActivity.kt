@@ -115,6 +115,17 @@ class GameActivity : ComponentActivity() {
             applyPlatformGrabState(grabbing, GLFW.cursorX, GLFW.cursorY)
         }
         SdlInputBridge.setGrabStateListener { grabbing -> applyPlatformGrabState(grabbing) }
+        SdlInputBridge.setCursorListener { bitmap, hotX, hotY ->
+            runOnUiThread {
+                val view = gameSurfaceView ?: return@runOnUiThread
+                view.pointerIcon = if (bitmap == null) {
+                    PointerIcon.getSystemIcon(this, PointerIcon.TYPE_DEFAULT)
+                } else {
+                    runCatching { PointerIcon.create(bitmap, hotX.toFloat(), hotY.toFloat()) }
+                        .getOrElse { PointerIcon.getSystemIcon(this, PointerIcon.TYPE_DEFAULT) }
+                }
+            }
+        }
         GLFW.setCursorListener { cursor ->
             runOnUiThread {
                 val view = gameSurfaceView ?: return@runOnUiThread

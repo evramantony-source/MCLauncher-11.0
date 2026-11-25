@@ -18,6 +18,17 @@ class VersionResolver(
 ) {
     fun resolve(versionId: String): JsonObject = resolve(versionId, linkedSetOf())
 
+    /**
+     * The Java major version this Minecraft version declares. Mojang raises this
+     * mid-cycle (a snapshot can require a newer Java than the release before
+     * it), so the launcher must read it instead of assuming the user's global
+     * Java selection is high enough.
+     */
+    fun requiredJavaMajor(versionId: String): Int =
+        resolve(versionId)["javaVersion"]?.jsonObject
+            ?.get("majorVersion")?.jsonPrimitive?.content?.toIntOrNull()
+            ?: 8
+
     fun baseVersionId(versionId: String): String {
         var current = versionId
         val seen = linkedSetOf<String>()

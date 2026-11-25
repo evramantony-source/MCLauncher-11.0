@@ -111,4 +111,27 @@ class CrashAnalyzerTest {
             )
         )
     }
+
+    @Test
+    fun explainsTheAndroidEglConfigFailure() {
+        val diagnosis = CrashAnalyzer.analyzeText(
+            """
+            [Render thread/ERROR]: Failed to create backend OpenGL
+            com.mojang.renderpearl.api.device.BackendCreationException: Failed to create window for OpenGL context: Couldn't find matching EGL config (call to eglChooseConfig failed, reporting an error of EGL_SUCCESS)
+            """.trimIndent()
+        )
+        assertEquals("Android could not provide the requested OpenGL surface", diagnosis?.title)
+    }
+
+    @Test
+    fun explainsAGpuThatCannotRunTheVulkanBackend() {
+        val diagnosis = CrashAnalyzer.analyzeText(
+            """
+            [Render thread/WARN]: Device [Mali-G52 MC2] does not support required features from FeatureSet [Minecraft base required], missing: [VkPhysicalDeviceFeatures2.multiDrawIndirect]
+            [Render thread/ERROR]: Failed to create backend Vulkan
+            com.mojang.renderpearl.api.device.BackendCreationException: Device missing capabilities
+            """.trimIndent()
+        )
+        assertEquals("This GPU cannot run Minecraft's Vulkan backend", diagnosis?.title)
+    }
 }

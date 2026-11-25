@@ -50,10 +50,13 @@ class NativeEngineCoordinator(
         val usesSdl = plan.classpath.any { path ->
             File(path).name.startsWith("lwjgl-sdl-")
         }
+        // Loader profile IDs embed the loader's own version numbers, so capability
+        // gates must run against the inherited base game version.
+        val capabilityVersionId = plan.baseVersionId.ifBlank { plan.versionId }
         val snapshotSdlCompatibility =
             usesSdl &&
                 MinecraftVersionCapabilities.supportsSnapshotSdlGraphicsCompatibility(
-                    plan.versionId
+                    capabilityVersionId
                 )
         val bundledTurnip = File(
             layout.engineDriverDirectory(
@@ -398,6 +401,14 @@ class NativeEngineCoordinator(
             // abort the process as soon as Turnip is requested.
             .filterNot { shouldDeferNativePreload(it.name) }
             .filterNot { isRendererOrDriverLibrary(it.name) }
+            // The engine payload's libSDL3.so and libmojoexec.so are preloaded
+            // even though the APK copies are already loaded by SdlInputBridge.
+            // Android only de-duplicates dlopen() by inode, so this does add a
+            // second instance, but it is the instance that carries MojoExec's
+            // renderer entry points into the global group: System.loadLibrary
+            // does not place a library there, so dropping this preload makes
+            // every renderspec symbol invisible and the launch fails with
+            // "Bundled engine renderspec API is unavailable".
             .toList()
         val graphicsLibraries = graphics.searchDirectories.asSequence()
             .filter(File::isDirectory)
