@@ -19,6 +19,7 @@
 #include <mutex>
 #include <string>
 #include <thread>
+#include <utility>
 #include <vector>
 
 namespace fs = std::filesystem;
@@ -38,6 +39,12 @@ void* gJvmHandle = nullptr;
 bool gUpstreamAndroidJniInitialized = false;
 std::mutex gJniInitMutex;
 std::vector<void*> gJniInitializedHandles;
+// Handles of every library this launch preloaded, in load order. dlsym() with
+// RTLD_DEFAULT only sees the global group, and a library the Android VM already
+// loaded through System.loadLibrary is not in it, so an entry point can exist in
+// the process and still be invisible. Keep the handles and ask them directly.
+std::mutex gPreloadedHandleMutex;
+std::vector<void*> gPreloadedHandles;
 jclass gCallbackBridgeClass = nullptr;
 jmethodID gCallbackSendKey = nullptr;
 jmethodID gCallbackSendChar = nullptr;
@@ -256,6 +263,35 @@ void initializeMojoGlfw(JNIEnv* env, const std::string& path, void* handle) {
     else pushError("Bundled libglfw.so is missing required Android entry points");
 }
 
+void rememberPreloadedHandle(void* handle) {
+    if (handle == nullptr) return;
+    std::lock_guard<std::mutex> lock(gPreloadedHandleMutex);
+    if (std::find(gPreloadedHandles.begin(), gPreloadedHandles.end(), handle) !=
+        gPreloadedHandles.end()) return;
+    gPreloadedHandles.push_back(handle);
+}
+
+void forgetPreloadedHandles() {
+    std::lock_guard<std::mutex> lock(gPreloadedHandleMutex);
+    gPreloadedHandles.clear();
+}
+
+/**
+ * Resolves an engine entry point. The global group is searched first, which is
+ * where a library preloaded with RTLD_GLOBAL lands, and every library this
+ * launch preloaded is then asked directly. Without the second step a renderspec
+ * symbol is missed whenever its library reached the process some other way, such
+ * as System.loadLibrary on the SDL3 path.
+ */
+void* resolveEngineSymbol(const char* name) {
+    if (void* symbol = dlsym(RTLD_DEFAULT, name)) return symbol;
+    std::lock_guard<std::mutex> lock(gPreloadedHandleMutex);
+    for (void* handle : gPreloadedHandles) {
+        if (void* symbol = dlsym(handle, name)) return symbol;
+    }
+    return nullptr;
+}
+
 void initializeUpstreamAndroidJni(JNIEnv* env, const std::string& path, void* handle) {
     if (gAndroidVm == nullptr || handle == nullptr) return;
     const std::string filename = fs::path(path).filename().string();
@@ -465,27 +501,51 @@ std::string findPreloadByTokens(const std::vector<std::string>& libraries,
 
 bool configureMojoRenderer(JNIEnv* env, const std::vector<std::string>& preloadLibraries) {
     auto setPath = reinterpret_cast<MojoSetRendererPath>(
-        dlsym(RTLD_DEFAULT, "Java_net_kdt_pojavlaunch_utils_JREUtils_nsetRendererLibraryPath"));
+        resolveEngineSymbol("Java_net_kdt_pojavlaunch_utils_JREUtils_nsetRendererLibraryPath"));
     auto configureDisplay = reinterpret_cast<MojoConfigureDisplay>(
-        dlsym(RTLD_DEFAULT, "Java_net_kdt_pojavlaunch_utils_JREUtils_configureRenderspecDisplay"));
+        resolveEngineSymbol("Java_net_kdt_pojavlaunch_utils_JREUtils_configureRenderspecDisplay"));
     auto configureRenderer = reinterpret_cast<MojoConfigureRenderer>(
-        dlsym(RTLD_DEFAULT, "Java_net_kdt_pojavlaunch_utils_JREUtils_configureRenderspec"));
+        resolveEngineSymbol("Java_net_kdt_pojavlaunch_utils_JREUtils_configureRenderspec"));
     auto mojoExecSetNativeLibraryDir = reinterpret_cast<MojoExecSetNativeLibraryDir>(
-        dlsym(RTLD_DEFAULT, "Java_git_artdeell_mojoexec_MojoExec_setNativeLibraryDir"));
+        resolveEngineSymbol("Java_git_artdeell_mojoexec_MojoExec_setNativeLibraryDir"));
     auto mojoExecSetDisplayParams = reinterpret_cast<MojoExecSetDisplayParams>(
-        dlsym(RTLD_DEFAULT, "Java_git_artdeell_mojoexec_MojoExec_setDisplayParams"));
+        resolveEngineSymbol("Java_git_artdeell_mojoexec_MojoExec_setDisplayParams"));
     auto mojoExecPrepareEgl = reinterpret_cast<MojoExecPrepareEgl>(
-        dlsym(RTLD_DEFAULT, "Java_git_artdeell_mojoexec_MojoExec_prepareEgl"));
+        resolveEngineSymbol("Java_git_artdeell_mojoexec_MojoExec_prepareEgl"));
     auto mojoExecSetUseTurnip = reinterpret_cast<MojoExecSetUseTurnip>(
-        dlsym(RTLD_DEFAULT, "Java_git_artdeell_mojoexec_MojoExec_setUseTurnip"));
+        resolveEngineSymbol("Java_git_artdeell_mojoexec_MojoExec_setUseTurnip"));
     auto mojoExecPreloadVulkan = reinterpret_cast<MojoExecPreloadVulkan>(
-        dlsym(RTLD_DEFAULT, "Java_git_artdeell_mojoexec_MojoExec_preloadVulkan"));
+        resolveEngineSymbol("Java_git_artdeell_mojoexec_MojoExec_preloadVulkan"));
 
     const bool hasLegacyRenderspec = setPath && configureDisplay && configureRenderer;
     const bool hasMojoExecRenderspec =
         mojoExecSetNativeLibraryDir && mojoExecSetDisplayParams && mojoExecPrepareEgl;
     if (!hasLegacyRenderspec && !hasMojoExecRenderspec) {
-        pushError("Bundled engine renderspec API is unavailable");
+        // Name the entry points that were missing. "unavailable" on its own
+        // cannot distinguish an engine payload that lacks the symbols from one
+        // whose library never reached a namespace this process can search.
+        std::string missing;
+        const std::pair<const char*, bool> probes[] = {
+            {"MojoExec.setNativeLibraryDir", mojoExecSetNativeLibraryDir != nullptr},
+            {"MojoExec.setDisplayParams", mojoExecSetDisplayParams != nullptr},
+            {"MojoExec.prepareEgl", mojoExecPrepareEgl != nullptr},
+            {"JREUtils.nsetRendererLibraryPath", setPath != nullptr},
+            {"JREUtils.configureRenderspecDisplay", configureDisplay != nullptr},
+            {"JREUtils.configureRenderspec", configureRenderer != nullptr},
+        };
+        for (const auto& probe : probes) {
+            if (probe.second) continue;
+            if (!missing.empty()) missing += ", ";
+            missing += probe.first;
+        }
+        size_t preloadedCount = 0;
+        {
+            std::lock_guard<std::mutex> lock(gPreloadedHandleMutex);
+            preloadedCount = gPreloadedHandles.size();
+        }
+        pushError(
+            "Bundled engine renderspec API is unavailable; missing " + missing +
+            " after preloading " + std::to_string(preloadedCount) + " engine libraries");
         return false;
     }
 
@@ -724,6 +784,7 @@ Java_com_mclauncher_app_engine_NativeLaunchBridge_nativeStart(
         return 20;
     }
     LaunchGuard launchGuard;
+    forgetPreloadedHandles();
     mclauncher_clear_input_events();
     gLoggedMouseButtonInput = false;
     gLoggedAbsolutePointerInput = false;
@@ -804,11 +865,13 @@ Java_com_mclauncher_app_engine_NativeLaunchBridge_nativeStart(
             // after the rest of the namespace has been populated.
             retryPreloads.push_back(library);
         } else {
+            rememberPreloadedHandle(handle);
             initializeUpstreamAndroidJni(env, library, handle);
         }
     }
     for (const auto& library : retryPreloads) {
         void* handle = loadAbsolute(library, false);
+        rememberPreloadedHandle(handle);
         initializeUpstreamAndroidJni(env, library, handle);
     }
     if (!headlessTool && !configureMojoRenderer(env, preloadLibraries)) {
@@ -869,10 +932,10 @@ Java_com_mclauncher_app_engine_NativeLaunchBridge_nativeStart(
     }
 
     auto nativeLoadJvm = reinterpret_cast<MojoNativeLoadJvm>(
-        dlsym(RTLD_DEFAULT, "Java_net_kdt_pojavlaunch_utils_jre_JavaRunner_nativeLoadJVM")
+        resolveEngineSymbol("Java_net_kdt_pojavlaunch_utils_jre_JavaRunner_nativeLoadJVM")
     );
     auto nativeSetupExit = reinterpret_cast<MojoNativeSetupExit>(
-        dlsym(RTLD_DEFAULT, "Java_net_kdt_pojavlaunch_utils_jre_JavaRunner_nativeSetupExit")
+        resolveEngineSymbol("Java_net_kdt_pojavlaunch_utils_jre_JavaRunner_nativeSetupExit")
     );
     if (nativeLoadJvm == nullptr || nativeSetupExit == nullptr) {
         pushError("Pinned MojoLauncher embedded JVM entry points are unavailable");
